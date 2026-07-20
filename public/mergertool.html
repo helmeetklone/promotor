@@ -158,7 +158,8 @@
     <div class="stats" id="statsContainer"></div>
     <div class="warn-box" id="warnBox"></div>
     <div class="legend" id="legendContainer"></div>
-    <div class="actions-row">
+    <div class="actions-row" style="gap: 8px;">
+      <button class="ghost" id="downloadCsvBtn" type="button">&#8595; Download CSV (lebih cepat)</button>
       <button class="primary" id="downloadBtn" type="button">&#8595; Download Excel</button>
     </div>
     <p class="note" id="cappedNote" style="display:none;"></p>
@@ -576,18 +577,65 @@ function renderResults() {
   });
 }
 
+function withButtonBusy(btn, busyText, fn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyText;
+  // yield to the browser so the "menyiapkan..." text actually paints
+  // before the heavy synchronous work (xlsx/csv writing) blocks the thread
+  setTimeout(() => {
+    try {
+      fn();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }, 30);
+}
+
 function downloadExcel() {
   const r = state.result;
   if (!r) return;
-  const exportRows = r.rows.map((row) => {
-    const copy = Object.assign({}, row);
-    delete copy.__matched;
-    return copy;
+  withButtonBusy(document.getElementById("downloadBtn"), "⏳ Menyiapkan file...", () => {
+    const exportRows = r.rows.map((row) => {
+      const copy = Object.assign({}, row);
+      delete copy.__matched;
+      return copy;
+    });
+    const ws = XLSX.utils.json_to_sheet(exportRows, { header: r.columns });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Anomali_Deteksi");
+    XLSX.writeFile(wb, "Anomali_Deteksi_Promotor.xlsx");
   });
-  const ws = XLSX.utils.json_to_sheet(exportRows, { header: r.columns });
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Anomali_Deteksi");
-  XLSX.writeFile(wb, "Anomali_Deteksi_Promotor.xlsx");
+}
+
+// CSV is far cheaper to generate than XLSX for large datasets — no styling,
+// but useful when the Excel export feels slow on big files.
+function csvEscape(v) {
+  if (v == null) return "";
+  const s = String(v);
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function downloadCsv() {
+  const r = state.result;
+  if (!r) return;
+  withButtonBusy(document.getElementById("downloadCsvBtn"), "⏳ Menyiapkan file...", () => {
+    const lines = [r.columns.map(csvEscape).join(",")];
+    r.rows.forEach((row) => {
+      lines.push(r.columns.map((c) => csvEscape(formatCell(row[c]))).join(","));
+    });
+    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "Anomali_Deteksi_Promotor.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
 }
 
 function resetApp() {
@@ -607,6 +655,7 @@ function resetApp() {
 
 document.getElementById("processBtn").addEventListener("click", process);
 document.getElementById("downloadBtn").addEventListener("click", downloadExcel);
+document.getElementById("downloadCsvBtn").addEventListener("click", downloadCsv);
 document.getElementById("resetBtn").addEventListener("click", resetApp);
 
 renderSlots();
