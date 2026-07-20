@@ -1,3 +1,11 @@
+// Dashboard.tsx — v5
+// Changelog:
+//   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
+//   v2: single upload (hasil Data Merger), split otomatis by Record_Type
+//   v3: klik detail (angka/chart/leaderboard), Key Insights, layout row-aligned
+//   v4: modal detail dipaginasi (10/halaman) + filter, biar buka detail lebih cepat
+//   v5: disederhanakan jadi 3 signal (GPS, Status employment, Durasi kerja) sesuai keterbatasan data lapangan;
+//       Timestamp (check-in 3x/hari, no checkout) tidak lagi cek durasi/kelengkapan kunjungan
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -110,20 +118,26 @@ const splitByRecordType = (rows) => {
 const getPosition = (r) =>
   r["Position_HR"] || r["Position_ABSENSI"] || r["Position_TIMESTAMP"] || r["Position_DOP"] || "-";
 
+const getStatus = (r) => r["Employment Status_HR"] || r["Status_DOP"] || "-";
+
+const isStatusAnomaly = (status) => {
+  const s = String(status || "").trim().toLowerCase();
+  return !!s && s !== "-" && s !== "active";
+};
+
 const describeFlagsTimestamp = (v) =>
-  [v.gpsMismatch && "GPS", !v.hasOrgCoord && "No-Coord", v.shortVisit && "Singkat", v.incomplete && "Bolong"]
+  [v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
     .filter(Boolean).join(", ");
 
 const describeFlagsAbsensi = (s) =>
-  [s.late && "Telat", s.earlyOut && "Cepat Pulang", s.noClockOut && "No-Out",
-   s.shortShift && "Pendek", s.longShift && "Panjang", s.bigMove && "GPS Jauh"]
+  [s.gpsIssue && (s.noCoord ? "No-GPS" : "GPS Jauh"), s.statusAnomaly && "Status Non-Active", s.durationIssue && (s.noClockOut ? "No-Clockout" : s.shortShift ? "Durasi Pendek" : "Durasi Panjang")]
     .filter(Boolean).join(", ");
 
 const TIMESTAMP_COLUMNS = [
   { key: "date", label: "Tgl" },
   { key: "employee_name", label: "Nama" },
   { key: "position", label: "Role" },
-  { key: "gpsDistanceM", label: "GPS(m)", render: (r) => r.gpsDistanceM ? r.gpsDistanceM.toFixed(0) : "-" },
+  { key: "status", label: "Status" },
   { key: "flags", label: "Flag", render: describeFlagsTimestamp },
 ];
 
@@ -131,6 +145,7 @@ const ABSENSI_COLUMNS = [
   { key: "date", label: "Tgl" },
   { key: "employee_name", label: "Nama" },
   { key: "position", label: "Role" },
+  { key: "status", label: "Status" },
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
   { key: "flags", label: "Flag", render: describeFlagsAbsensi },
 ];
@@ -148,54 +163,62 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     const distM = hasIn && hasOut ? haversineMeters({ lat: latIn, lon: lonIn }, { lat: latOut, lon: lonOut }) : null;
     const durHr = toNum(r["Time Duration Adj (Hours)_ABSENSI"] ?? r["Time Duration (Hours)_ABSENSI"]);
     const position = getPosition(r);
+    const status = getStatus(r);
+    const noCoord = !hasIn;
+    const bigMove = distM !== null && distM > moveThresholdM;
+    const noClockOut = !String(r["Time Out_ABSENSI"] || "").trim();
+    const shortShift = durHr !== null && durHr < shortHr;
+    const longShift = durHr !== null && durHr > longHr;
 
     return {
       date: r["Date_ABSENSI"] || "-",
       employee_name: r["Employee Name_ABSENSI"] || r["Employee ID"] || "-",
       position,
+      status,
       promotorType: classifyPromotorType(position),
-      late: !!String(r["Late In_ABSENSI"] || "").trim(),
-      earlyOut: !!String(r["Early Out_ABSENSI"] || "").trim(),
-      noClockOut: !String(r["Time Out_ABSENSI"] || "").trim(),
       durHr,
-      shortShift: durHr !== null && durHr < shortHr,
-      longShift: durHr !== null && durHr > longHr,
+      noClockOut,
+      shortShift,
+      longShift,
       moveM: distM,
-      bigMove: distM !== null && distM > moveThresholdM,
-      noCoord: !hasIn,
+      noCoord,
+      // 3 currently-detectable signals given field data limitations:
+      gpsIssue: noCoord || bigMove,
+      statusAnomaly: isStatusAnomaly(status),
+      durationIssue: noClockOut || shortShift || longShift,
     };
   });
 
   const total = shifts.length;
+  const isFlagged = (s) => s.gpsIssue || s.statusAnomaly || s.durationIssue;
   const anomalyCounts = {
-    lateOrEarly: shifts.filter((s) => s.late || s.earlyOut).length,
-    noClockOut: shifts.filter((s) => s.noClockOut).length,
-    duration: shifts.filter((s) => s.shortShift || s.longShift).length,
-    gpsMove: shifts.filter((s) => s.bigMove).length,
+    gps: shifts.filter((s) => s.gpsIssue).length,
+    status: shifts.filter((s) => s.statusAnomaly).length,
+    duration: shifts.filter((s) => s.durationIssue).length,
   };
 
   const byRole = {};
   shifts.forEach((s) => {
     byRole[s.position] = byRole[s.position] || { role: s.position, anomali: 0, total: 0 };
     byRole[s.position].total++;
-    if (s.late || s.earlyOut || s.noClockOut || s.shortShift || s.longShift || s.bigMove) byRole[s.position].anomali++;
+    if (isFlagged(s)) byRole[s.position].anomali++;
   });
 
   const byPromotorType = {};
   shifts.forEach((s) => {
     byPromotorType[s.promotorType] = byPromotorType[s.promotorType] || { type: s.promotorType, anomali: 0, total: 0 };
     byPromotorType[s.promotorType].total++;
-    if (s.late || s.earlyOut || s.noClockOut || s.shortShift || s.longShift || s.bigMove) byPromotorType[s.promotorType].anomali++;
+    if (isFlagged(s)) byPromotorType[s.promotorType].anomali++;
   });
 
   const byDate = {};
   shifts.forEach((s) => {
     byDate[s.date] = byDate[s.date] || { date: s.date, anomali: 0, total: 0 };
     byDate[s.date].total++;
-    if (s.late || s.earlyOut || s.noClockOut || s.shortShift || s.longShift || s.bigMove) byDate[s.date].anomali++;
+    if (isFlagged(s)) byDate[s.date].anomali++;
   });
 
-  const flagged = shifts.filter((s) => s.late || s.earlyOut || s.noClockOut || s.shortShift || s.longShift || s.bigMove);
+  const flagged = shifts.filter(isFlagged);
   const byRoleArr = Object.values(byRole).sort((a, b) => b.anomali - a.anomali);
   const byDateArr = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
   const worstRole = byRoleArr.length ? [...byRoleArr].sort((a, b) => b.anomali - a.anomali)[0] : null;
@@ -217,62 +240,57 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
 
 // ───────────────────────── Timestamp (journey/visit) processing ─────────────────────────
 
-function processTimestamp(rows, gpsThresholdM, shortVisitHr) {
+function processTimestamp(rows) {
+  // Field reality: check-in happens up to 3x/day (Pagi/Siang/Sore) with no
+  // checkout expected — so duration/incomplete-visit checks don't apply here.
+  // Only GPS presence and employment status are currently detectable.
   const visits = rows.map((r) => {
     const latIn = toNum(r["Latitude In_TIMESTAMP"]);
     const lonIn = toNum(r["Longitude In_TIMESTAMP"]);
-    const latOut = toNum(r["Latitude Out_TIMESTAMP"]);
-    const lonOut = toNum(r["Longitude Out_TIMESTAMP"]);
     const hasIn = latIn !== null && lonIn !== null;
-    const hasOut = latOut !== null && lonOut !== null;
-    const distM = hasIn && hasOut ? haversineMeters({ lat: latIn, lon: lonIn }, { lat: latOut, lon: lonOut }) : null;
-    const durHr = toNum(r["Time Duration (Hours)_TIMESTAMP"]);
     const position = getPosition(r);
+    const status = getStatus(r);
 
     return {
       date: r["Date_TIMESTAMP"] || "-",
       employee_name: r["Employee Name_TIMESTAMP"] || r["Employee ID"] || "-",
       position,
+      status,
       promotorType: classifyPromotorType(position),
-      durationHr: durHr,
-      hasOrgCoord: hasIn,
-      gpsDistanceM: distM,
-      gpsMismatch: distM !== null && distM > gpsThresholdM,
-      shortVisit: durHr !== null && durHr < shortVisitHr,
-      incomplete: !hasOut,
+      noCoord: !hasIn,
+      statusAnomaly: isStatusAnomaly(status),
     };
   });
 
   const total = visits.length;
+  const isFlagged = (v) => v.noCoord || v.statusAnomaly;
   const anomalyCounts = {
-    gps: visits.filter((v) => v.gpsMismatch).length,
-    noCoord: visits.filter((v) => !v.hasOrgCoord).length,
-    short: visits.filter((v) => v.shortVisit).length,
-    incomplete: visits.filter((v) => v.incomplete).length,
+    gps: visits.filter((v) => v.noCoord).length,
+    status: visits.filter((v) => v.statusAnomaly).length,
   };
 
   const byRole = {};
   visits.forEach((v) => {
     byRole[v.position] = byRole[v.position] || { role: v.position, anomali: 0, total: 0 };
     byRole[v.position].total++;
-    if (v.gpsMismatch || !v.hasOrgCoord || v.shortVisit || v.incomplete) byRole[v.position].anomali++;
+    if (isFlagged(v)) byRole[v.position].anomali++;
   });
 
   const byPromotorType = {};
   visits.forEach((v) => {
     byPromotorType[v.promotorType] = byPromotorType[v.promotorType] || { type: v.promotorType, anomali: 0, total: 0 };
     byPromotorType[v.promotorType].total++;
-    if (v.gpsMismatch || !v.hasOrgCoord || v.shortVisit || v.incomplete) byPromotorType[v.promotorType].anomali++;
+    if (isFlagged(v)) byPromotorType[v.promotorType].anomali++;
   });
 
   const byDate = {};
   visits.forEach((v) => {
     byDate[v.date] = byDate[v.date] || { date: v.date, anomali: 0, total: 0 };
     byDate[v.date].total++;
-    if (v.gpsMismatch || !v.hasOrgCoord || v.shortVisit || v.incomplete) byDate[v.date].anomali++;
+    if (isFlagged(v)) byDate[v.date].anomali++;
   });
 
-  const flagged = visits.filter((v) => v.gpsMismatch || !v.hasOrgCoord || v.shortVisit || v.incomplete);
+  const flagged = visits.filter(isFlagged);
   const byRoleArr = Object.values(byRole).sort((a, b) => b.anomali - a.anomali);
   const byDateArr = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
   const worstRole = byRoleArr.length ? [...byRoleArr].sort((a, b) => b.anomali - a.anomali)[0] : null;
@@ -494,23 +512,61 @@ function Leaderboard({ title, data, tone, onItemClick }) {
   );
 }
 
+const PAGE_SIZE = 10;
+
 function DetailModal({ detail, onClose }) {
+  const [page, setPage] = useState(1);
+  const [q, setQ] = useState("");
+
+  React.useEffect(() => {
+    setPage(1);
+    setQ("");
+  }, [detail]);
+
+  const filteredRows = useMemo(() => {
+    if (!detail) return [];
+    if (!q.trim()) return detail.rows;
+    const needle = q.trim().toLowerCase();
+    return detail.rows.filter((r) =>
+      detail.columns.some((c) => String(c.render ? c.render(r) : (r[c.key] ?? "")).toLowerCase().includes(needle))
+    );
+  }, [detail, q]);
+
   if (!detail) return null;
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const shown = filteredRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
         className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-3xl max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-          <div className="text-sm font-semibold text-slate-100">{detail.title}</div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-200">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-100 truncate">{detail.title}</div>
+            <div className="text-[11px] text-slate-500">{filteredRows.length.toLocaleString("id-ID")} baris</div>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-200 flex-shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="overflow-auto p-4">
-          {detail.rows.length === 0 ? (
-            <div className="text-xs text-slate-500">Tidak ada data untuk kategori ini.</div>
+
+        <div className="px-4 pt-3">
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Filter (nama, role, tanggal, ...)"
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600"
+          />
+        </div>
+
+        <div className="overflow-auto p-4 flex-1">
+          {shown.length === 0 ? (
+            <div className="text-xs text-slate-500">Tidak ada data yang cocok.</div>
           ) : (
             <table className="w-full text-[11px]">
               <thead>
@@ -519,7 +575,7 @@ function DetailModal({ detail, onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {detail.rows.map((r, i) => (
+                {shown.map((r, i) => (
                   <tr key={i} className="border-b border-slate-800/60 text-slate-300">
                     {detail.columns.map((c) => (
                       <td key={c.key} className="px-2.5 py-2 whitespace-nowrap">{c.render ? c.render(r) : r[c.key]}</td>
@@ -530,6 +586,26 @@ function DetailModal({ detail, onClose }) {
             </table>
           )}
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-800 text-xs text-slate-400">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="disabled:opacity-30 hover:text-slate-200"
+            >
+              &lsaquo; Sebelumnya
+            </button>
+            <span>Halaman {safePage} dari {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="disabled:opacity-30 hover:text-slate-200"
+            >
+              Selanjutnya &rsaquo;
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -646,7 +722,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
 function DashboardPage(props) {
   const {
-    timestampData, gpsThresholdM, setGpsThresholdM, shortVisitHr, setShortVisitHr,
+    timestampData,
     absensiData, moveThresholdM, setMoveThresholdM, shortHr, setShortHr, longHr, setLongHr,
   } = props;
 
@@ -654,7 +730,7 @@ function DashboardPage(props) {
   const openDetail = useCallback((title, rows, columns) => setDetail({ title, rows, columns }), []);
   const closeDetail = useCallback(() => setDetail(null), []);
 
-  const timestampResult = useMemo(() => timestampData ? processTimestamp(timestampData, gpsThresholdM, shortVisitHr) : null, [timestampData, gpsThresholdM, shortVisitHr]);
+  const timestampResult = useMemo(() => timestampData ? processTimestamp(timestampData) : null, [timestampData]);
   const absensiResult = useMemo(() => absensiData ? processAbsensi(absensiData, moveThresholdM, shortHr, longHr) : null, [absensiData, moveThresholdM, shortHr, longHr]);
   const insights = useMemo(() => computeInsights(timestampResult, absensiResult), [timestampResult, absensiResult]);
 
@@ -673,18 +749,9 @@ function DashboardPage(props) {
         <div className="text-sm font-bold text-indigo-400">Data Absensi (Attendance)</div>
       </div>
 
-      {/* threshold controls row */}
+      {/* threshold controls row — Timestamp has none now (no duration/checkout concept for check-in-only events) */}
       <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0 items-start">
-        <div className="flex flex-wrap gap-3 items-center text-[11px] text-slate-400">
-          <label className="flex items-center gap-1.5">GPS (m):
-            <input type="number" step="10" value={gpsThresholdM} onChange={(e) => setGpsThresholdM(parseFloat(e.target.value) || 0)}
-              className="w-16 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200" />
-          </label>
-          <label className="flex items-center gap-1.5">Durasi min (jam):
-            <input type="number" step="0.1" value={shortVisitHr} onChange={(e) => setShortVisitHr(parseFloat(e.target.value) || 0)}
-              className="w-14 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200" />
-          </label>
-        </div>
+        <div className="text-[11px] text-slate-600 italic">Tidak ada threshold — cuma cek GPS ada/nggak &amp; status employment.</div>
         <div className="flex flex-wrap gap-3 items-center text-[11px] text-slate-400">
           <label className="flex items-center gap-1.5">Pendek &lt; (jam):
             <input type="number" value={shortHr} onChange={(e) => setShortHr(parseFloat(e.target.value) || 0)}
@@ -703,38 +770,32 @@ function DashboardPage(props) {
 
       {!timestampResult && !absensiResult ? null : (
         <>
-          {/* stat cards row */}
+          {/* stat cards row — 3 signal yang bisa dideteksi: GPS, Status, Durasi (Durasi cuma relevan utk Absensi) */}
           <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0 items-stretch">
             <div className="grid grid-cols-2 gap-2.5">
               {timestampResult ? (
                 <>
-                  <StatCard icon={MapPin} label="GPS Mismatch" value={timestampResult.anomalyCounts.gps} tone="red"
-                    onClick={() => openDetail("Timestamp — GPS Mismatch", filterTs((v) => v.gpsMismatch), TIMESTAMP_COLUMNS)} />
-                  <StatCard icon={FileWarning} label="Tanpa Koordinat" value={timestampResult.anomalyCounts.noCoord} tone="amber"
-                    onClick={() => openDetail("Timestamp — Tanpa Koordinat", filterTs((v) => !v.hasOrgCoord), TIMESTAMP_COLUMNS)} />
-                  <StatCard icon={Clock} label="Kunjungan Singkat" value={timestampResult.anomalyCounts.short} tone="pink"
-                    onClick={() => openDetail("Timestamp — Kunjungan Singkat", filterTs((v) => v.shortVisit), TIMESTAMP_COLUMNS)} />
-                  <StatCard icon={AlertTriangle} label="Tidak Lengkap" value={timestampResult.anomalyCounts.incomplete} tone="indigo"
-                    onClick={() => openDetail("Timestamp — Tidak Lengkap", filterTs((v) => v.incomplete), TIMESTAMP_COLUMNS)} />
+                  <StatCard icon={MapPin} label="GPS Tidak Ada" value={timestampResult.anomalyCounts.gps} tone="red"
+                    onClick={() => openDetail("Timestamp — GPS Tidak Ada", filterTs((v) => v.noCoord), TIMESTAMP_COLUMNS)} />
+                  <StatCard icon={AlertTriangle} label="Status Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
+                    onClick={() => openDetail("Timestamp — Status Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)} />
                 </>
               ) : (
                 <div className="col-span-2 text-xs text-slate-600 text-center py-10 border border-dashed border-slate-800 rounded-xl">Tidak ada data Timestamp</div>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-3 gap-2.5">
               {absensiResult ? (
                 <>
-                  <StatCard icon={Clock} label="Telat / Cepat Pulang" value={absensiResult.anomalyCounts.lateOrEarly} tone="amber"
-                    onClick={() => openDetail("Absensi — Telat / Cepat Pulang", filterAb((s) => s.late || s.earlyOut), ABSENSI_COLUMNS)} />
-                  <StatCard icon={FileWarning} label="Belum Clock-out" value={absensiResult.anomalyCounts.noClockOut} tone="red"
-                    onClick={() => openDetail("Absensi — Belum Clock-out", filterAb((s) => s.noClockOut), ABSENSI_COLUMNS)} />
-                  <StatCard icon={AlertTriangle} label="Durasi Ganjil" value={absensiResult.anomalyCounts.duration} tone="indigo"
-                    onClick={() => openDetail("Absensi — Durasi Ganjil", filterAb((s) => s.shortShift || s.longShift), ABSENSI_COLUMNS)} />
-                  <StatCard icon={MapPin} label="GPS In≠Out Jauh" value={absensiResult.anomalyCounts.gpsMove} tone="teal"
-                    onClick={() => openDetail("Absensi — GPS In≠Out Jauh", filterAb((s) => s.bigMove), ABSENSI_COLUMNS)} />
+                  <StatCard icon={MapPin} label="GPS Bermasalah" value={absensiResult.anomalyCounts.gps} tone="red"
+                    onClick={() => openDetail("Absensi — GPS Bermasalah", filterAb((s) => s.gpsIssue), ABSENSI_COLUMNS)} />
+                  <StatCard icon={AlertTriangle} label="Status Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
+                    onClick={() => openDetail("Absensi — Status Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)} />
+                  <StatCard icon={Clock} label="Durasi Bermasalah" value={absensiResult.anomalyCounts.duration} tone="indigo"
+                    onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)} />
                 </>
               ) : (
-                <div className="col-span-2 text-xs text-slate-600 text-center py-10 border border-dashed border-slate-800 rounded-xl">Tidak ada data Absensi</div>
+                <div className="col-span-3 text-xs text-slate-600 text-center py-10 border border-dashed border-slate-800 rounded-xl">Tidak ada data Absensi</div>
               )}
             </div>
           </div>
@@ -882,9 +943,6 @@ export default function Dashboard() {
   const [rawRows, setRawRows] = useState(null);
   const [fileNames, setFileNames] = useState([]);
 
-  const [gpsThresholdM, setGpsThresholdM] = useState(100);
-  const [shortVisitHr, setShortVisitHr] = useState(0.25);
-
   const [moveThresholdM, setMoveThresholdM] = useState(100);
   const [shortHr, setShortHr] = useState(4);
   const [longHr, setLongHr] = useState(14);
@@ -915,7 +973,7 @@ export default function Dashboard() {
         <p className="text-sm text-slate-500 mb-6">
           {page === "upload"
             ? "Upload 1 file hasil Data Merger (CSV/XLSX/JSON) untuk mulai analisis."
-            : "Klik angka atau chart untuk lihat detail. GPS mismatch, telat/durasi, dan data tidak lengkap."}
+            : "Klik angka atau chart untuk lihat detail. Signal: GPS, status employment, durasi kerja."}
         </p>
 
         {page === "upload" ? (
@@ -927,12 +985,12 @@ export default function Dashboard() {
           />
         ) : (
           <DashboardPage
-            timestampData={timestampData} gpsThresholdM={gpsThresholdM} setGpsThresholdM={setGpsThresholdM}
-            shortVisitHr={shortVisitHr} setShortVisitHr={setShortVisitHr}
+            timestampData={timestampData}
             absensiData={absensiData} moveThresholdM={moveThresholdM} setMoveThresholdM={setMoveThresholdM}
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
+        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v5</div>
       </div>
     </div>
   );
