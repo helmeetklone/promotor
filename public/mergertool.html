@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Promotor Anomaly Merge</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0F1318;
+    --panel: #151A20;
+    --panel-alt: #12161B;
+    --border: #232A32;
+    --border-hover: #3A4450;
+    --text: #FFFFFF;
+    --text-muted: #B8C0C9;
+    --accent: #F5A623;
+    --accent-hover: #FFB84D;
+    --accent-text: #14181C;
+    --green: #58D68D;
+    --red: #FF6B6B;
+    --table-border: #1B2028;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-inner { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: rgba(245,166,35,0.12); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  h1 { font-family: monospace; font-size: 15px; font-weight: 600; margin: 0; }
+  .subtitle { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+  main { max-width: 1152px; margin: 0 auto; padding: 40px 24px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .hint { font-size: 12px; color: var(--text-muted); margin: 0 0 24px; }
+  .slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .slot {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--slot-accent, var(--accent));
+    background: var(--panel);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .slot-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .slot-label { font-family: monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+  .slot-status { font-size: 14px; }
+  .slot-filename { font-size: 13px; margin: 0 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toggle-headers {
+    background: none; border: none; cursor: pointer; font-size: 11px; color: var(--accent);
+    padding: 0; margin-bottom: 8px; text-align: left; display: none;
+  }
+  .header-list {
+    font-size: 10px; color: var(--text-muted); margin: 0 0 12px; padding: 8px 10px;
+    background: var(--panel-alt); border-radius: 6px; max-height: 140px; overflow-y: auto;
+    list-style: none; font-family: monospace; line-height: 1.6; display: none;
+  }
+  .header-list li { white-space: nowrap; }
+  .file-label {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    border-radius: 8px; border: 1px dashed var(--border-hover);
+    padding: 8px 0; font-size: 11px; color: var(--text-muted); cursor: pointer;
+  }
+  .file-label:hover { border-color: var(--accent); color: var(--accent); }
+  input[type="file"] { display: none; }
+  button.primary {
+    display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 8px; border: none;
+    background: var(--accent); color: var(--accent-text);
+    padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.3; cursor: not-allowed; }
+  button.primary:not(:disabled):hover { background: var(--accent-hover); }
+  button.ghost {
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 8px; border: 1px solid var(--border); background: transparent;
+    color: var(--text-muted); padding: 6px 12px; font-size: 12px; cursor: pointer;
+  }
+  .error-box {
+    display: flex; gap: 8px; align-items: flex-start;
+    border-radius: 8px; border: 1px solid rgba(255,107,107,0.3);
+    background: rgba(255,107,107,0.1); padding: 12px 16px;
+    font-size: 14px; color: var(--red); margin-bottom: 24px; display: none;
+  }
+  .warn-box {
+    display: flex; gap: 8px; align-items: flex-start;
+    border-radius: 8px; border: 1px solid rgba(245,166,35,0.3);
+    background: rgba(245,166,35,0.1); padding: 12px 16px;
+    font-size: 14px; color: var(--accent); margin-bottom: 24px; display: none;
+  }
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+  }
+  .stat-card { border-radius: 10px; border: 1px solid var(--border); background: var(--panel); padding: 16px; }
+  .stat-label { font-family: monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 0 0 4px; }
+  .stat-value { font-family: monospace; font-size: 20px; font-weight: 700; margin: 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+  .table-wrap { overflow: auto; border-radius: 10px; border: 1px solid var(--border); max-height: 65vh; }
+  table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; }
+  thead { position: sticky; top: 0; z-index: 10; }
+  th { white-space: nowrap; padding: 8px 12px; text-align: left; font-weight: 600; color: #14181C; border-bottom: 1px solid var(--border); }
+  td { white-space: nowrap; padding: 6px 12px; border-bottom: 1px solid var(--table-border); }
+  tr.alt { background: var(--panel); }
+  tr.base { background: var(--panel-alt); }
+  .actions-row { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+  .note { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
+  #resultsSection { display: none; }
+  #uploadSection {}
+  .id-nomatch { color: var(--red); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">&#128225;</div>
+    <div>
+      <h1>PROMOTOR ANOMALY MERGE</h1>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &rarr; 1 tabel deteksi</p>
+    </div>
+  </div>
+  <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
+</header>
+
+<main>
+  <div id="uploadSection">
+    <h2>1. Upload 4 file sumber</h2>
+    <p class="hint">Format .xlsx. Employee ID akan otomatis distandarkan sebagai kunci join.</p>
+    <div class="slots" id="slotsContainer"></div>
+    <div class="error-box" id="errorBox"></div>
+    <button class="primary" id="processBtn" type="button" disabled>Gabungkan &amp; deteksi &rarr;</button>
+  </div>
+
+  <div id="resultsSection">
+    <div class="stats" id="statsContainer"></div>
+    <div class="warn-box" id="warnBox"></div>
+    <div class="legend" id="legendContainer"></div>
+    <div class="actions-row">
+      <button class="primary" id="downloadBtn" type="button">&#8595; Download Excel</button>
+    </div>
+    <p class="note" id="cappedNote" style="display:none;"></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr id="tableHeadRow"></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+// ---------------------------------------------------------------------------
+// Config: the 4 source files and how to normalize their join key
+// ---------------------------------------------------------------------------
+const SLOTS = [
+  { key: "dop", label: "DOP", file: "DOP.xlsx", idCol: "Employee ID", suffix: "DOP", accent: "#F0B27A" },
+  { key: "hr", label: "File HR", file: "File_HR.xlsx", idCol: "Employee Number", suffix: "HR", accent: "#5DADE2" },
+  { key: "absensi", label: "Absensi", file: "Absensi.xlsx", idCol: "Employee No", suffix: "ABSENSI", accent: "#FF6B6B" },
+  { key: "timestamp", label: "Timestamp", file: "Timestamp.xlsx", idCol: "Employee No", suffix: "TIMESTAMP", accent: "#58D68D" },
+];
+
+const CATEGORY_COLORS = {
+  gps: "#FF6B6B", waktu: "#FFD966", remark: "#C39BD3",
+  status: "#5DADE2", posisi: "#58D68D", timing: "#F0B27A", id: "#9CA3AF",
+};
+const CATEGORY_LABEL = {
+  gps: "GPS / Lokasi", waktu: "Jam Kerja / Durasi", remark: "Remark / Catatan",
+  status: "Status Employment", posisi: "Posisi / Tipe", timing: "Tanggal Input", id: "Identitas",
+};
+
+const ID_COLS = ["Employee ID", "Record_Type", "Employee Name_ABSENSI", "Employee Name_TIMESTAMP"];
+
+const CATEGORY_MAP = {
+  "Longitude In_ABSENSI": "gps", "Latitude In_ABSENSI": "gps", "Longitude Out_ABSENSI": "gps", "Latitude Out_ABSENSI": "gps",
+  "Address In_ABSENSI": "gps", "Address Out_ABSENSI": "gps",
+  "Longitude In_TIMESTAMP": "gps", "Latitude In_TIMESTAMP": "gps", "Longitude Out_TIMESTAMP": "gps", "Latitude Out_TIMESTAMP": "gps",
+  "Address In_TIMESTAMP": "gps", "Address Out_TIMESTAMP": "gps",
+  "Time In_ABSENSI": "waktu", "Time Out_ABSENSI": "waktu",
+  "Time Duration (Hours)_ABSENSI": "waktu", "Time Duration (Hours)_1_ABSENSI": "waktu",
+  "Time In Adj_ABSENSI": "waktu", "Time Out Adj_ABSENSI": "waktu", "Time Duration Adj (Hours)_ABSENSI": "waktu",
+  "Late In_ABSENSI": "waktu", "Early Out_ABSENSI": "waktu",
+  "Start Time_TIMESTAMP": "waktu", "End Time_TIMESTAMP": "waktu", "Time Duration (Hours)_TIMESTAMP": "waktu",
+  "Remark In_ABSENSI": "remark", "Remark Out_ABSENSI": "remark",
+  "Employment Status_HR": "status", "End Date_HR": "status", "Status_DOP": "status", "End Date_DOP": "status",
+  "Position_HR": "posisi", "Position_DOP": "posisi", "Position_ABSENSI": "posisi", "Position_TIMESTAMP": "posisi",
+  "Date_ABSENSI": "timing", "Creation Date_ABSENSI": "timing",
+  "Date_TIMESTAMP": "timing", "Date In_TIMESTAMP": "timing", "Creation Date_TIMESTAMP": "timing",
+  "Created Date_DOP": "timing", "Join Date_DOP": "timing",
+};
+
+function neededRawColumnsFor(suffix) {
+  const raw = new Set();
+  Object.keys(CATEGORY_MAP).forEach((col) => {
+    const tail = "_" + suffix;
+    if (col.endsWith(tail)) raw.add(col.slice(0, -tail.length));
+  });
+  ID_COLS.forEach((col) => {
+    const tail = "_" + suffix;
+    if (col.endsWith(tail)) raw.add(col.slice(0, -tail.length));
+  });
+  return raw;
+}
+
+// ---------------------------------------------------------------------------
+// Data helpers
+// ---------------------------------------------------------------------------
+function normalizeHeader(h) {
+  if (h == null || h === "") return "Column";
+  return String(h).replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function dedupeHeaders(headers) {
+  const seen = {};
+  return headers.map((raw) => {
+    const name = normalizeHeader(raw);
+    if (seen[name] != null) {
+      seen[name] += 1;
+      return name + "_" + seen[name];
+    }
+    seen[name] = 0;
+    return name;
+  });
+}
+
+async function parseWorkbook(file) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  if (rows.length === 0) return [];
+  const headers = dedupeHeaders(rows[0]);
+  return rows.slice(1).map((r) => {
+    const obj = {};
+    headers.forEach((h, i) => (obj[h] = r[i] !== undefined ? r[i] : null));
+    return obj;
+  });
+}
+
+function resolveIdKey(sampleKeys, idCol) {
+  if (sampleKeys.includes(idCol)) return idCol;
+  const target = idCol.toLowerCase().replace(/\s+/g, " ").trim();
+  const ci = sampleKeys.find((k) => k.toLowerCase().replace(/\s+/g, " ").trim() === target);
+  if (ci) return ci;
+  const fuzzy = sampleKeys.find((k) => {
+    const lk = k.toLowerCase();
+    return lk.includes("employee") && (lk.includes("id") || lk.includes("no") || lk.includes("number"));
+  });
+  return fuzzy || null;
+}
+
+function processSource(rows, idCol, suffix) {
+  if (rows.length === 0) return { data: [], resolvedIdKey: null };
+  const resolvedIdKey = resolveIdKey(Object.keys(rows[0]), idCol);
+  const neededRaw = neededRawColumnsFor(suffix);
+  const data = rows.map((row) => {
+    const out = {};
+    Object.entries(row).forEach(([k, v]) => {
+      if (k === resolvedIdKey) out["Employee ID"] = v == null ? null : String(v).trim();
+      else if (neededRaw.has(k)) out[k + "_" + suffix] = v;
+    });
+    return out;
+  });
+  return { data, resolvedIdKey };
+}
+
+function outerJoinMaster(hrRows, dopRows) {
+  const dopMap = new Map();
+  dopRows.forEach((r) => {
+    const k = r["Employee ID"];
+    if (k == null) return;
+    if (!dopMap.has(k)) dopMap.set(k, r);
+  });
+  const matched = new Set();
+  const out = [];
+  hrRows.forEach((h) => {
+    const k = h["Employee ID"];
+    const match = k != null ? dopMap.get(k) : undefined;
+    if (match) matched.add(k);
+    out.push(match ? Object.assign({}, h, match, { "Employee ID": k }) : Object.assign({}, h));
+  });
+  dopRows.forEach((d) => {
+    const k = d["Employee ID"];
+    if (k != null && !matched.has(k)) out.push(Object.assign({}, d));
+  });
+  return out;
+}
+
+function leftJoinMaster(eventRows, masterRows) {
+  const masterMap = new Map();
+  masterRows.forEach((r) => {
+    const k = r["Employee ID"];
+    if (k == null) return;
+    if (!masterMap.has(k)) masterMap.set(k, r);
+  });
+  return eventRows.map((row) => {
+    const k = row["Employee ID"];
+    const match = k != null ? masterMap.get(k) : undefined;
+    return {
+      matched: !!match,
+      merged: match ? Object.assign({}, row, match, { "Employee ID": k }) : Object.assign({}, row),
+    };
+  });
+}
+
+function buildFinalColumns(existingKeys) {
+  const idCols = ID_COLS.filter((c) => existingKeys.has(c));
+  const anomalyCols = Object.keys(CATEGORY_MAP).filter((c) => existingKeys.has(c));
+  return idCols.concat(anomalyCols);
+}
+
+function formatCell(v) {
+  if (v == null || v === "") return "";
+  if (v instanceof Date) {
+    if (v.getFullYear() <= 1900) {
+      return v.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+    }
+    return v.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  }
+  if (typeof v === "number") return v.toLocaleString("id-ID", { maximumFractionDigits: 6 });
+  return String(v);
+}
+
+// ---------------------------------------------------------------------------
+// App state + wiring
+// ---------------------------------------------------------------------------
+const state = {
+  files: {},      // slotKey -> File
+  parsed: {},     // slotKey -> full parsed rows (cleared after processing to save memory)
+  headers: {},    // slotKey -> array of header names (kept for preview)
+  status: {},     // slotKey -> "reading" | "ok" | "error"
+  result: null,
+};
+
+function el(tag, props, children) {
+  const e = document.createElement(tag);
+  if (props) Object.entries(props).forEach(([k, v]) => {
+    if (k === "style") Object.assign(e.style, v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
+    else e.setAttribute(k, v);
+  });
+  (children || []).forEach((c) => e.appendChild(typeof c === "string" ? document.createTextNode(c) : c));
+  return e;
+}
+
+function renderSlots() {
+  const container = document.getElementById("slotsContainer");
+  container.innerHTML = "";
+  SLOTS.forEach((slot) => {
+    const card = el("div", { class: "slot", style: { "--slot-accent": slot.accent, borderTopColor: slot.accent } });
+    const top = el("div", { class: "slot-top" }, [
+      el("span", { class: "slot-label" }, [slot.label]),
+      el("span", { class: "slot-status", id: "status-" + slot.key }, [""]),
+    ]);
+    const filename = el("p", { class: "slot-filename", id: "filename-" + slot.key }, [slot.file]);
+    const toggleBtn = el("button", { class: "toggle-headers", id: "toggle-" + slot.key, type: "button" }, ["Lihat nama kolom terdeteksi"]);
+    toggleBtn.addEventListener("click", () => {
+      const list = document.getElementById("headerlist-" + slot.key);
+      const shown = list.style.display === "block";
+      list.style.display = shown ? "none" : "block";
+      toggleBtn.textContent = shown ? "Lihat nama kolom terdeteksi" : "Sembunyikan nama kolom";
+    });
+    const headerList = el("ul", { class: "header-list", id: "headerlist-" + slot.key }, []);
+    const label = el("label", { class: "file-label" }, ["\u2601 Pilih file"]);
+    const input = el("input", { type: "file", accept: ".xlsx,.xls" });
+    input.addEventListener("change", (e) => handleFile(slot, e.target.files[0]));
+    label.appendChild(input);
+
+    card.appendChild(top);
+    card.appendChild(filename);
+    card.appendChild(toggleBtn);
+    card.appendChild(headerList);
+    card.appendChild(label);
+    container.appendChild(card);
+  });
+}
+
+async function handleFile(slot, file) {
+  if (!file) return;
+  hideError();
+  state.files[slot.key] = file;
+  document.getElementById("filename-" + slot.key).textContent = file.name;
+  document.getElementById("status-" + slot.key).textContent = "\u23F3";
+  try {
+    const rows = await parseWorkbook(file);
+    state.parsed[slot.key] = rows;
+    state.headers[slot.key] = rows[0] ? Object.keys(rows[0]) : [];
+    state.status[slot.key] = "ok";
+    document.getElementById("status-" + slot.key).textContent = "\u2705";
+    const list = document.getElementById("headerlist-" + slot.key);
+    list.innerHTML = "";
+    state.headers[slot.key].forEach((h) => list.appendChild(el("li", {}, [h])));
+    document.getElementById("toggle-" + slot.key).style.display = "block";
+  } catch (e) {
+    state.status[slot.key] = "error";
+    document.getElementById("status-" + slot.key).textContent = "\u26A0";
+    showError("Gagal membaca " + file.name + ": " + e.message);
+  }
+  updateProcessButton();
+}
+
+function updateProcessButton() {
+  const allUploaded = SLOTS.every((s) => state.files[s.key]);
+  document.getElementById("processBtn").disabled = !allUploaded;
+}
+
+function showError(msg) {
+  const box = document.getElementById("errorBox");
+  box.textContent = msg;
+  box.style.display = "flex";
+}
+function hideError() {
+  document.getElementById("errorBox").style.display = "none";
+}
+function showWarn(msg) {
+  const box = document.getElementById("warnBox");
+  box.textContent = msg;
+  box.style.display = "flex";
+}
+function hideWarn() {
+  document.getElementById("warnBox").style.display = "none";
+}
+
+function process() {
+  hideError();
+  hideWarn();
+  const btn = document.getElementById("processBtn");
+  btn.disabled = true;
+  btn.textContent = "Memproses...";
+
+  setTimeout(() => {
+    try {
+      const dopSrc = processSource(state.parsed.dop || [], "Employee ID", "DOP");
+      const hrSrc = processSource(state.parsed.hr || [], "Employee Number", "HR");
+      const absensiSrc = processSource(state.parsed.absensi || [], "Employee No", "ABSENSI");
+      const timestampSrc = processSource(state.parsed.timestamp || [], "Employee No", "TIMESTAMP");
+
+      const missingId = [
+        ["DOP", dopSrc, state.parsed.dop],
+        ["File_HR", hrSrc, state.parsed.hr],
+        ["Absensi", absensiSrc, state.parsed.absensi],
+        ["Timestamp", timestampSrc, state.parsed.timestamp],
+      ].filter(([, src, rows]) => rows && rows.length > 0 && !src.resolvedIdKey).map(([label]) => label);
+
+      if (missingId.length > 0) {
+        showWarn("Kolom Employee ID tidak ketemu di file: " + missingId.join(", ") + ". Cek \"Lihat nama kolom terdeteksi\" di slot yang bersangkutan.");
+      }
+
+      const master = outerJoinMaster(hrSrc.data, dopSrc.data);
+
+      const absensiJoined = leftJoinMaster(absensiSrc.data, master).map((r) =>
+        Object.assign({}, r.merged, { Record_Type: "Absensi", __matched: r.matched })
+      );
+      const timestampJoined = leftJoinMaster(timestampSrc.data, master).map((r) =>
+        Object.assign({}, r.merged, { Record_Type: "Timestamp", __matched: r.matched })
+      );
+
+      const combined = absensiJoined.concat(timestampJoined);
+      const existingKeys = new Set();
+      combined.forEach((row) => Object.keys(row).forEach((k) => existingKeys.add(k)));
+      const columns = buildFinalColumns(existingKeys);
+
+      const finalRows = combined.map((row) => {
+        const out = {};
+        columns.forEach((c) => (out[c] = row[c] !== undefined ? row[c] : null));
+        out.__matched = row.__matched;
+        return out;
+      });
+
+      const matchedCount = finalRows.filter((r) => r.__matched).length;
+      state.result = { columns, rows: finalRows, matchedCount, totalCount: finalRows.length };
+
+      // free heavy raw arrays now that we've merged everything we need
+      state.parsed = {};
+
+      renderResults();
+    } catch (e) {
+      showError("Gagal memproses data: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Gabungkan & deteksi \u2192";
+    }
+  }, 30);
+}
+
+function renderResults() {
+  const r = state.result;
+  document.getElementById("uploadSection").style.display = "none";
+  document.getElementById("resultsSection").style.display = "block";
+  document.getElementById("resetBtn").style.display = "inline-flex";
+
+  // stats
+  const stats = document.getElementById("statsContainer");
+  stats.innerHTML = "";
+  const notMatched = r.totalCount - r.matchedCount;
+  const statDefs = [
+    ["Total baris", r.totalCount, "#FFFFFF"],
+    ["Kolom output", r.columns.length, "#F5A623"],
+    ["Match ke master", r.matchedCount + "/" + r.totalCount, "#58D68D"],
+    ["Tidak match", notMatched, notMatched > 0 ? "#FF6B6B" : "#B8C0C9"],
+  ];
+  statDefs.forEach(([label, value, color]) => {
+    stats.appendChild(el("div", { class: "stat-card" }, [
+      el("p", { class: "stat-label" }, [label]),
+      el("p", { class: "stat-value", style: { color } }, [String(value)]),
+    ]));
+  });
+
+  if (notMatched > 0) {
+    showWarn("Ada baris Employee ID yang tidak ketemu di File_HR/DOP (mis. prefix berbeda seperti INTR vs TRAD) — baris ini ditandai merah di kolom Employee ID pada tabel di bawah.");
+  }
+
+  // legend
+  const legend = document.getElementById("legendContainer");
+  legend.innerHTML = "";
+  Object.entries(CATEGORY_LABEL).forEach(([key, label]) => {
+    legend.appendChild(el("div", { class: "legend-item" }, [
+      el("span", { class: "legend-dot", style: { backgroundColor: CATEGORY_COLORS[key] } }),
+      label,
+    ]));
+  });
+
+  // capped note
+  const cappedNote = document.getElementById("cappedNote");
+  if (r.totalCount > 500) {
+    cappedNote.style.display = "block";
+    cappedNote.textContent = "Menampilkan 500 dari " + r.totalCount + " baris di layar (biar ringan). File Excel yang di-download tetap berisi semua baris.";
+  } else {
+    cappedNote.style.display = "none";
+  }
+
+  // table
+  const headRow = document.getElementById("tableHeadRow");
+  headRow.innerHTML = "";
+  r.columns.forEach((col) => {
+    const cat = ID_COLS.includes(col) ? "id" : CATEGORY_MAP[col];
+    const color = CATEGORY_COLORS[cat] || "#9CA3AF";
+    const th = el("th", { style: { backgroundColor: color }, title: CATEGORY_LABEL[cat] || "" }, [
+      col.replace(/_(HR|DOP|ABSENSI|TIMESTAMP)$/, ""),
+    ]);
+    headRow.appendChild(th);
+  });
+
+  const body = document.getElementById("tableBody");
+  body.innerHTML = "";
+  r.rows.slice(0, 500).forEach((row, i) => {
+    const tr = el("tr", { class: i % 2 ? "alt" : "base" }, []);
+    r.columns.forEach((col) => {
+      const isIdNoMatch = col === "Employee ID" && !row.__matched;
+      const td = el("td", { class: isIdNoMatch ? "id-nomatch" : "" }, [formatCell(row[col])]);
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+
+function downloadExcel() {
+  const r = state.result;
+  if (!r) return;
+  const exportRows = r.rows.map((row) => {
+    const copy = Object.assign({}, row);
+    delete copy.__matched;
+    return copy;
+  });
+  const ws = XLSX.utils.json_to_sheet(exportRows, { header: r.columns });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Anomali_Deteksi");
+  XLSX.writeFile(wb, "Anomali_Deteksi_Promotor.xlsx");
+}
+
+function resetApp() {
+  state.files = {};
+  state.parsed = {};
+  state.headers = {};
+  state.status = {};
+  state.result = null;
+  document.getElementById("uploadSection").style.display = "block";
+  document.getElementById("resultsSection").style.display = "none";
+  document.getElementById("resetBtn").style.display = "none";
+  hideError();
+  hideWarn();
+  renderSlots();
+  updateProcessButton();
+}
+
+document.getElementById("processBtn").addEventListener("click", process);
+document.getElementById("downloadBtn").addEventListener("click", downloadExcel);
+document.getElementById("resetBtn").addEventListener("click", resetApp);
+
+renderSlots();
+</script>
+</body>
+</html>
