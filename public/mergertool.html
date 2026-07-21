@@ -149,7 +149,7 @@
 <main>
   <div id="uploadSection">
     <h2>1. Upload 4 file sumber</h2>
-    <p class="hint">Format .xlsx. Employee ID otomatis distandarkan sebagai kunci join. OM &amp; Outlet Master opsional — kalau diisi, hasil merge dapet tambahan info outlet yang ditugaskan (via Sales Code) + koordinatnya.</p>
+    <p class="hint">Format .xlsx, .json, atau .ndjson (file gede? convert dulu di <code>xlsx-to-json.html</code>). Employee ID otomatis distandarkan sebagai kunci join. OM &amp; Outlet Master opsional — kalau diisi, hasil merge dapet tambahan info outlet yang ditugaskan (via Sales Code) + koordinatnya.</p>
     <div class="slots" id="slotsContainer"></div>
     <div class="error-box" id="errorBox"></div>
     <button class="primary" id="processBtn" type="button" disabled>Gabungkan &amp; deteksi &rarr;</button>
@@ -178,12 +178,12 @@
 // Config: the 4 source files and how to normalize their join key
 // ---------------------------------------------------------------------------
 const SLOTS = [
-  { key: "dop", label: "DOP", file: "DOP.xlsx", idCol: "Employee ID", suffix: "DOP", accent: "#F0B27A" },
-  { key: "hr", label: "File HR", file: "File_HR.xlsx", idCol: "Employee Number", suffix: "HR", accent: "#5DADE2" },
-  { key: "absensi", label: "Absensi", file: "Absensi.xlsx", idCol: "Employee No", suffix: "ABSENSI", accent: "#FF6B6B" },
-  { key: "timestamp", label: "Timestamp", file: "Timestamp.xlsx", idCol: "Employee No", suffix: "TIMESTAMP", accent: "#58D68D" },
-  { key: "om", label: "OM (opsional)", file: "OM.xlsx", accent: "#38BDF8", optional: true },
-  { key: "outlet", label: "Outlet Master (opsional)", file: "Outlet.xlsx", accent: "#22D3EE", optional: true },
+  { key: "dop", label: "DOP", file: "DOP.xlsx / .json / .ndjson", idCol: "Employee ID", suffix: "DOP", accent: "#F0B27A" },
+  { key: "hr", label: "File HR", file: "File_HR.xlsx / .json / .ndjson", idCol: "Employee Number", suffix: "HR", accent: "#5DADE2" },
+  { key: "absensi", label: "Absensi", file: "Absensi.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "ABSENSI", accent: "#FF6B6B" },
+  { key: "timestamp", label: "Timestamp", file: "Timestamp.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "TIMESTAMP", accent: "#58D68D" },
+  { key: "om", label: "OM (opsional)", file: "OM.xlsx / .json / .ndjson", accent: "#38BDF8", optional: true },
+  { key: "outlet", label: "Outlet Master (opsional)", file: "Outlet.xlsx / .json / .ndjson", accent: "#22D3EE", optional: true },
 ];
 
 const CATEGORY_COLORS = {
