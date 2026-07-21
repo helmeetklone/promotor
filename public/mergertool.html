@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- mergertool.html — v2: tambah OM + Outlet Master (opsional) buat enrichment outlet assignment & koordinat -->
 <title>Promotor Anomaly Merge</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -139,7 +140,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &rarr; 1 tabel deteksi</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; Outlet &rarr; 1 tabel deteksi &middot; v2</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -148,7 +149,7 @@
 <main>
   <div id="uploadSection">
     <h2>1. Upload 4 file sumber</h2>
-    <p class="hint">Format .xlsx. Employee ID akan otomatis distandarkan sebagai kunci join.</p>
+    <p class="hint">Format .xlsx. Employee ID otomatis distandarkan sebagai kunci join. OM &amp; Outlet Master opsional — kalau diisi, hasil merge dapet tambahan info outlet yang ditugaskan (via Sales Code) + koordinatnya.</p>
     <div class="slots" id="slotsContainer"></div>
     <div class="error-box" id="errorBox"></div>
     <button class="primary" id="processBtn" type="button" disabled>Gabungkan &amp; deteksi &rarr;</button>
@@ -181,15 +182,18 @@ const SLOTS = [
   { key: "hr", label: "File HR", file: "File_HR.xlsx", idCol: "Employee Number", suffix: "HR", accent: "#5DADE2" },
   { key: "absensi", label: "Absensi", file: "Absensi.xlsx", idCol: "Employee No", suffix: "ABSENSI", accent: "#FF6B6B" },
   { key: "timestamp", label: "Timestamp", file: "Timestamp.xlsx", idCol: "Employee No", suffix: "TIMESTAMP", accent: "#58D68D" },
+  { key: "om", label: "OM (opsional)", file: "OM.xlsx", accent: "#38BDF8", optional: true },
+  { key: "outlet", label: "Outlet Master (opsional)", file: "Outlet.xlsx", accent: "#22D3EE", optional: true },
 ];
 
 const CATEGORY_COLORS = {
   gps: "#FF6B6B", waktu: "#FFD966", remark: "#C39BD3",
-  status: "#5DADE2", posisi: "#58D68D", timing: "#F0B27A", id: "#9CA3AF",
+  status: "#5DADE2", posisi: "#58D68D", timing: "#F0B27A", id: "#9CA3AF", outlet: "#22D3EE",
 };
 const CATEGORY_LABEL = {
   gps: "GPS / Lokasi", waktu: "Jam Kerja / Durasi", remark: "Remark / Catatan",
   status: "Status Employment", posisi: "Posisi / Tipe", timing: "Tanggal Input", id: "Identitas",
+  outlet: "Outlet Assignment (dari OM + Outlet Master)",
 };
 
 const ID_COLS = ["Employee ID", "Record_Type", "Employee Name_ABSENSI", "Employee Name_TIMESTAMP"];
@@ -210,6 +214,7 @@ const CATEGORY_MAP = {
   "Date_ABSENSI": "timing", "Creation Date_ABSENSI": "timing",
   "Date_TIMESTAMP": "timing", "Date In_TIMESTAMP": "timing", "Creation Date_TIMESTAMP": "timing",
   "Created Date_DOP": "timing", "Join Date_DOP": "timing",
+  "Outlet Code": "outlet", "Outlet Name": "outlet", "Outlet Latitude": "outlet", "Outlet Longitude": "outlet",
 };
 
 function neededRawColumnsFor(suffix) {
@@ -272,14 +277,124 @@ function resolveIdKey(sampleKeys, idCol) {
   return fuzzy || null;
 }
 
+// Generic fuzzy column finder — tries each matcher (predicate on lowercased
+// header) in order and returns the first header that matches. Used for OM /
+// Outlet Master since real-world header names for the same concept vary a lot
+// (e.g. "RO ID", "Outlet Code", "Store ID" all mean the same thing).
+function findColumn(sampleKeys, matchers) {
+  for (const test of matchers) {
+    const found = sampleKeys.find((k) => test(k.toLowerCase()));
+    if (found) return found;
+  }
+  return null;
+}
+
+// Parses a combined "(lat, lon)" style cell into { lat, lon }, or null.
+function parseLatLonString(v) {
+  if (v == null) return null;
+  const m = String(v).match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  return { lat: parseFloat(m[1]), lon: parseFloat(m[2]) };
+}
+
+// OM = outlet assignment roster: which Sales Code is assigned to which outlet.
+// Join bridge to the rest of the data is "Sales Code" (matches File_HR / DOP's
+// Sales Code column), NOT Employee ID.
+function processOM(rows) {
+  if (rows.length === 0) return { data: [], resolvedKeys: {} };
+  const keys = Object.keys(rows[0]);
+  const salesCodeKey = findColumn(keys, [
+    (k) => k === "user name",
+    (k) => k.includes("user") && k.includes("name"),
+    (k) => k.includes("sales") && k.includes("code"),
+  ]);
+  const outletCodeKey = findColumn(keys, [
+    (k) => k === "organization code",
+    (k) => k.includes("organization") && k.includes("code"),
+    (k) => k.includes("outlet") && (k.includes("id") || k.includes("code")),
+  ]);
+  const outletNameKey = findColumn(keys, [
+    (k) => k === "organization name",
+    (k) => k.includes("organization") && k.includes("name"),
+    (k) => k.includes("outlet") && k.includes("name"),
+  ]);
+  const data = rows
+    .map((r) => ({
+      "Sales Code": salesCodeKey ? String(r[salesCodeKey] ?? "").trim() : null,
+      "Outlet Code": outletCodeKey ? String(r[outletCodeKey] ?? "").trim() : null,
+      "Outlet Name": outletNameKey ? r[outletNameKey] : null,
+    }))
+    .filter((r) => r["Sales Code"]);
+  return { data, resolvedKeys: { salesCodeKey, outletCodeKey, outletNameKey } };
+}
+
+// Outlet Master: RO ID / RO Name / Latitude / Longitude (header names vary,
+// so this is fuzzy-matched — including a combined "(lat, lon)" single-cell
+// fallback if separate lat/lon columns aren't found).
+function processOutletMaster(rows) {
+  if (rows.length === 0) return { data: [], resolvedKeys: {} };
+  const keys = Object.keys(rows[0]);
+  const idKey = findColumn(keys, [
+    (k) => k === "ro id" || k === "outlet id" || k === "outlet code",
+    (k) => (k.includes("ro") || k.includes("outlet")) && (k.includes("id") || k.includes("code")),
+    (k) => k.includes("organization") && (k.includes("id") || k.includes("code")),
+  ]);
+  const nameKey = findColumn(keys, [
+    (k) => k === "ro name" || k === "outlet name",
+    (k) => (k.includes("ro") || k.includes("outlet")) && k.includes("name"),
+  ]);
+  const latKey = findColumn(keys, [
+    (k) => k === "latitude" || k === "lat",
+    (k) => k.includes("lat") && !k.includes("relat"),
+  ]);
+  const lonKey = findColumn(keys, [
+    (k) => k === "longitude" || k === "lon" || k === "lng",
+    (k) => k.includes("long") || k.includes("lng"),
+  ]);
+  const combinedKey = !latKey || !lonKey
+    ? findColumn(keys, [(k) => k.includes("lat") && k.includes("lon"), (k) => k.includes("location") || k.includes("coordinate")])
+    : null;
+
+  const data = rows
+    .map((r) => {
+      let lat = latKey ? toNum(r[latKey]) : null;
+      let lon = lonKey ? toNum(r[lonKey]) : null;
+      if ((lat == null || lon == null) && combinedKey) {
+        const parsed = parseLatLonString(r[combinedKey]);
+        if (parsed) { lat = parsed.lat; lon = parsed.lon; }
+      }
+      return {
+        "Outlet Code": idKey ? String(r[idKey] ?? "").trim() : null,
+        "Outlet Name": nameKey ? r[nameKey] : null,
+        "Outlet Latitude": lat,
+        "Outlet Longitude": lon,
+      };
+    })
+    .filter((r) => r["Outlet Code"]);
+  return { data, resolvedKeys: { idKey, nameKey, latKey, lonKey, combinedKey } };
+}
+
+function toNum(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = parseFloat(v);
+  return Number.isNaN(n) ? null : n;
+}
+
 function processSource(rows, idCol, suffix) {
   if (rows.length === 0) return { data: [], resolvedIdKey: null };
-  const resolvedIdKey = resolveIdKey(Object.keys(rows[0]), idCol);
+  const sampleKeys = Object.keys(rows[0]);
+  const resolvedIdKey = resolveIdKey(sampleKeys, idCol);
   const neededRaw = neededRawColumnsFor(suffix);
+  // HR/DOP also carry "Sales Code" unsuffixed — it's the join bridge to OM
+  // (outlet assignment), independent of the anomaly-column filtering.
+  const salesCodeKey = (suffix === "HR" || suffix === "DOP")
+    ? findColumn(sampleKeys, [(k) => k === "sales code", (k) => k.includes("sales") && k.includes("code")])
+    : null;
   const data = rows.map((row) => {
     const out = {};
     Object.entries(row).forEach(([k, v]) => {
       if (k === resolvedIdKey) out["Employee ID"] = v == null ? null : String(v).trim();
+      else if (salesCodeKey && k === salesCodeKey) out["Sales Code"] = v == null ? null : String(v).trim();
       else if (neededRaw.has(k)) out[k + "_" + suffix] = v;
     });
     return out;
@@ -423,7 +538,7 @@ async function handleFile(slot, file) {
 }
 
 function updateProcessButton() {
-  const allUploaded = SLOTS.every((s) => state.files[s.key]);
+  const allUploaded = SLOTS.every((s) => s.optional || state.files[s.key]);
   document.getElementById("processBtn").disabled = !allUploaded;
 }
 
@@ -469,7 +584,47 @@ function process() {
         showWarn("Kolom Employee ID tidak ketemu di file: " + missingId.join(", ") + ". Cek \"Lihat nama kolom terdeteksi\" di slot yang bersangkutan.");
       }
 
-      const master = outerJoinMaster(hrSrc.data, dopSrc.data);
+      let master = outerJoinMaster(hrSrc.data, dopSrc.data);
+
+      // Optional enrichment: OM (Sales Code -> assigned outlet code/name) +
+      // Outlet Master (outlet code -> lat/long) chained together, then
+      // attached onto each master row by Sales Code.
+      const omRows = state.parsed.om || [];
+      const outletRows = state.parsed.outlet || [];
+      if (omRows.length > 0 || outletRows.length > 0) {
+        const omResult = processOM(omRows);
+        const outletResult = processOutletMaster(outletRows);
+
+        const outletMap = new Map();
+        outletResult.data.forEach((o) => {
+          if (o["Outlet Code"] && !outletMap.has(o["Outlet Code"])) outletMap.set(o["Outlet Code"], o);
+        });
+
+        const salesCodeToOutlet = new Map();
+        omResult.data.forEach((o) => {
+          const outletInfo = outletMap.get(o["Outlet Code"]) || {};
+          if (!salesCodeToOutlet.has(o["Sales Code"])) {
+            salesCodeToOutlet.set(o["Sales Code"], {
+              "Outlet Code": o["Outlet Code"],
+              "Outlet Name": outletInfo["Outlet Name"] ?? o["Outlet Name"],
+              "Outlet Latitude": outletInfo["Outlet Latitude"] ?? null,
+              "Outlet Longitude": outletInfo["Outlet Longitude"] ?? null,
+            });
+          }
+        });
+
+        if (omRows.length > 0 && !omResult.resolvedKeys.salesCodeKey) {
+          showWarn("Kolom Sales Code (USER NAME) tidak ketemu di file OM. Cek \"Lihat nama kolom terdeteksi\".");
+        }
+        if (outletRows.length > 0 && (!outletResult.resolvedKeys.idKey || (!outletResult.resolvedKeys.latKey && !outletResult.resolvedKeys.combinedKey))) {
+          showWarn("Kolom Outlet ID atau Latitude/Longitude tidak ketemu di file Outlet Master. Cek \"Lihat nama kolom terdeteksi\".");
+        }
+
+        master = master.map((m) => {
+          const outletInfo = m["Sales Code"] ? salesCodeToOutlet.get(m["Sales Code"]) : null;
+          return outletInfo ? Object.assign({}, m, outletInfo) : m;
+        });
+      }
 
       const absensiJoined = leftJoinMaster(absensiSrc.data, master).map((r) =>
         Object.assign({}, r.merged, { Record_Type: "Absensi", __matched: r.matched })
