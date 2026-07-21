@@ -1,4 +1,4 @@
-// Dashboard.tsx — v5
+// Dashboard.tsx — v6
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -6,6 +6,7 @@
 //   v4: modal detail dipaginasi (10/halaman) + filter, biar buka detail lebih cepat
 //   v5: disederhanakan jadi 3 signal (GPS, Status employment, Durasi kerja) sesuai keterbatasan data lapangan;
 //       Timestamp (check-in 3x/hari, no checkout) tidak lagi cek durasi/kelengkapan kunjungan
+//   v6: tambah dukungan upload .ndjson (konsisten dengan opsi NDJSON di xlsx-to-json.html)
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -47,6 +48,16 @@ const parseAnyFile = (file) =>
         try {
           const parsed = JSON.parse(String(e.target.result));
           resolve(normalizeJsonRows(parsed));
+        } catch (err) { reject(err); }
+      };
+      reader.onerror = reject;
+      reader.readAsText(file);
+    } else if (name.endsWith(".ndjson")) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const lines = String(e.target.result).split("\n").map((l) => l.trim()).filter(Boolean);
+          resolve(lines.map((l) => JSON.parse(l)));
         } catch (err) { reject(err); }
       };
       reader.onerror = reject;
@@ -403,10 +414,10 @@ function UploadBox({ onFiles, label, fileNames }) {
         <>
           <Upload className="w-6 h-6 text-slate-500 mb-2" />
           <p className="text-slate-300 text-sm font-medium">{label}</p>
-          <p className="text-slate-500 text-xs mt-1">CSV/XLSX/JSON, bisa pilih banyak file sekaligus</p>
+          <p className="text-slate-500 text-xs mt-1">CSV/XLSX/JSON/NDJSON, bisa pilih banyak file sekaligus</p>
         </>
       )}
-      <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls,.json" multiple className="hidden"
+      <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls,.json,.ndjson" multiple className="hidden"
         onChange={(e) => e.target.files.length && onFiles(Array.from(e.target.files))} />
     </div>
   );
@@ -990,7 +1001,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v5</div>
+        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v6</div>
       </div>
     </div>
   );

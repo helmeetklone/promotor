@@ -251,7 +251,35 @@ function dedupeHeaders(headers) {
   });
 }
 
+// Accepts a parsed JSON value in either shape and normalizes it to an array
+// of row objects: a plain array of objects, or an object whose first
+// array-valued property holds the rows (e.g. { data: [...] }, or the
+// per-sheet { "Sheet1": [...], "Sheet2": [...] } shape from the XLSX->JSON
+// converter tool when "gabung semua sheet" was used — in that case the
+// FIRST sheet's rows are used).
+function normalizeJsonRows(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") {
+    const arrayProp = Object.values(parsed).find((v) => Array.isArray(v));
+    if (arrayProp) return arrayProp;
+  }
+  throw new Error("Format JSON tidak dikenali — harus berupa array of objects.");
+}
+
+function parseNdjson(text) {
+  return text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l));
+}
+
 async function parseWorkbook(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".json")) {
+    const text = await file.text();
+    return normalizeJsonRows(JSON.parse(text));
+  }
+  if (name.endsWith(".ndjson")) {
+    const text = await file.text();
+    return parseNdjson(text);
+  }
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
@@ -500,7 +528,7 @@ function renderSlots() {
     });
     const headerList = el("ul", { class: "header-list", id: "headerlist-" + slot.key }, []);
     const label = el("label", { class: "file-label" }, ["\u2601 Pilih file"]);
-    const input = el("input", { type: "file", accept: ".xlsx,.xls" });
+    const input = el("input", { type: "file", accept: ".xlsx,.xls,.json,.ndjson" });
     input.addEventListener("change", (e) => handleFile(slot, e.target.files[0]));
     label.appendChild(input);
 

@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>XLSX &rarr; JSON Converter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0F1318;
+    --panel: #151A20;
+    --panel-alt: #12161B;
+    --border: #232A32;
+    --border-hover: #3A4450;
+    --text: #FFFFFF;
+    --text-muted: #B8C0C9;
+    --accent: #F5A623;
+    --accent-hover: #FFB84D;
+    --accent-text: #14181C;
+    --green: #58D68D;
+    --red: #FF6B6B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: rgba(245,166,35,0.12); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  h1 { font-family: monospace; font-size: 15px; font-weight: 600; margin: 0; }
+  .subtitle { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 24px; }
+  .hint { font-size: 12px; color: var(--text-muted); margin: 0 0 20px; line-height: 1.6; }
+  .dropzone {
+    cursor: pointer;
+    border-radius: 12px; border: 2px dashed var(--border);
+    background: var(--panel); padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: rgba(245,166,35,0.06); }
+  .dropzone .icon { font-size: 28px; margin-bottom: 10px; }
+  .dropzone .main-txt { font-size: 14px; color: var(--text); margin: 0 0 4px; }
+  .dropzone .sub-txt { font-size: 12px; color: var(--text-muted); }
+  input[type="file"] { display: none; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; margin-top: 20px;
+  }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .filename { font-size: 14px; font-weight: 600; }
+  .filesize { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .status { font-size: 12px; color: var(--accent); }
+  .status.ok { color: var(--green); }
+  .status.err { color: var(--red); }
+
+  .sheet-list { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .sheet-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; background: var(--panel-alt);
+    font-size: 13px; cursor: pointer; border: 1px solid transparent;
+  }
+  .sheet-item:hover { border-color: var(--border-hover); }
+  .sheet-item input { accent-color: var(--accent); }
+  .sheet-meta { color: var(--text-muted); font-size: 11px; margin-left: auto; }
+
+  .options { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+  .options label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  button.primary {
+    display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 8px; border: none;
+    background: var(--accent); color: var(--accent-text);
+    padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.3; cursor: not-allowed; }
+  button.primary:not(:disabled):hover { background: var(--accent-hover); }
+  button.ghost {
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 8px; border: 1px solid var(--border); background: transparent;
+    color: var(--text-muted); padding: 10px 16px; font-size: 13px; cursor: pointer;
+  }
+  button.ghost:hover { border-color: var(--border-hover); color: var(--text); }
+
+  .warn-box {
+    display: none; gap: 8px; align-items: flex-start;
+    border-radius: 8px; border: 1px solid rgba(245,166,35,0.3);
+    background: rgba(245,166,35,0.08); padding: 12px 14px;
+    font-size: 12px; color: var(--accent); margin-top: 16px; line-height: 1.6;
+  }
+  .error-box {
+    display: none; gap: 8px; align-items: flex-start;
+    border-radius: 8px; border: 1px solid rgba(255,107,107,0.3);
+    background: rgba(255,107,107,0.08); padding: 12px 14px;
+    font-size: 12px; color: var(--red); margin-top: 16px;
+  }
+  .preview {
+    margin-top: 16px; background: var(--panel-alt); border-radius: 8px;
+    padding: 10px 12px; font-family: monospace; font-size: 10px; color: var(--text-muted);
+    max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">&#128260;</div>
+  <div>
+    <h1>XLSX &rarr; JSON CONVERTER</h1>
+    <p class="subtitle">Tool universal — file Excel apa aja, sheet apa aja, jadi JSON</p>
+  </div>
+</header>
+
+<main>
+  <p class="hint">
+    Buat file .xlsx yang kegedean (misal &gt;15MB) buat langsung diproses tool lain di browser.
+    Convert dulu ke JSON di sini — hasilnya bisa diupload ke mergertool (yang sekarang udah bisa terima .json).
+  </p>
+
+  <div class="dropzone" id="dropzone">
+    <div class="icon">&#128193;</div>
+    <p class="main-txt">Klik atau drop file .xlsx / .xls di sini</p>
+    <p class="sub-txt">File diproses langsung di browser kamu, nggak diupload ke server manapun</p>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" />
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <div class="card" id="resultCard" style="display:none;">
+    <div class="row">
+      <div>
+        <div class="filename" id="fileName">-</div>
+        <div class="filesize" id="fileSize">-</div>
+      </div>
+      <div class="status" id="statusTxt">-</div>
+    </div>
+
+    <div class="warn-box" id="warnBox"></div>
+
+    <div class="sheet-list" id="sheetList"></div>
+
+    <div class="options">
+      <label><input type="checkbox" id="optAllSheets" /> Gabung semua sheet jadi 1 JSON (per-sheet key)</label>
+      <label><input type="checkbox" id="optNdjson" /> Export sebagai NDJSON (lebih ringan buat data sangat besar)</label>
+    </div>
+    <div class="options">
+      <label><input type="checkbox" id="optSplit" /> Pecah jadi beberapa file, maks
+        <input type="number" id="splitMb" value="10" min="1" style="width:50px; background:var(--panel-alt); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:2px 4px;" /> MB per bagian
+      </label>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="convertBtn" type="button">Convert &amp; Download</button>
+      <button class="ghost" id="resetBtn" type="button">Reset</button>
+    </div>
+
+    <div class="preview" id="preview" style="display:none;"></div>
+  </div>
+
+  <div class="card" id="combineCard">
+    <div class="row">
+      <div>
+        <div class="filename">Gabungkan file JSON/NDJSON</div>
+        <div class="filesize">Pilih beberapa bagian (part) hasil pecahan sebelumnya, lalu gabung jadi 1 file lagi</div>
+      </div>
+    </div>
+    <div class="dropzone" id="combineDropzone" style="margin-top:14px; padding:24px;">
+      <div class="icon">&#128203;</div>
+      <p class="main-txt">Klik atau drop beberapa file .json / .ndjson di sini</p>
+      <p class="sub-txt">Bisa pilih banyak file sekaligus (Ctrl/Cmd+klik)</p>
+      <input type="file" id="combineInput" accept=".json,.ndjson" multiple />
+    </div>
+    <div id="combineList" class="sheet-list"></div>
+    <div class="options">
+      <label><input type="checkbox" id="combineNdjson" /> Export hasil gabungan sebagai NDJSON</label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="combineBtn" type="button" disabled>Gabung &amp; Download</button>
+      <button class="ghost" id="combineResetBtn" type="button">Reset</button>
+    </div>
+  </div>
+</main>
+
+<script>
+const state = { file: null, workbook: null, sheetNames: [] };
+
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+const resultCard = document.getElementById("resultCard");
+const errorBox = document.getElementById("errorBox");
+const warnBox = document.getElementById("warnBox");
+const sheetList = document.getElementById("sheetList");
+const statusTxt = document.getElementById("statusTxt");
+const convertBtn = document.getElementById("convertBtn");
+const preview = document.getElementById("preview");
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  errorBox.style.display = "flex";
+}
+function hideError() { errorBox.style.display = "none"; }
+function showWarn(msg) {
+  warnBox.textContent = msg;
+  warnBox.style.display = "flex";
+}
+function hideWarn() { warnBox.style.display = "none"; }
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+dropzone.addEventListener("click", () => fileInput.click());
+dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag"); });
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag"));
+dropzone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropzone.classList.remove("drag");
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", (e) => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+async function handleFile(file) {
+  hideError();
+  hideWarn();
+  state.file = file;
+  document.getElementById("fileName").textContent = file.name;
+  document.getElementById("fileSize").textContent = formatBytes(file.size);
+  statusTxt.textContent = "Membaca...";
+  statusTxt.className = "status";
+  resultCard.style.display = "block";
+  preview.style.display = "none";
+
+  if (file.size > 20 * 1024 * 1024) {
+    showWarn("File > 20MB — kalau kamu buka ini di HP, ada kemungkinan browser-nya kehabisan memori. Kalau gagal, coba dari laptop/PC (Chrome) yang memorinya lebih longgar.");
+  }
+
+  // defer the heavy read so "Membaca..." actually paints first
+  setTimeout(async () => {
+    try {
+      const buf = await file.arrayBuffer();
+      // dense mode + disabling unneeded parsing features keeps memory usage
+      // down for large files (community SheetJS has no true streaming read)
+      const wb = XLSX.read(buf, {
+        type: "array",
+        cellDates: true,
+        dense: true,
+        cellHTML: false,
+        cellFormula: false,
+        bookVBA: false,
+      });
+      state.workbook = wb;
+      state.sheetNames = wb.SheetNames;
+      renderSheetList();
+      statusTxt.textContent = "Siap dikonversi";
+      statusTxt.className = "status ok";
+    } catch (e) {
+      statusTxt.textContent = "Gagal membaca file";
+      statusTxt.className = "status err";
+      showError("Gagal membaca file: " + e.message + ". Kalau file ini besar, coba dari browser desktop (Chrome/Edge) — memori HP sering nggak cukup buat file Excel besar.");
+    }
+  }, 30);
+}
+
+function renderSheetList() {
+  sheetList.innerHTML = "";
+  state.sheetNames.forEach((name, i) => {
+    const ws = state.workbook.Sheets[name];
+    const ref = ws["!ref"] || "";
+    const label = document.createElement("label");
+    label.className = "sheet-item";
+    label.innerHTML = `<input type="checkbox" data-sheet="${name}" ${i === 0 ? "checked" : ""} /> ${name} <span class="sheet-meta">${ref || "kosong"}</span>`;
+    sheetList.appendChild(label);
+  });
+}
+
+function getSelectedSheets() {
+  return Array.from(sheetList.querySelectorAll("input[type=checkbox]:checked")).map((el) => el.getAttribute("data-sheet"));
+}
+
+// Plain sheet_to_json() silently collapses duplicate-named columns (keeps
+// only the last one's value) — a real risk for exports that repeat a header
+// (e.g. "Time Duration (Hours)" appearing twice for scheduled vs actual).
+// Building rows manually from the raw header row + a dedupe pass avoids that.
+function normalizeHeader(h) {
+  if (h == null || h === "") return "Column";
+  return String(h).replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+}
+function dedupeHeaders(headers) {
+  const seen = {};
+  return headers.map((raw) => {
+    const name = normalizeHeader(raw);
+    if (seen[name] != null) {
+      seen[name] += 1;
+      return name + "_" + seen[name];
+    }
+    seen[name] = 0;
+    return name;
+  });
+}
+function sheetToRows(ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  if (rows.length === 0) return [];
+  const headers = dedupeHeaders(rows[0]);
+  return rows.slice(1).map((r) => {
+    const obj = {};
+    headers.forEach((h, i) => (obj[h] = r[i] !== undefined ? r[i] : null));
+    return obj;
+  });
+}
+
+// Splits `rows` into chunks that each stay near `maxBytes`, estimated from
+// the average serialized size of a small sample (cheap) rather than
+// measuring every row (which would be slow for very large arrays).
+function splitIntoChunks(rows, maxBytes) {
+  if (rows.length === 0) return [rows];
+  const sampleSize = Math.min(200, rows.length);
+  let sampleBytes = 0;
+  for (let i = 0; i < sampleSize; i++) sampleBytes += JSON.stringify(rows[i]).length + 1;
+  const avgBytes = Math.max(1, sampleBytes / sampleSize);
+  const rowsPerChunk = Math.max(1, Math.floor(maxBytes / avgBytes));
+  const chunks = [];
+  for (let i = 0; i < rows.length; i += rowsPerChunk) {
+    chunks.push(rows.slice(i, i + rowsPerChunk));
+  }
+  return chunks;
+}
+
+function downloadRows(rows, filename, asNdjson) {
+  if (asNdjson) {
+    const blob = new Blob([rows.map((r) => JSON.stringify(r)).join("\n")], { type: "application/x-ndjson" });
+    triggerDownload(blob, filename.replace(/\.json$/, ".ndjson"));
+  } else {
+    const blob = new Blob([JSON.stringify(rows)], { type: "application/json" });
+    triggerDownload(blob, filename);
+  }
+}
+
+convertBtn.addEventListener("click", () => {
+  hideError();
+  if (!state.workbook) return;
+  const selected = getSelectedSheets();
+  if (selected.length === 0) {
+    showError("Pilih minimal 1 sheet dulu.");
+    return;
+  }
+  const mergeAll = document.getElementById("optAllSheets").checked;
+  const asNdjson = document.getElementById("optNdjson").checked;
+  const doSplit = document.getElementById("optSplit").checked;
+  const splitMb = parseFloat(document.getElementById("splitMb").value) || 10;
+  const splitBytes = splitMb * 1024 * 1024;
+
+  convertBtn.disabled = true;
+  convertBtn.textContent = "Mengonversi...";
+
+  setTimeout(() => {
+    try {
+      const baseName = state.file.name.replace(/\.(xlsx|xls)$/i, "");
+      let previewRows = null;
+
+      if (mergeAll && selected.length > 1 && !doSplit) {
+        // combined multi-sheet export doesn't make sense to split (different
+        // sheets have different shapes) — keep this path as one file
+        const combined = {};
+        selected.forEach((name) => { combined[name] = sheetToRows(state.workbook.Sheets[name]); });
+        const blob = new Blob([JSON.stringify(combined)], { type: "application/json" });
+        triggerDownload(blob, `${baseName}.json`);
+        previewRows = combined;
+      } else {
+        selected.forEach((name) => {
+          const rows = sheetToRows(state.workbook.Sheets[name]);
+          const tag = selected.length > 1 ? "_" + name : "";
+          if (!previewRows) previewRows = rows;
+
+          if (doSplit) {
+            const chunks = splitIntoChunks(rows, splitBytes);
+            chunks.forEach((chunk, i) => {
+              const partName = `${baseName}${tag}_part${i + 1}of${chunks.length}.json`;
+              downloadRows(chunk, partName, asNdjson);
+            });
+          } else {
+            downloadRows(rows, `${baseName}${tag}.json`, asNdjson);
+          }
+        });
+      }
+
+      preview.style.display = "block";
+      const previewArr = Array.isArray(previewRows) ? previewRows.slice(0, 5) : previewRows;
+      const totalNote = Array.isArray(previewRows) && previewRows.length > 5 ? `\n... (${previewRows.length} baris total)` : "";
+      preview.textContent = JSON.stringify(previewArr, null, 2) + totalNote;
+
+      statusTxt.textContent = doSplit ? "Selesai — file terpecah ke-download" : "Selesai — file JSON ke-download";
+      statusTxt.className = "status ok";
+    } catch (e) {
+      showError("Gagal konversi: " + e.message);
+      statusTxt.textContent = "Gagal konversi";
+      statusTxt.className = "status err";
+    } finally {
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Convert & Download";
+    }
+  }, 30);
+});
+
+document.getElementById("optSplit").addEventListener("change", (e) => {
+  document.getElementById("splitMb").disabled = !e.target.checked;
+});
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  state.file = null;
+  state.workbook = null;
+  state.sheetNames = [];
+  resultCard.style.display = "none";
+  fileInput.value = "";
+  hideError();
+  hideWarn();
+});
+
+// ───────────────────────── Combine chunks back into one file ─────────────────────────
+const combineState = { files: [] }; // [{ name, rows }]
+
+const combineDropzone = document.getElementById("combineDropzone");
+const combineInput = document.getElementById("combineInput");
+const combineList = document.getElementById("combineList");
+const combineBtn = document.getElementById("combineBtn");
+
+combineDropzone.addEventListener("click", () => combineInput.click());
+combineDropzone.addEventListener("dragover", (e) => { e.preventDefault(); combineDropzone.classList.add("drag"); });
+combineDropzone.addEventListener("dragleave", () => combineDropzone.classList.remove("drag"));
+combineDropzone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  combineDropzone.classList.remove("drag");
+  if (e.dataTransfer.files.length) handleCombineFiles(Array.from(e.dataTransfer.files));
+});
+combineInput.addEventListener("change", (e) => {
+  if (e.target.files.length) handleCombineFiles(Array.from(e.target.files));
+});
+
+async function handleCombineFiles(files) {
+  hideError();
+  for (const f of files) {
+    try {
+      const text = await f.text();
+      let rows;
+      if (f.name.toLowerCase().endsWith(".ndjson")) {
+        rows = text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l));
+      } else {
+        const parsed = JSON.parse(text);
+        rows = Array.isArray(parsed) ? parsed : (Object.values(parsed).find((v) => Array.isArray(v)) || []);
+      }
+      combineState.files.push({ name: f.name, rows });
+    } catch (e) {
+      showError(`Gagal baca ${f.name}: ${e.message}`);
+    }
+  }
+  renderCombineList();
+}
+
+function renderCombineList() {
+  combineList.innerHTML = "";
+  let total = 0;
+  combineState.files.forEach((f, i) => {
+    total += f.rows.length;
+    const item = document.createElement("div");
+    item.className = "sheet-item";
+    item.innerHTML = `<span>&#128196; ${f.name}</span><span class="sheet-meta">${f.rows.length.toLocaleString("id-ID")} baris</span>`;
+    combineList.appendChild(item);
+  });
+  if (combineState.files.length > 0) {
+    const summary = document.createElement("div");
+    summary.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:6px;";
+    summary.textContent = `Total: ${combineState.files.length} file, ${total.toLocaleString("id-ID")} baris`;
+    combineList.appendChild(summary);
+  }
+  combineBtn.disabled = combineState.files.length === 0;
+}
+
+combineBtn.addEventListener("click", () => {
+  if (combineState.files.length === 0) return;
+  combineBtn.disabled = true;
+  combineBtn.textContent = "Menggabungkan...";
+  setTimeout(() => {
+    try {
+      const allRows = combineState.files.flatMap((f) => f.rows);
+      const asNdjson = document.getElementById("combineNdjson").checked;
+      downloadRows(allRows, "gabungan.json", asNdjson);
+    } catch (e) {
+      showError("Gagal menggabungkan: " + e.message);
+    } finally {
+      combineBtn.disabled = false;
+      combineBtn.textContent = "Gabung & Download";
+    }
+  }, 30);
+});
+
+document.getElementById("combineResetBtn").addEventListener("click", () => {
+  combineState.files = [];
+  combineInput.value = "";
+  renderCombineList();
+});
+</script>
+</body>
+</html>
