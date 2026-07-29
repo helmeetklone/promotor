@@ -1,4 +1,4 @@
-// Dashboard.tsx — v7
+// Dashboard.tsx — v8
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -8,6 +8,10 @@
 //       Timestamp (check-in 3x/hari, no checkout) tidak lagi cek durasi/kelengkapan kunjungan
 //   v6: tambah dukungan upload .ndjson (konsisten dengan opsi NDJSON di xlsx-to-json.html)
 //   v7: scope anomali cuma utk In Store Promotor & Out Store Promotor (role lain di-exclude)
+//   v8: aturan HARPA buat Timestamp — grouping per Employee+Tanggal:
+//       (1) min 3 absen di 3 zona waktu berbeda (Pagi/Siang/Sore/Malam1/Malam2)
+//       (2) 3+ absen tapi nyangkut di zona yang sama = tetap gak comply
+//       (3) GPS identik antar check-in di hari yang sama = flag
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -96,7 +100,10 @@ const toNum = (v) => {
 };
 
 const classifyPromotorType = (roleStr) => {
-  const r = String(roleStr || "").trim().toLowerCase();
+  // normalize hyphens/underscores to spaces first — real HR data uses
+  // "In-Store Promotor" (with a hyphen), which "in store".includes() alone
+  // would never match.
+  const r = String(roleStr || "").trim().toLowerCase().replace(/[-_]/g, " ").replace(/\s+/g, " ");
   if (!r || r === "-") return "Lainnya";
   if (r.includes("in store") || r.includes("sgs") || r.includes("spg")) return "In Store Promotor";
   if (r.includes("out store") || r.includes("sds") || r === "ds") return "Out Store Promotor";
@@ -138,7 +145,8 @@ const isStatusAnomaly = (status) => {
 };
 
 const describeFlagsTimestamp = (v) =>
-  [v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
+  [v.zoneNotCompliant && `Zona Kurang (${v.distinctZoneCount}/3)`, v.gpsIdentical && "GPS Identik",
+   v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
     .filter(Boolean).join(", ");
 
 const describeFlagsAbsensi = (s) =>
@@ -150,6 +158,8 @@ const TIMESTAMP_COLUMNS = [
   { key: "employee_name", label: "Nama" },
   { key: "position", label: "Role" },
   { key: "status", label: "Status" },
+  { key: "checkinCount", label: "Absen" },
+  { key: "distinctZoneCount", label: "Zona" },
   { key: "flags", label: "Flag", render: describeFlagsTimestamp },
 ];
 
@@ -258,37 +268,95 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
 
 // ───────────────────────── Timestamp (journey/visit) processing ─────────────────────────
 
+// HARPA time-card zones — a check-in's hour determines which window it
+// falls in. Multiple check-ins in the same zone only count once toward the
+// "3 different zones" requirement.
+function deriveZone(v) {
+  let hour = null;
+  if (v instanceof Date) hour = v.getHours();
+  else if (typeof v === "number") hour = Math.floor((v % 1) * 24);
+  else if (typeof v === "string") {
+    const m = v.match(/(\d{1,2}):(\d{2})/);
+    if (m) hour = parseInt(m[1], 10);
+  }
+  if (hour == null || Number.isNaN(hour)) return null;
+  if (hour >= 7 && hour <= 10) return "Pagi";
+  if (hour >= 11 && hour <= 14) return "Siang";
+  if (hour >= 15 && hour <= 18) return "Sore";
+  if (hour >= 19 && hour <= 22) return "Malam 1";
+  if (hour === 23 || hour === 0) return "Malam 2";
+  return null;
+}
+
+const coordKey = (lat, lon) => (lat == null || lon == null ? null : lat.toFixed(6) + "," + lon.toFixed(6));
+
 function processTimestamp(rows) {
-  // Field reality: check-in happens up to 3x/day (Pagi/Siang/Sore) with no
-  // checkout expected — so duration/incomplete-visit checks don't apply here.
-  // Only GPS presence and employment status are currently detectable.
   // Cuma In Store Promotor & Out Store Promotor yang masuk hitungan anomali.
   const scopedRows = rows.filter((r) => {
     const t = classifyPromotorType(getPosition(r));
     return t === "In Store Promotor" || t === "Out Store Promotor";
   });
-  const visits = scopedRows.map((r) => {
-    const latIn = toNum(r["Latitude In_TIMESTAMP"]);
-    const lonIn = toNum(r["Longitude In_TIMESTAMP"]);
-    const hasIn = latIn !== null && lonIn !== null;
-    const position = getPosition(r);
-    const status = getStatus(r);
+
+  // Compliance HARPA dinilai PER HARI per karyawan (butuh minimal 3 check-in
+  // di 3 zona waktu berbeda dalam 1 hari), jadi group dulu sebelum dinilai.
+  const groups = new Map();
+  scopedRows.forEach((r) => {
+    const key = (r["Employee ID"] ?? "-") + "|" + (r["Date_TIMESTAMP"] || "-");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  });
+
+  const visits = [...groups.values()].map((groupRows) => {
+    const first = groupRows[0];
+    const position = getPosition(first);
+    const status = getStatus(first);
+
+    const checks = groupRows.map((r) => ({
+      zone: deriveZone(r["Start Time_TIMESTAMP"]),
+      lat: toNum(r["Latitude In_TIMESTAMP"]),
+      lon: toNum(r["Longitude In_TIMESTAMP"]),
+    }));
+
+    const distinctZones = new Set(checks.map((c) => c.zone).filter(Boolean));
+    const checkinCount = groupRows.length;
+    // Rule 1 & 2: kurang dari 3 check-in ATAU 3+ check-in tapi ada yang nyangkut
+    // di zona yang sama (bukan zona baru) — dua-duanya berujung ke satu test:
+    // jumlah zona BERBEDA yang tercapai < 3.
+    const zoneNotCompliant = distinctZones.size < 3;
+
+    // Rule 3: GPS identik antar check-in di hari yang sama.
+    const seen = new Set();
+    let gpsIdentical = false;
+    checks.forEach((c) => {
+      const key = coordKey(c.lat, c.lon);
+      if (!key) return;
+      if (seen.has(key)) gpsIdentical = true;
+      seen.add(key);
+    });
+
+    const noCoord = checks.some((c) => c.lat == null || c.lon == null);
 
     return {
-      date: r["Date_TIMESTAMP"] || "-",
-      employee_name: r["Employee Name_TIMESTAMP"] || r["Employee ID"] || "-",
+      date: first["Date_TIMESTAMP"] || "-",
+      employee_name: first["Employee Name_TIMESTAMP"] || first["Employee ID"] || "-",
       position,
       status,
       promotorType: classifyPromotorType(position),
-      noCoord: !hasIn,
+      checkinCount,
+      distinctZoneCount: distinctZones.size,
+      zoneNotCompliant,
+      gpsIdentical,
+      noCoord,
       statusAnomaly: isStatusAnomaly(status),
     };
   });
 
   const total = visits.length;
-  const isFlagged = (v) => v.noCoord || v.statusAnomaly;
+  const isFlagged = (v) => v.zoneNotCompliant || v.gpsIdentical || v.noCoord || v.statusAnomaly;
   const anomalyCounts = {
-    gps: visits.filter((v) => v.noCoord).length,
+    zone: visits.filter((v) => v.zoneNotCompliant).length,
+    gpsIdentical: visits.filter((v) => v.gpsIdentical).length,
+    noCoord: visits.filter((v) => v.noCoord).length,
     status: visits.filter((v) => v.statusAnomaly).length,
   };
 
@@ -340,7 +408,7 @@ function computeInsights(timestampResult, absensiResult) {
 
   if (timestampResult && timestampResult.total > 0) {
     const rate = ((timestampResult.flagged.length / timestampResult.total) * 100).toFixed(1);
-    insights.push(`Timestamp: ${rate}% dari ${timestampResult.total.toLocaleString("id-ID")} kunjungan terindikasi anomali.`);
+    insights.push(`Timestamp: ${rate}% dari ${timestampResult.total.toLocaleString("id-ID")} hari-kerja (karyawan x tanggal) terindikasi anomali.`);
     if (timestampResult.worstRole && timestampResult.worstRole.anomali > 0) {
       insights.push(`Role dengan anomali Timestamp terbanyak: ${timestampResult.worstRole.role} (${timestampResult.worstRole.anomali} dari ${timestampResult.worstRole.total}).`);
     }
@@ -798,7 +866,11 @@ function DashboardPage(props) {
             <div className="grid grid-cols-2 gap-2.5">
               {timestampResult ? (
                 <>
-                  <StatCard icon={MapPin} label="GPS Tidak Ada" value={timestampResult.anomalyCounts.gps} tone="red"
+                  <StatCard icon={AlertTriangle} label="Zona Kurang dari 3" value={timestampResult.anomalyCounts.zone} tone="indigo"
+                    onClick={() => openDetail("Timestamp — Zona Kurang dari 3", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)} />
+                  <StatCard icon={MapPin} label="GPS Identik" value={timestampResult.anomalyCounts.gpsIdentical} tone="pink"
+                    onClick={() => openDetail("Timestamp — GPS Identik", filterTs((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)} />
+                  <StatCard icon={FileWarning} label="GPS Tidak Ada" value={timestampResult.anomalyCounts.noCoord} tone="red"
                     onClick={() => openDetail("Timestamp — GPS Tidak Ada", filterTs((v) => v.noCoord), TIMESTAMP_COLUMNS)} />
                   <StatCard icon={AlertTriangle} label="Status Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
                     onClick={() => openDetail("Timestamp — Status Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)} />
@@ -996,7 +1068,7 @@ export default function Dashboard() {
         <p className="text-sm text-slate-500 mb-6">
           {page === "upload"
             ? "Upload 1 file hasil Data Merger (CSV/XLSX/JSON) untuk mulai analisis."
-            : "Klik angka atau chart untuk lihat detail. Signal: GPS, status employment, durasi kerja."}
+            : "Klik angka atau chart untuk lihat detail. Signal: zona absen (Timestamp), GPS, status employment, durasi kerja (Absensi)."}
         </p>
 
         {page === "upload" ? (
@@ -1013,7 +1085,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v7</div>
+        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v8</div>
       </div>
     </div>
   );
