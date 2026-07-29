@@ -1,4 +1,4 @@
-// Dashboard.tsx — v13
+// Dashboard.tsx — v14
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -23,6 +23,8 @@
 //        (karyawan yang cuma ada di salah satu dataset); (3) grid cakupan jadi 3 kolom
 //   v13: tombol export ke .xlsx di semua card (stat card, chart, leaderboard, tabel detail,
 //        dan modal detail) — berlaku di Timestamp maupun Absensi karena komponennya di-share
+//   v14: kolom koordinat mentah (lat, lon) ditambahin ke tabel/export Timestamp biar bisa dicek
+//        manual; (0,0) sekarang dianggap GPS kosong/gagal-capture, bukan lokasi identik valid
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -204,6 +206,7 @@ const TIMESTAMP_COLUMNS = [
   { key: "status", label: "Status" },
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
+  { key: "coordsList", label: "Koordinat Check-in (lat, lon)" },
   { key: "flags", label: "Flag", render: describeFlagsTimestamp },
 ];
 
@@ -371,11 +374,14 @@ function processTimestamp(rows) {
     const position = getPosition(first);
     const status = getStatus(first);
 
-    const checks = groupRows.map((r) => ({
-      zone: deriveZone(r["Start Time_TIMESTAMP"]),
-      lat: toNum(r["Latitude In_TIMESTAMP"]),
-      lon: toNum(r["Longitude In_TIMESTAMP"]),
-    }));
+    const checks = groupRows.map((r) => {
+      let lat = toNum(r["Latitude In_TIMESTAMP"]);
+      let lon = toNum(r["Longitude In_TIMESTAMP"]);
+      // (0,0) is a common sentinel for "GPS failed to capture", not a real
+      // location — treat it the same as missing, not as a valid coordinate.
+      if (lat === 0 && lon === 0) { lat = null; lon = null; }
+      return { zone: deriveZone(r["Start Time_TIMESTAMP"]), lat, lon };
+    });
 
     const distinctZones = new Set(checks.map((c) => c.zone).filter(Boolean));
     const checkinCount = groupRows.length;
@@ -395,6 +401,9 @@ function processTimestamp(rows) {
     });
 
     const noCoord = checks.some((c) => c.lat == null || c.lon == null);
+    // human-readable list of every check-in's coordinate for this day, so it's
+    // visible (and exportable) exactly which raw lat/lon values were compared.
+    const coordsList = checks.map((c) => (c.lat == null ? "(kosong)" : `(${c.lat}, ${c.lon})`)).join(" | ");
 
     return {
       date: first["Date_TIMESTAMP"] || "-",
@@ -405,6 +414,7 @@ function processTimestamp(rows) {
       promotorType: classifyPromotorType(position),
       checkinCount,
       distinctZoneCount: distinctZones.size,
+      coordsList,
       zoneNotCompliant,
       gpsIdentical,
       noCoord,
@@ -1242,7 +1252,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v13</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v14</div>
       </div>
     </div>
   );
