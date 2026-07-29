@@ -1,4 +1,4 @@
-// Dashboard.tsx — v10
+// Dashboard.tsx — v11
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -16,6 +16,9 @@
 //   v9: GPS identik sekarang exact match, gak dibulatin 6 desimal lagi
 //   v10: tambah info "jumlah karyawan unik" + "rentang tanggal" per dataset di Overview,
 //        buat cross-check kenapa total Timestamp vs Absensi bisa beda
+//   v11: tema TERANG (dari dark mode) — semua warna Tailwind & chart diganti kontras di background putih;
+//        tambah stat "Absen Comply (>=3x)" / "Absen Not Comply (<3x)" di Overview;
+//        info cakupan karyawan/tanggal dirapiin jadi kotak, bukan teks kecil doang
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -410,6 +413,7 @@ function processTimestamp(rows) {
 
   return {
     total,
+    all: visits,
     anomalyCounts,
     byRole: byRoleArr,
     byPromotorType,
@@ -473,14 +477,14 @@ function computeInsights(timestampResult, absensiResult) {
 function InsightsCard({ insights }) {
   if (!insights || insights.length === 0) return null;
   return (
-    <div className="bg-amber-950/20 border border-amber-900/50 rounded-xl p-4 mb-6">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-amber-400 font-semibold mb-3">
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-amber-700 font-semibold mb-3">
         <Lightbulb className="w-3.5 h-3.5" /> Key Insights
       </div>
       <ul className="space-y-1.5">
         {insights.map((txt, i) => (
-          <li key={i} className="text-xs text-slate-300 flex gap-2">
-            <span className="text-amber-500">&bull;</span>
+          <li key={i} className="text-xs text-gray-700 flex gap-2">
+            <span className="text-amber-600">&bull;</span>
             <span>{txt}</span>
           </li>
         ))}
@@ -502,21 +506,21 @@ function UploadBox({ onFiles, label, fileNames }) {
       onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) onFiles(Array.from(e.dataTransfer.files)); }}
       onClick={() => inputRef.current?.click()}
       className={`cursor-pointer rounded-xl border-2 border-dashed p-8 flex flex-col items-center justify-center text-center transition-colors min-w-0 ${
-        dragOver ? "border-teal-400 bg-teal-950/40" : hasFiles ? "border-teal-700 bg-teal-950/20" : "border-slate-700 bg-slate-900/50 hover:border-slate-600"
+        dragOver ? "border-teal-400 bg-teal-50" : hasFiles ? "border-teal-700 bg-teal-50" : "border-gray-300 bg-gray-50 hover:border-gray-400"
       }`}
     >
       {hasFiles ? (
         <>
-          <CheckCircle2 className="w-6 h-6 text-teal-400 mb-2" />
-          <p className="text-teal-300 text-sm font-medium">{fileNames.length} file terupload</p>
-          <p className="text-slate-500 text-xs mt-1 max-w-full truncate px-4">{fileNames.join(", ")}</p>
-          <p className="text-slate-600 text-[11px] mt-1">Klik atau drop lagi untuk tambah file</p>
+          <CheckCircle2 className="w-6 h-6 text-teal-700 mb-2" />
+          <p className="text-teal-700 text-sm font-medium">{fileNames.length} file terupload</p>
+          <p className="text-gray-500 text-xs mt-1 max-w-full truncate px-4">{fileNames.join(", ")}</p>
+          <p className="text-gray-400 text-[11px] mt-1">Klik atau drop lagi untuk tambah file</p>
         </>
       ) : (
         <>
-          <Upload className="w-6 h-6 text-slate-500 mb-2" />
-          <p className="text-slate-300 text-sm font-medium">{label}</p>
-          <p className="text-slate-500 text-xs mt-1">CSV/XLSX/JSON/NDJSON, bisa pilih banyak file sekaligus</p>
+          <Upload className="w-6 h-6 text-gray-500 mb-2" />
+          <p className="text-gray-700 text-sm font-medium">{label}</p>
+          <p className="text-gray-500 text-xs mt-1">CSV/XLSX/JSON/NDJSON, bisa pilih banyak file sekaligus</p>
         </>
       )}
       <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls,.json,.ndjson" multiple className="hidden"
@@ -527,27 +531,27 @@ function UploadBox({ onFiles, label, fileNames }) {
 
 function StatCard({ icon: Icon, label, value, tone, onClick }) {
   const tones = {
-    teal: "text-teal-400 bg-teal-950/50",
-    amber: "text-amber-400 bg-amber-950/50",
-    pink: "text-pink-400 bg-pink-950/50",
-    indigo: "text-indigo-400 bg-indigo-950/50",
-    red: "text-red-400 bg-red-950/50",
+    teal: "text-teal-700 bg-teal-100",
+    amber: "text-amber-700 bg-amber-100",
+    pink: "text-pink-700 bg-pink-100",
+    indigo: "text-indigo-700 bg-indigo-100",
+    red: "text-red-700 bg-red-100",
   };
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className={`text-left bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-2.5 w-full h-full transition-colors ${
-        onClick ? "hover:border-slate-600 hover:bg-slate-900/70 cursor-pointer" : "cursor-default"
+      className={`text-left bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-2.5 w-full h-full transition-colors ${
+        onClick ? "hover:border-gray-400 hover:bg-gray-100 cursor-pointer" : "cursor-default"
       }`}
     >
       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tones[tone]}`}>
         <Icon className="w-3.5 h-3.5" />
       </div>
       <div className="min-w-0">
-        <div className="text-base font-bold text-slate-100 leading-none">{value.toLocaleString("id-ID")}</div>
-        <div className="text-[10px] text-slate-500 mt-1 truncate">{label}</div>
+        <div className="text-base font-bold text-gray-900 leading-none">{value.toLocaleString("id-ID")}</div>
+        <div className="text-[10px] text-gray-500 mt-1 truncate">{label}</div>
       </div>
     </button>
   );
@@ -555,8 +559,8 @@ function StatCard({ icon: Icon, label, value, tone, onClick }) {
 
 function Panel({ title, height, children }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 h-full flex flex-col">
-      <div className="text-[11px] text-slate-400 mb-2">{title}</div>
+    <div className="bg-white border border-gray-200 rounded-xl p-3.5 h-full flex flex-col">
+      <div className="text-[11px] text-gray-500 mb-2">{title}</div>
       <div style={{ height }}>{children}</div>
     </div>
   );
@@ -566,17 +570,17 @@ function FlaggedTable({ rows, columns }) {
   const [open, setOpen] = useState(false);
   const shown = open ? rows.slice(0, 200) : rows.slice(0, 8);
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden w-full min-w-0 h-full flex flex-col">
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden w-full min-w-0 h-full flex flex-col">
       <div className="overflow-x-auto w-full">
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="border-b border-slate-800 text-slate-500">
+            <tr className="border-b border-gray-200 text-gray-500">
               {columns.map((c) => <th key={c.key} className="text-left px-2.5 py-2 font-medium whitespace-nowrap">{c.label}</th>)}
             </tr>
           </thead>
           <tbody>
             {shown.map((r, i) => (
-              <tr key={i} className="border-b border-slate-800/60 text-slate-300">
+              <tr key={i} className="border-b border-gray-200/60 text-gray-700">
                 {columns.map((c) => (
                   <td key={c.key} className="px-2.5 py-2 whitespace-nowrap">{c.render ? c.render(r) : r[c.key]}</td>
                 ))}
@@ -586,7 +590,7 @@ function FlaggedTable({ rows, columns }) {
         </table>
       </div>
       {rows.length > 8 && (
-        <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-center gap-1 py-2 text-xs text-slate-400 hover:bg-slate-800/50 border-t border-slate-800 mt-auto">
+        <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-center gap-1 py-2 text-xs text-gray-500 hover:bg-gray-100 border-t border-gray-200 mt-auto">
           {open ? <>Tutup <ChevronUp className="w-3 h-3" /></> : <>Lihat semua ({rows.length}) <ChevronDown className="w-3 h-3" /></>}
         </button>
       )}
@@ -595,14 +599,14 @@ function FlaggedTable({ rows, columns }) {
 }
 
 function Leaderboard({ title, data, tone, onItemClick }) {
-  const tones = { teal: "text-teal-400", indigo: "text-indigo-400" };
+  const tones = { teal: "text-teal-700", indigo: "text-indigo-700" };
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 h-full">
-      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-2.5">
+    <div className="bg-white border border-gray-200 rounded-xl p-3.5 h-full">
+      <div className="flex items-center gap-1.5 text-[11px] text-gray-500 mb-2.5">
         <Trophy className="w-3.5 h-3.5" /> {title}
       </div>
       {data.length === 0 ? (
-        <div className="text-xs text-slate-600">Tidak ada anomali</div>
+        <div className="text-xs text-gray-400">Tidak ada anomali</div>
       ) : (
         <div className="space-y-2">
           {data.map((d, i) => (
@@ -610,11 +614,11 @@ function Leaderboard({ title, data, tone, onItemClick }) {
               type="button"
               key={i}
               onClick={() => onItemClick && onItemClick(d)}
-              className="w-full flex items-center justify-between text-xs text-left hover:bg-slate-800/50 rounded px-1 -mx-1 py-0.5"
+              className="w-full flex items-center justify-between text-xs text-left hover:bg-gray-100 rounded px-1 -mx-1 py-0.5"
             >
-              <span className="text-slate-300 truncate pr-2 min-w-0">
+              <span className="text-gray-700 truncate pr-2 min-w-0">
                 {i + 1}. {d.name}
-                {d.role && <span className="text-slate-500"> — {d.role}</span>}
+                {d.role && <span className="text-gray-500"> — {d.role}</span>}
               </span>
               <span className={`font-semibold ${tones[tone]} flex-shrink-0`}>{d.count}</span>
             </button>
@@ -654,15 +658,15 @@ function DetailModal({ detail, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-3xl max-h-[80vh] flex flex-col"
+        className="bg-white border border-gray-300 rounded-xl w-full max-w-3xl max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 gap-3">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 gap-3">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-100 truncate">{detail.title}</div>
-            <div className="text-[11px] text-slate-500">{filteredRows.length.toLocaleString("id-ID")} baris</div>
+            <div className="text-sm font-semibold text-gray-900 truncate">{detail.title}</div>
+            <div className="text-[11px] text-gray-500">{filteredRows.length.toLocaleString("id-ID")} baris</div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-200 flex-shrink-0">
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 flex-shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -673,23 +677,23 @@ function DetailModal({ detail, onClose }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Filter (nama, role, tanggal, ...)"
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600"
+            className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-800 placeholder:text-gray-400"
           />
         </div>
 
         <div className="overflow-auto p-4 flex-1">
           {shown.length === 0 ? (
-            <div className="text-xs text-slate-500">Tidak ada data yang cocok.</div>
+            <div className="text-xs text-gray-500">Tidak ada data yang cocok.</div>
           ) : (
             <table className="w-full text-[11px]">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-500">
+                <tr className="border-b border-gray-200 text-gray-500">
                   {detail.columns.map((c) => <th key={c.key} className="text-left px-2.5 py-2 font-medium whitespace-nowrap">{c.label}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {shown.map((r, i) => (
-                  <tr key={i} className="border-b border-slate-800/60 text-slate-300">
+                  <tr key={i} className="border-b border-gray-200/60 text-gray-700">
                     {detail.columns.map((c) => (
                       <td key={c.key} className="px-2.5 py-2 whitespace-nowrap">{c.render ? c.render(r) : r[c.key]}</td>
                     ))}
@@ -701,11 +705,11 @@ function DetailModal({ detail, onClose }) {
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-800 text-xs text-slate-400">
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-200 text-xs text-gray-500">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={safePage <= 1}
-              className="disabled:opacity-30 hover:text-slate-200"
+              className="disabled:opacity-30 hover:text-gray-800"
             >
               &lsaquo; Sebelumnya
             </button>
@@ -713,7 +717,7 @@ function DetailModal({ detail, onClose }) {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={safePage >= totalPages}
-              className="disabled:opacity-30 hover:text-slate-200"
+              className="disabled:opacity-30 hover:text-gray-800"
             >
               Selanjutnya &rsaquo;
             </button>
@@ -730,17 +734,17 @@ function UploadPage({ fileNames, onFiles, onGoDashboard, canGo }) {
   return (
     <div className="space-y-6">
       <div>
-        <div className="text-sm font-semibold text-teal-400 mb-2">Upload data hasil merge</div>
+        <div className="text-sm font-semibold text-teal-700 mb-2">Upload data hasil merge</div>
         <UploadBox onFiles={onFiles} label="Hasil dari Data Merger (Absensi + Timestamp digabung)" fileNames={fileNames} />
       </div>
       <button
         onClick={onGoDashboard}
         disabled={!canGo}
-        className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-800 disabled:text-slate-600 text-white font-medium py-3 rounded-lg transition-colors"
+        className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:bg-gray-100 disabled:text-gray-400 text-white font-medium py-3 rounded-lg transition-colors"
       >
         Lihat Dashboard <ArrowRight className="w-4 h-4" />
       </button>
-      {!canGo && <p className="text-center text-xs text-slate-600">Upload file hasil merge untuk lanjut</p>}
+      {!canGo && <p className="text-center text-xs text-gray-400">Upload file hasil merge untuk lanjut</p>}
     </div>
   );
 }
@@ -782,64 +786,90 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
   );
 
   return (
-    <div className="bg-gradient-to-r from-emerald-950 to-slate-900 border border-emerald-900 rounded-xl p-5 mb-4">
-      <div className="text-[11px] uppercase tracking-wide text-emerald-400 font-semibold mb-3">
+    <div className="bg-gradient-to-r from-emerald-50 to-white border border-emerald-200 rounded-xl p-5 mb-4">
+      <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">
         Overview Total — Timestamp (Journey) + Absensi (Attendance)
       </div>
       <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
         <Num
           value={combinedTotal.toLocaleString("id-ID")}
-          className="text-3xl font-bold text-slate-100 leading-none"
+          className="text-3xl font-bold text-gray-900 leading-none"
           onClick={() => onDetail("Semua Anomali", combinedFlagged(), mixedColumns)}
         >
-          <div className="text-[11px] text-slate-400 mt-1">Total Anomali Promotor</div>
+          <div className="text-[11px] text-gray-500 mt-1">Total Anomali Promotor</div>
         </Num>
         <Num
           value={timestampTotal}
-          className="text-xl font-bold text-teal-400 leading-none"
+          className="text-xl font-bold text-teal-700 leading-none"
           onClick={() => timestampResult && onDetail("Anomali Timestamp", timestampResult.flagged, TIMESTAMP_COLUMNS)}
         >
-          <div className="text-[11px] text-slate-500 mt-1">Timestamp &middot; {timestampRate}%</div>
+          <div className="text-[11px] text-gray-500 mt-1">Timestamp &middot; {timestampRate}%</div>
         </Num>
         <Num
           value={absensiTotal}
-          className="text-xl font-bold text-indigo-400 leading-none"
+          className="text-xl font-bold text-indigo-700 leading-none"
           onClick={() => absensiResult && onDetail("Anomali Absensi", absensiResult.flagged, ABSENSI_COLUMNS)}
         >
-          <div className="text-[11px] text-slate-500 mt-1">Absensi &middot; {absensiRate}%</div>
+          <div className="text-[11px] text-gray-500 mt-1">Absensi &middot; {absensiRate}%</div>
         </Num>
       </div>
 
-      <div className="mt-4 pt-4 border-t border-emerald-900/50 flex flex-wrap items-end gap-x-8 gap-y-3">
-        <div className="text-[11px] text-slate-500 w-full">Berdasarkan tipe promotor (dari kolom Position)</div>
+      <div className="mt-4 pt-4 border-t border-emerald-200/50 flex flex-wrap items-end gap-x-8 gap-y-3">
+        <div className="text-[11px] text-gray-500 w-full">Berdasarkan tipe promotor (dari kolom Position)</div>
         <Num
           value={inStore.toLocaleString("id-ID")}
-          className="text-xl font-bold text-amber-400 leading-none"
+          className="text-xl font-bold text-amber-700 leading-none"
           onClick={() => onDetail("In Store Promotor — Semua Anomali", combinedFlagged().filter((r) => r.promotorType === "In Store Promotor"), mixedColumns)}
         >
-          <div className="text-[11px] text-slate-500 mt-1">In Store Promotor</div>
+          <div className="text-[11px] text-gray-500 mt-1">In Store Promotor</div>
         </Num>
         <Num
           value={outStore.toLocaleString("id-ID")}
-          className="text-xl font-bold text-fuchsia-400 leading-none"
+          className="text-xl font-bold text-fuchsia-700 leading-none"
           onClick={() => onDetail("Out Store Promotor — Semua Anomali", combinedFlagged().filter((r) => r.promotorType === "Out Store Promotor"), mixedColumns)}
         >
-          <div className="text-[11px] text-slate-500 mt-1">Out Store Promotor</div>
+          <div className="text-[11px] text-gray-500 mt-1">Out Store Promotor</div>
         </Num>
       </div>
 
-      <div className="mt-4 pt-4 border-t border-emerald-900/50 flex flex-wrap gap-x-8 gap-y-2 text-[11px] text-slate-500">
-        <div>
-          <span className="text-slate-400">Timestamp:</span>{" "}
-          {timestampResult ? (
-            <>{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan unik &middot; {timestampResult.coverage.dateMin || "-"} s/d {timestampResult.coverage.dateMax || "-"}</>
-          ) : "-"}
+      {timestampResult && (
+        <div className="mt-4 pt-4 border-t border-emerald-200/50 flex flex-wrap items-end gap-x-8 gap-y-3">
+          <div className="text-[11px] text-gray-500 w-full">Compliance absen Timestamp (min. 3 zona waktu berbeda)</div>
+          <Num
+            value={(timestampResult.total - timestampResult.anomalyCounts.zone).toLocaleString("id-ID")}
+            className="text-xl font-bold text-emerald-700 leading-none"
+            onClick={() => onDetail("Absen Comply (≥3 zona)", (timestampResult.all || []).filter((v) => !v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+          >
+            <div className="text-[11px] text-gray-500 mt-1">Absen Comply (&ge;3x)</div>
+          </Num>
+          <Num
+            value={timestampResult.anomalyCounts.zone.toLocaleString("id-ID")}
+            className="text-xl font-bold text-red-700 leading-none"
+            onClick={() => onDetail("Absen Not Comply (<3 zona)", timestampResult.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+          >
+            <div className="text-[11px] text-gray-500 mt-1">Absen Not Comply (&lt;3x)</div>
+          </Num>
         </div>
-        <div>
-          <span className="text-slate-400">Absensi:</span>{" "}
+      )}
+
+      <div className="mt-4 pt-4 border-t border-emerald-200/50 grid grid-cols-2 gap-3">
+        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Cakupan Timestamp</div>
+          {timestampResult ? (
+            <>
+              <div className="text-sm font-bold text-gray-900">{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</div>
+              <div className="text-[11px] text-gray-500">{timestampResult.coverage.dateMin || "-"} s/d {timestampResult.coverage.dateMax || "-"}</div>
+            </>
+          ) : <div className="text-sm text-gray-400">-</div>}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Cakupan Absensi</div>
           {absensiResult ? (
-            <>{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan unik &middot; {absensiResult.coverage.dateMin || "-"} s/d {absensiResult.coverage.dateMax || "-"}</>
-          ) : "-"}
+            <>
+              <div className="text-sm font-bold text-gray-900">{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</div>
+              <div className="text-[11px] text-gray-500">{absensiResult.coverage.dateMin || "-"} s/d {absensiResult.coverage.dateMax || "-"}</div>
+            </>
+          ) : <div className="text-sm text-gray-400">-</div>}
         </div>
       </div>
     </div>
@@ -873,25 +903,25 @@ function DashboardPage(props) {
       <InsightsCard insights={insights} />
 
       <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0">
-        <div className="text-sm font-bold text-teal-400">Data Timestamp (Journey)</div>
-        <div className="text-sm font-bold text-indigo-400">Data Absensi (Attendance)</div>
+        <div className="text-sm font-bold text-teal-700">Data Timestamp (Journey)</div>
+        <div className="text-sm font-bold text-indigo-700">Data Absensi (Attendance)</div>
       </div>
 
       {/* threshold controls row — Timestamp has none now (no duration/checkout concept for check-in-only events) */}
       <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0 items-start">
-        <div className="text-[11px] text-slate-600 italic">Tidak ada threshold — cuma cek GPS ada/nggak &amp; status employment.</div>
-        <div className="flex flex-wrap gap-3 items-center text-[11px] text-slate-400">
+        <div className="text-[11px] text-gray-400 italic">Tidak ada threshold — cuma cek GPS ada/nggak &amp; status employment.</div>
+        <div className="flex flex-wrap gap-3 items-center text-[11px] text-gray-500">
           <label className="flex items-center gap-1.5">Pendek &lt; (jam):
             <input type="number" value={shortHr} onChange={(e) => setShortHr(parseFloat(e.target.value) || 0)}
-              className="w-12 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200" />
+              className="w-12 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
           </label>
           <label className="flex items-center gap-1.5">Panjang &gt; (jam):
             <input type="number" value={longHr} onChange={(e) => setLongHr(parseFloat(e.target.value) || 0)}
-              className="w-12 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200" />
+              className="w-12 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
           </label>
           <label className="flex items-center gap-1.5">GPS (m):
             <input type="number" step="10" value={moveThresholdM} onChange={(e) => setMoveThresholdM(parseFloat(e.target.value) || 0)}
-              className="w-16 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200" />
+              className="w-16 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
           </label>
         </div>
       </div>
@@ -913,7 +943,7 @@ function DashboardPage(props) {
                     onClick={() => openDetail("Timestamp — Status Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)} />
                 </>
               ) : (
-                <div className="col-span-2 text-xs text-slate-600 text-center py-10 border border-dashed border-slate-800 rounded-xl">Tidak ada data Timestamp</div>
+                <div className="col-span-2 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Timestamp</div>
               )}
             </div>
             <div className="grid grid-cols-3 gap-2.5">
@@ -927,7 +957,7 @@ function DashboardPage(props) {
                     onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)} />
                 </>
               ) : (
-                <div className="col-span-3 text-xs text-slate-600 text-center py-10 border border-dashed border-slate-800 rounded-xl">Tidak ada data Absensi</div>
+                <div className="col-span-3 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Absensi</div>
               )}
             </div>
           </div>
@@ -938,10 +968,10 @@ function DashboardPage(props) {
               {timestampResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={timestampResult.byDate}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="date" stroke="#64748b" fontSize={9} />
-                    <YAxis stroke="#64748b" fontSize={10} />
-                    <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
+                    <YAxis stroke="#6b7280" fontSize={10} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
                     <Line type="monotone" dataKey="anomali" stroke="#2dd4bf" strokeWidth={2}
                       dot={{ r: 3, cursor: "pointer" }}
                       activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Timestamp — ${p.payload.date}`, filterTs((v) => v.date === p.payload.date), TIMESTAMP_COLUMNS) }}
@@ -954,10 +984,10 @@ function DashboardPage(props) {
               {absensiResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={absensiResult.byDate}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="date" stroke="#64748b" fontSize={9} />
-                    <YAxis stroke="#64748b" fontSize={10} />
-                    <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
+                    <YAxis stroke="#6b7280" fontSize={10} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
                     <Line type="monotone" dataKey="anomali" stroke="#f59e0b" strokeWidth={2}
                       dot={{ r: 3, cursor: "pointer" }}
                       activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Absensi — ${p.payload.date}`, filterAb((s) => s.date === p.payload.date), ABSENSI_COLUMNS) }}
@@ -974,10 +1004,10 @@ function DashboardPage(props) {
               {timestampResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={timestampResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                    <XAxis type="number" stroke="#64748b" fontSize={10} />
-                    <YAxis type="category" dataKey="type" stroke="#64748b" fontSize={9} width={100} />
-                    <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
+                    <YAxis type="category" dataKey="type" stroke="#6b7280" fontSize={9} width={100} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
                     <Bar dataKey="anomali" fill="#f472b6" radius={[0, 4, 4, 0]} cursor="pointer"
                       onClick={(d) => openDetail(`Timestamp — ${d.type}`, filterTs((v) => v.promotorType === d.type), TIMESTAMP_COLUMNS)}>
                       <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
@@ -990,10 +1020,10 @@ function DashboardPage(props) {
               {absensiResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={absensiResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                    <XAxis type="number" stroke="#64748b" fontSize={10} />
-                    <YAxis type="category" dataKey="type" stroke="#64748b" fontSize={9} width={100} />
-                    <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
+                    <YAxis type="category" dataKey="type" stroke="#6b7280" fontSize={9} width={100} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
                     <Bar dataKey="anomali" fill="#818cf8" radius={[0, 4, 4, 0]} cursor="pointer"
                       onClick={(d) => openDetail(`Absensi — ${d.type}`, filterAb((s) => s.promotorType === d.type), ABSENSI_COLUMNS)}>
                       <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
@@ -1010,10 +1040,10 @@ function DashboardPage(props) {
               {timestampResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={timestampResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                    <XAxis type="number" stroke="#64748b" fontSize={10} />
-                    <YAxis type="category" dataKey="role" stroke="#64748b" fontSize={9} width={100} />
-                    <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
+                    <YAxis type="category" dataKey="role" stroke="#6b7280" fontSize={9} width={100} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
                     <Bar dataKey="anomali" fill="#2dd4bf" radius={[0, 4, 4, 0]} cursor="pointer"
                       onClick={(d) => openDetail(`Timestamp — ${d.role}`, filterTs((v) => v.position === d.role), TIMESTAMP_COLUMNS)}>
                       <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
@@ -1026,10 +1056,10 @@ function DashboardPage(props) {
               {absensiResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={absensiResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                    <XAxis type="number" stroke="#64748b" fontSize={10} />
-                    <YAxis type="category" dataKey="role" stroke="#64748b" fontSize={9} width={100} />
-                    <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
+                    <YAxis type="category" dataKey="role" stroke="#6b7280" fontSize={9} width={100} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
                     <Bar dataKey="anomali" fill="#f59e0b" radius={[0, 4, 4, 0]} cursor="pointer"
                       onClick={(d) => openDetail(`Absensi — ${d.role}`, filterAb((s) => s.position === d.role), ABSENSI_COLUMNS)}>
                       <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
@@ -1051,11 +1081,11 @@ function DashboardPage(props) {
           {/* detail table row */}
           <div className="grid md:grid-cols-2 gap-5 min-w-0 items-stretch">
             <div>
-              <div className="text-[11px] text-slate-400 mb-2">Detail ter-flag ({timestampResult?.flagged.length ?? 0}/{timestampResult?.total ?? 0})</div>
+              <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag ({timestampResult?.flagged.length ?? 0}/{timestampResult?.total ?? 0})</div>
               <FlaggedTable rows={timestampResult?.flagged || []} columns={TIMESTAMP_COLUMNS} />
             </div>
             <div>
-              <div className="text-[11px] text-slate-400 mb-2">Detail ter-flag ({absensiResult?.flagged.length ?? 0}/{absensiResult?.total ?? 0})</div>
+              <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag ({absensiResult?.flagged.length ?? 0}/{absensiResult?.total ?? 0})</div>
               <FlaggedTable rows={absensiResult?.flagged || []} columns={ABSENSI_COLUMNS} />
             </div>
           </div>
@@ -1092,17 +1122,17 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 overflow-x-hidden">
+    <div className="min-h-screen bg-gray-50 text-gray-900 overflow-x-hidden">
       <div className="max-w-6xl mx-auto px-4 py-6 w-full min-w-0">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-bold">Dashboard Anomali Lapangan</h1>
           {page === "dashboard" && (
-            <button onClick={() => setPage("upload")} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200">
+            <button onClick={() => setPage("upload")} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800">
               <ArrowLeft className="w-3.5 h-3.5" /> Upload
             </button>
           )}
         </div>
-        <p className="text-sm text-slate-500 mb-6">
+        <p className="text-sm text-gray-500 mb-6">
           {page === "upload"
             ? "Upload 1 file hasil Data Merger (CSV/XLSX/JSON) untuk mulai analisis."
             : "Klik angka atau chart untuk lihat detail. Signal: zona absen (Timestamp), GPS, status employment, durasi kerja (Absensi)."}
@@ -1122,7 +1152,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v10</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v11</div>
       </div>
     </div>
   );
