@@ -1,4 +1,4 @@
-// Dashboard.tsx — v11
+// Dashboard.tsx — v12
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -19,6 +19,8 @@
 //   v11: tema TERANG (dari dark mode) — semua warna Tailwind & chart diganti kontras di background putih;
 //        tambah stat "Absen Comply (>=3x)" / "Absen Not Comply (<3x)" di Overview;
 //        info cakupan karyawan/tanggal dirapiin jadi kotak, bukan teks kecil doang
+//   v12: (1) subtitle "X orang" di stat card GPS Identik; (2) kartu Gap Timestamp vs Absensi
+//        (karyawan yang cuma ada di salah satu dataset); (3) grid cakupan jadi 3 kolom
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -186,6 +188,7 @@ function summarizeCoverage(items, idFn, dateFn) {
   const dates = items.map(dateFn).filter((v) => v && v !== "-").sort();
   return {
     uniqueEmployees: ids.size,
+    employeeIds: ids,
     dateMin: dates.length ? dates[0] : null,
     dateMax: dates.length ? dates[dates.length - 1] : null,
   };
@@ -382,6 +385,7 @@ function processTimestamp(rows) {
     noCoord: visits.filter((v) => v.noCoord).length,
     status: visits.filter((v) => v.statusAnomaly).length,
   };
+  const gpsIdenticalPeople = new Set(visits.filter((v) => v.gpsIdentical).map((v) => v.employee_id)).size;
 
   const byRole = {};
   visits.forEach((v) => {
@@ -415,6 +419,7 @@ function processTimestamp(rows) {
     total,
     all: visits,
     anomalyCounts,
+    gpsIdenticalPeople,
     byRole: byRoleArr,
     byPromotorType,
     byPromotorTypeChart: Object.values(byPromotorType).sort((a, b) => b.anomali - a.anomali),
@@ -529,7 +534,7 @@ function UploadBox({ onFiles, label, fileNames }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, tone, onClick }) {
+function StatCard({ icon: Icon, label, value, tone, onClick, subtitle }) {
   const tones = {
     teal: "text-teal-700 bg-teal-100",
     amber: "text-amber-700 bg-amber-100",
@@ -551,7 +556,7 @@ function StatCard({ icon: Icon, label, value, tone, onClick }) {
       </div>
       <div className="min-w-0">
         <div className="text-base font-bold text-gray-900 leading-none">{value.toLocaleString("id-ID")}</div>
-        <div className="text-[10px] text-gray-500 mt-1 truncate">{label}</div>
+        <div className="text-[10px] text-gray-500 mt-1 truncate">{label}{subtitle ? ` • ${subtitle}` : ""}</div>
       </div>
     </button>
   );
@@ -765,6 +770,11 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     (timestampResult?.byPromotorType["Out Store Promotor"]?.anomali ?? 0) +
     (absensiResult?.byPromotorType["Out Store Promotor"]?.anomali ?? 0);
 
+  const tsIds = timestampResult?.coverage.employeeIds || new Set();
+  const abIds = absensiResult?.coverage.employeeIds || new Set();
+  const onlyInTimestamp = new Set([...tsIds].filter((id) => !abIds.has(id)));
+  const onlyInAbsensi = new Set([...abIds].filter((id) => !tsIds.has(id)));
+
   const combinedFlagged = () => {
     const t = (timestampResult?.flagged || []).map((r) => ({ ...r, _source: "Timestamp" }));
     const a = (absensiResult?.flagged || []).map((r) => ({ ...r, _source: "Absensi" }));
@@ -852,7 +862,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
         </div>
       )}
 
-      <div className="mt-4 pt-4 border-t border-emerald-200/50 grid grid-cols-2 gap-3">
+      <div className="mt-4 pt-4 border-t border-emerald-200/50 grid grid-cols-3 gap-3">
         <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
           <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Cakupan Timestamp</div>
           {timestampResult ? (
@@ -870,6 +880,19 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
               <div className="text-[11px] text-gray-500">{absensiResult.coverage.dateMin || "-"} s/d {absensiResult.coverage.dateMax || "-"}</div>
             </>
           ) : <div className="text-sm text-gray-400">-</div>}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Gap Timestamp vs Absensi</div>
+          {timestampResult && absensiResult ? (
+            <>
+              <div className="text-sm font-bold text-gray-900">
+                {onlyInTimestamp.size} cuma di Timestamp, {onlyInAbsensi.size} cuma di Absensi
+              </div>
+              <div className="text-[11px] text-gray-500">
+                dari total {new Set([...timestampResult.coverage.employeeIds, ...absensiResult.coverage.employeeIds]).size} karyawan unik gabungan
+              </div>
+            </>
+          ) : <div className="text-sm text-gray-400">Perlu kedua dataset buat dibandingin</div>}
         </div>
       </div>
     </div>
@@ -936,6 +959,7 @@ function DashboardPage(props) {
                   <StatCard icon={AlertTriangle} label="Zona Kurang dari 3" value={timestampResult.anomalyCounts.zone} tone="indigo"
                     onClick={() => openDetail("Timestamp — Zona Kurang dari 3", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)} />
                   <StatCard icon={MapPin} label="GPS Identik" value={timestampResult.anomalyCounts.gpsIdentical} tone="pink"
+                    subtitle={`${timestampResult.gpsIdenticalPeople} orang`}
                     onClick={() => openDetail("Timestamp — GPS Identik", filterTs((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)} />
                   <StatCard icon={FileWarning} label="GPS Tidak Ada" value={timestampResult.anomalyCounts.noCoord} tone="red"
                     onClick={() => openDetail("Timestamp — GPS Tidak Ada", filterTs((v) => v.noCoord), TIMESTAMP_COLUMNS)} />
@@ -1152,7 +1176,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v11</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v12</div>
       </div>
     </div>
   );
