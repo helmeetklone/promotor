@@ -1,4 +1,4 @@
-// Dashboard.tsx — v6
+// Dashboard.tsx — v7
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -7,6 +7,7 @@
 //   v5: disederhanakan jadi 3 signal (GPS, Status employment, Durasi kerja) sesuai keterbatasan data lapangan;
 //       Timestamp (check-in 3x/hari, no checkout) tidak lagi cek durasi/kelengkapan kunjungan
 //   v6: tambah dukungan upload .ndjson (konsisten dengan opsi NDJSON di xlsx-to-json.html)
+//   v7: scope anomali cuma utk In Store Promotor & Out Store Promotor (role lain di-exclude)
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -164,7 +165,13 @@ const ABSENSI_COLUMNS = [
 // ───────────────────────── Absensi (attendance) processing ─────────────────────────
 
 function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
-  const shifts = rows.map((r) => {
+  // Cuma In Store Promotor & Out Store Promotor yang masuk hitungan anomali —
+  // role lain (SPV, Canvasser, dll) di-exclude dari analisis ini.
+  const scopedRows = rows.filter((r) => {
+    const t = classifyPromotorType(getPosition(r));
+    return t === "In Store Promotor" || t === "Out Store Promotor";
+  });
+  const shifts = scopedRows.map((r) => {
     const latIn = toNum(r["Latitude In_ABSENSI"]);
     const lonIn = toNum(r["Longitude In_ABSENSI"]);
     const latOut = toNum(r["Latitude Out_ABSENSI"]);
@@ -255,7 +262,12 @@ function processTimestamp(rows) {
   // Field reality: check-in happens up to 3x/day (Pagi/Siang/Sore) with no
   // checkout expected — so duration/incomplete-visit checks don't apply here.
   // Only GPS presence and employment status are currently detectable.
-  const visits = rows.map((r) => {
+  // Cuma In Store Promotor & Out Store Promotor yang masuk hitungan anomali.
+  const scopedRows = rows.filter((r) => {
+    const t = classifyPromotorType(getPosition(r));
+    return t === "In Store Promotor" || t === "Out Store Promotor";
+  });
+  const visits = scopedRows.map((r) => {
     const latIn = toNum(r["Latitude In_TIMESTAMP"]);
     const lonIn = toNum(r["Longitude In_TIMESTAMP"]);
     const hasIn = latIn !== null && lonIn !== null;
@@ -1001,7 +1013,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v6</div>
+        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v7</div>
       </div>
     </div>
   );
