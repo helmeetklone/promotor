@@ -1,4 +1,4 @@
-// Dashboard.tsx — v8
+// Dashboard.tsx — v10
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -12,6 +12,10 @@
 //       (1) min 3 absen di 3 zona waktu berbeda (Pagi/Siang/Sore/Malam1/Malam2)
 //       (2) 3+ absen tapi nyangkut di zona yang sama = tetap gak comply
 //       (3) GPS identik antar check-in di hari yang sama = flag
+//       (classifyPromotorType juga dibenerin di v8 — hyphen "In-Store Promotor" gak kedetek sebelumnya)
+//   v9: GPS identik sekarang exact match, gak dibulatin 6 desimal lagi
+//   v10: tambah info "jumlah karyawan unik" + "rentang tanggal" per dataset di Overview,
+//        buat cross-check kenapa total Timestamp vs Absensi bisa beda
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -174,6 +178,16 @@ const ABSENSI_COLUMNS = [
 
 // ───────────────────────── Absensi (attendance) processing ─────────────────────────
 
+function summarizeCoverage(items, idFn, dateFn) {
+  const ids = new Set(items.map(idFn).filter((v) => v && v !== "-"));
+  const dates = items.map(dateFn).filter((v) => v && v !== "-").sort();
+  return {
+    uniqueEmployees: ids.size,
+    dateMin: dates.length ? dates[0] : null,
+    dateMax: dates.length ? dates[dates.length - 1] : null,
+  };
+}
+
 function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
   // Cuma In Store Promotor & Out Store Promotor yang masuk hitungan anomali —
   // role lain (SPV, Canvasser, dll) di-exclude dari analisis ini.
@@ -200,6 +214,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
 
     return {
       date: r["Date_ABSENSI"] || "-",
+      employee_id: r["Employee ID"] || "-",
       employee_name: r["Employee Name_ABSENSI"] || r["Employee ID"] || "-",
       position,
       status,
@@ -251,6 +266,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
   const byDateArr = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
   const worstRole = byRoleArr.length ? [...byRoleArr].sort((a, b) => b.anomali - a.anomali)[0] : null;
   const worstDate = byDateArr.length ? [...byDateArr].sort((a, b) => b.anomali - a.anomali)[0] : null;
+  const coverage = summarizeCoverage(shifts, (s) => s.employee_id, (s) => s.date);
 
   return {
     total,
@@ -262,6 +278,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     flagged,
     worstRole,
     worstDate,
+    coverage,
     topOffenders: topNWithRole(flagged, (s) => s.employee_name, (s) => s.position, 5),
   };
 }
@@ -288,7 +305,9 @@ function deriveZone(v) {
   return null;
 }
 
-const coordKey = (lat, lon) => (lat == null || lon == null ? null : lat.toFixed(6) + "," + lon.toFixed(6));
+// Deliberately EXACT match — no rounding. "GPS identik" means the raw
+// latitude/longitude values are precisely the same, not just close.
+const coordKey = (lat, lon) => (lat == null || lon == null ? null : lat + "," + lon);
 
 function processTimestamp(rows) {
   // Cuma In Store Promotor & Out Store Promotor yang masuk hitungan anomali.
@@ -338,6 +357,7 @@ function processTimestamp(rows) {
 
     return {
       date: first["Date_TIMESTAMP"] || "-",
+      employee_id: first["Employee ID"] || "-",
       employee_name: first["Employee Name_TIMESTAMP"] || first["Employee ID"] || "-",
       position,
       status,
@@ -386,6 +406,7 @@ function processTimestamp(rows) {
   const byDateArr = Object.values(byDate).sort((a, b) => (a.date > b.date ? 1 : -1));
   const worstRole = byRoleArr.length ? [...byRoleArr].sort((a, b) => b.anomali - a.anomali)[0] : null;
   const worstDate = byDateArr.length ? [...byDateArr].sort((a, b) => b.anomali - a.anomali)[0] : null;
+  const coverage = summarizeCoverage(visits, (v) => v.employee_id, (v) => v.date);
 
   return {
     total,
@@ -397,6 +418,7 @@ function processTimestamp(rows) {
     flagged,
     worstRole,
     worstDate,
+    coverage,
     topOffenders: topNWithRole(flagged, (v) => v.employee_name, (v) => v.position, 5),
   };
 }
@@ -805,6 +827,21 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
           <div className="text-[11px] text-slate-500 mt-1">Out Store Promotor</div>
         </Num>
       </div>
+
+      <div className="mt-4 pt-4 border-t border-emerald-900/50 flex flex-wrap gap-x-8 gap-y-2 text-[11px] text-slate-500">
+        <div>
+          <span className="text-slate-400">Timestamp:</span>{" "}
+          {timestampResult ? (
+            <>{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan unik &middot; {timestampResult.coverage.dateMin || "-"} s/d {timestampResult.coverage.dateMax || "-"}</>
+          ) : "-"}
+        </div>
+        <div>
+          <span className="text-slate-400">Absensi:</span>{" "}
+          {absensiResult ? (
+            <>{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan unik &middot; {absensiResult.coverage.dateMin || "-"} s/d {absensiResult.coverage.dateMax || "-"}</>
+          ) : "-"}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1085,7 +1122,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v8</div>
+        <div className="text-center text-[10px] text-slate-700 mt-8">Dashboard v10</div>
       </div>
     </div>
   );
