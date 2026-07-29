@@ -1,4 +1,4 @@
-// Dashboard.tsx — v12
+// Dashboard.tsx — v13
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -21,6 +21,8 @@
 //        info cakupan karyawan/tanggal dirapiin jadi kotak, bukan teks kecil doang
 //   v12: (1) subtitle "X orang" di stat card GPS Identik; (2) kartu Gap Timestamp vs Absensi
 //        (karyawan yang cuma ada di salah satu dataset); (3) grid cakupan jadi 3 kolom
+//   v13: tombol export ke .xlsx di semua card (stat card, chart, leaderboard, tabel detail,
+//        dan modal detail) — berlaku di Timestamp maupun Absensi karena komponennya di-share
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -30,7 +32,7 @@ import {
 } from "recharts";
 import {
   Upload, MapPin, Clock, FileWarning, AlertTriangle, ArrowLeft,
-  ChevronDown, ChevronUp, Trophy, ArrowRight, CheckCircle2, X, Lightbulb
+  ChevronDown, ChevronUp, Trophy, ArrowRight, CheckCircle2, X, Lightbulb, Download
 } from "lucide-react";
 
 // ───────────────────────── helpers ─────────────────────────
@@ -142,6 +144,39 @@ const splitByRecordType = (rows) => {
   });
   return { absensi, timestamp };
 };
+
+// Exports rows to a downloaded .xlsx file. If `columns` is given (the same
+// column-spec objects used by the on-screen tables), the exported sheet
+// mirrors exactly what's shown on screen (using each column's render() where
+// present); otherwise the raw row objects are exported as-is.
+function exportRowsToXlsx(rows, filename, columns) {
+  if (!rows || rows.length === 0) return;
+  const data = columns
+    ? rows.map((r) => {
+        const out = {};
+        columns.forEach((c) => { out[c.label] = c.render ? c.render(r) : r[c.key]; });
+        return out;
+      })
+    : rows;
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Data");
+  XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : filename + ".xlsx");
+}
+
+function ExportButton({ onClick, small }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      title="Export ke Excel"
+      className={`flex items-center gap-1 text-gray-400 hover:text-teal-700 transition-colors ${small ? "p-1" : "px-2 py-1 text-[11px] border border-gray-200 rounded-md hover:border-teal-300"}`}
+    >
+      <Download className={small ? "w-3 h-3" : "w-3 h-3"} />
+      {!small && "Export"}
+    </button>
+  );
+}
 
 const getPosition = (r) =>
   r["Position_HR"] || r["Position_ABSENSI"] || r["Position_TIMESTAMP"] || r["Position_DOP"] || "-";
@@ -534,7 +569,7 @@ function UploadBox({ onFiles, label, fileNames }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, tone, onClick, subtitle }) {
+function StatCard({ icon: Icon, label, value, tone, onClick, subtitle, exportRows, exportColumns, exportFilename }) {
   const tones = {
     teal: "text-teal-700 bg-teal-100",
     amber: "text-amber-700 bg-amber-100",
@@ -543,39 +578,51 @@ function StatCard({ icon: Icon, label, value, tone, onClick, subtitle }) {
     red: "text-red-700 bg-red-100",
   };
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={`text-left bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-2.5 w-full h-full transition-colors ${
-        onClick ? "hover:border-gray-400 hover:bg-gray-100 cursor-pointer" : "cursor-default"
+    <div
+      className={`relative text-left bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-2.5 w-full h-full transition-colors ${
+        onClick ? "hover:border-gray-400 hover:bg-gray-100" : ""
       }`}
     >
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tones[tone]}`}>
-        <Icon className="w-3.5 h-3.5" />
-      </div>
-      <div className="min-w-0">
-        <div className="text-base font-bold text-gray-900 leading-none">{value.toLocaleString("id-ID")}</div>
-        <div className="text-[10px] text-gray-500 mt-1 truncate">{label}{subtitle ? ` • ${subtitle}` : ""}</div>
-      </div>
-    </button>
+      <button type="button" onClick={onClick} disabled={!onClick} className={`flex items-center gap-2.5 flex-1 min-w-0 text-left ${onClick ? "cursor-pointer" : "cursor-default"}`}>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tones[tone]}`}>
+          <Icon className="w-3.5 h-3.5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-base font-bold text-gray-900 leading-none">{value.toLocaleString("id-ID")}</div>
+          <div className="text-[10px] text-gray-500 mt-1 truncate">{label}{subtitle ? ` • ${subtitle}` : ""}</div>
+        </div>
+      </button>
+      {exportRows && (
+        <ExportButton small onClick={() => exportRowsToXlsx(exportRows, exportFilename || "export", exportColumns)} />
+      )}
+    </div>
   );
 }
 
-function Panel({ title, height, children }) {
+function Panel({ title, height, children, exportData, exportFilename }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3.5 h-full flex flex-col">
-      <div className="text-[11px] text-gray-500 mb-2">{title}</div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[11px] text-gray-500">{title}</div>
+        {exportData && exportData.length > 0 && (
+          <ExportButton small onClick={() => exportRowsToXlsx(exportData, exportFilename || "chart-data")} />
+        )}
+      </div>
       <div style={{ height }}>{children}</div>
     </div>
   );
 }
 
-function FlaggedTable({ rows, columns }) {
+function FlaggedTable({ rows, columns, exportFilename }) {
   const [open, setOpen] = useState(false);
   const shown = open ? rows.slice(0, 200) : rows.slice(0, 8);
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden w-full min-w-0 h-full flex flex-col">
+      {rows.length > 0 && (
+        <div className="flex justify-end px-2.5 pt-2">
+          <ExportButton small onClick={() => exportRowsToXlsx(rows, exportFilename || "detail", columns)} />
+        </div>
+      )}
       <div className="overflow-x-auto w-full">
         <table className="w-full text-[11px]">
           <thead>
@@ -603,12 +650,17 @@ function FlaggedTable({ rows, columns }) {
   );
 }
 
-function Leaderboard({ title, data, tone, onItemClick }) {
+function Leaderboard({ title, data, tone, onItemClick, exportFilename }) {
   const tones = { teal: "text-teal-700", indigo: "text-indigo-700" };
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3.5 h-full">
-      <div className="flex items-center gap-1.5 text-[11px] text-gray-500 mb-2.5">
-        <Trophy className="w-3.5 h-3.5" /> {title}
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+          <Trophy className="w-3.5 h-3.5" /> {title}
+        </div>
+        {data.length > 0 && (
+          <ExportButton small onClick={() => exportRowsToXlsx(data, exportFilename || "leaderboard")} />
+        )}
       </div>
       {data.length === 0 ? (
         <div className="text-xs text-gray-400">Tidak ada anomali</div>
@@ -671,9 +723,14 @@ function DetailModal({ detail, onClose }) {
             <div className="text-sm font-semibold text-gray-900 truncate">{detail.title}</div>
             <div className="text-[11px] text-gray-500">{filteredRows.length.toLocaleString("id-ID")} baris</div>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 flex-shrink-0">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {filteredRows.length > 0 && (
+              <ExportButton small onClick={() => exportRowsToXlsx(filteredRows, detail.title, detail.columns)} />
+            )}
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="px-4 pt-3">
@@ -957,14 +1014,18 @@ function DashboardPage(props) {
               {timestampResult ? (
                 <>
                   <StatCard icon={AlertTriangle} label="Zona Kurang dari 3" value={timestampResult.anomalyCounts.zone} tone="indigo"
-                    onClick={() => openDetail("Timestamp — Zona Kurang dari 3", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)} />
+                    onClick={() => openDetail("Timestamp — Zona Kurang dari 3", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+                    exportRows={filterTs((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-zona-kurang" />
                   <StatCard icon={MapPin} label="GPS Identik" value={timestampResult.anomalyCounts.gpsIdentical} tone="pink"
                     subtitle={`${timestampResult.gpsIdenticalPeople} orang`}
-                    onClick={() => openDetail("Timestamp — GPS Identik", filterTs((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)} />
+                    onClick={() => openDetail("Timestamp — GPS Identik", filterTs((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
+                    exportRows={filterTs((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-identik" />
                   <StatCard icon={FileWarning} label="GPS Tidak Ada" value={timestampResult.anomalyCounts.noCoord} tone="red"
-                    onClick={() => openDetail("Timestamp — GPS Tidak Ada", filterTs((v) => v.noCoord), TIMESTAMP_COLUMNS)} />
+                    onClick={() => openDetail("Timestamp — GPS Tidak Ada", filterTs((v) => v.noCoord), TIMESTAMP_COLUMNS)}
+                    exportRows={filterTs((v) => v.noCoord)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-tidak-ada" />
                   <StatCard icon={AlertTriangle} label="Status Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
-                    onClick={() => openDetail("Timestamp — Status Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)} />
+                    onClick={() => openDetail("Timestamp — Status Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
+                    exportRows={filterTs((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-status-non-active" />
                 </>
               ) : (
                 <div className="col-span-2 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Timestamp</div>
@@ -974,11 +1035,14 @@ function DashboardPage(props) {
               {absensiResult ? (
                 <>
                   <StatCard icon={MapPin} label="GPS Bermasalah" value={absensiResult.anomalyCounts.gps} tone="red"
-                    onClick={() => openDetail("Absensi — GPS Bermasalah", filterAb((s) => s.gpsIssue), ABSENSI_COLUMNS)} />
+                    onClick={() => openDetail("Absensi — GPS Bermasalah", filterAb((s) => s.gpsIssue), ABSENSI_COLUMNS)}
+                    exportRows={filterAb((s) => s.gpsIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-bermasalah" />
                   <StatCard icon={AlertTriangle} label="Status Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
-                    onClick={() => openDetail("Absensi — Status Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)} />
+                    onClick={() => openDetail("Absensi — Status Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
+                    exportRows={filterAb((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-status-non-active" />
                   <StatCard icon={Clock} label="Durasi Bermasalah" value={absensiResult.anomalyCounts.duration} tone="indigo"
-                    onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)} />
+                    onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)}
+                    exportRows={filterAb((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-durasi-bermasalah" />
                 </>
               ) : (
                 <div className="col-span-3 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Absensi</div>
@@ -988,7 +1052,7 @@ function DashboardPage(props) {
 
           {/* trend chart row */}
           <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0 items-stretch">
-            <Panel title="Tren Anomali per Tanggal" height={160}>
+            <Panel title="Tren Anomali per Tanggal" height={160} exportData={timestampResult?.byDate} exportFilename="timestamp-tren-tanggal">
               {timestampResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={timestampResult.byDate}>
@@ -1004,7 +1068,7 @@ function DashboardPage(props) {
                 </ResponsiveContainer>
               )}
             </Panel>
-            <Panel title="Tren Anomali per Tanggal" height={160}>
+            <Panel title="Tren Anomali per Tanggal" height={160} exportData={absensiResult?.byDate} exportFilename="absensi-tren-tanggal">
               {absensiResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={absensiResult.byDate}>
@@ -1024,7 +1088,7 @@ function DashboardPage(props) {
 
           {/* promotor type chart row */}
           <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0 items-stretch">
-            <Panel title="Anomali per Tipe Promotor" height={140}>
+            <Panel title="Anomali per Tipe Promotor" height={140} exportData={timestampResult?.byPromotorTypeChart} exportFilename="timestamp-per-tipe-promotor">
               {timestampResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={timestampResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
@@ -1040,7 +1104,7 @@ function DashboardPage(props) {
                 </ResponsiveContainer>
               )}
             </Panel>
-            <Panel title="Anomali per Tipe Promotor" height={140}>
+            <Panel title="Anomali per Tipe Promotor" height={140} exportData={absensiResult?.byPromotorTypeChart} exportFilename="absensi-per-tipe-promotor">
               {absensiResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={absensiResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
@@ -1060,7 +1124,7 @@ function DashboardPage(props) {
 
           {/* role chart row */}
           <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0 items-stretch">
-            <Panel title="Anomali per Role" height={roleChartHeight}>
+            <Panel title="Anomali per Role" height={roleChartHeight} exportData={timestampResult?.byRole} exportFilename="timestamp-per-role">
               {timestampResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={timestampResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
@@ -1076,7 +1140,7 @@ function DashboardPage(props) {
                 </ResponsiveContainer>
               )}
             </Panel>
-            <Panel title="Anomali per Role" height={roleChartHeight}>
+            <Panel title="Anomali per Role" height={roleChartHeight} exportData={absensiResult?.byRole} exportFilename="absensi-per-role">
               {absensiResult && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={absensiResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
@@ -1097,20 +1161,22 @@ function DashboardPage(props) {
           {/* leaderboard row */}
           <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0 items-stretch">
             <Leaderboard title="Top 5 Anomali per Orang (dengan Role)" data={timestampResult?.topOffenders || []} tone="teal"
-              onItemClick={(d) => openDetail(`Timestamp — ${d.name}`, filterTs((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)} />
+              onItemClick={(d) => openDetail(`Timestamp — ${d.name}`, filterTs((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
+              exportFilename="timestamp-leaderboard" />
             <Leaderboard title="Top 5 Anomali per Orang (dengan Role)" data={absensiResult?.topOffenders || []} tone="indigo"
-              onItemClick={(d) => openDetail(`Absensi — ${d.name}`, filterAb((s) => s.employee_name === d.name), ABSENSI_COLUMNS)} />
+              onItemClick={(d) => openDetail(`Absensi — ${d.name}`, filterAb((s) => s.employee_name === d.name), ABSENSI_COLUMNS)}
+              exportFilename="absensi-leaderboard" />
           </div>
 
           {/* detail table row */}
           <div className="grid md:grid-cols-2 gap-5 min-w-0 items-stretch">
             <div>
               <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag ({timestampResult?.flagged.length ?? 0}/{timestampResult?.total ?? 0})</div>
-              <FlaggedTable rows={timestampResult?.flagged || []} columns={TIMESTAMP_COLUMNS} />
+              <FlaggedTable rows={timestampResult?.flagged || []} columns={TIMESTAMP_COLUMNS} exportFilename="timestamp-detail-anomali" />
             </div>
             <div>
               <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag ({absensiResult?.flagged.length ?? 0}/{absensiResult?.total ?? 0})</div>
-              <FlaggedTable rows={absensiResult?.flagged || []} columns={ABSENSI_COLUMNS} />
+              <FlaggedTable rows={absensiResult?.flagged || []} columns={ABSENSI_COLUMNS} exportFilename="absensi-detail-anomali" />
             </div>
           </div>
         </>
@@ -1176,7 +1242,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v12</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v13</div>
       </div>
     </div>
   );
