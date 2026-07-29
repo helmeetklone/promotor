@@ -404,7 +404,15 @@ function processOutletMaster(rows) {
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
-  const n = parseFloat(v);
+  if (typeof v === "number") return Number.isNaN(v) ? null : v;
+  let s = String(v).trim();
+  // Handle Indonesian/European decimal-comma format (e.g. "112,64118") —
+  // parseFloat alone stops at the comma and silently truncates to the
+  // integer part.
+  if (/^-?\d+,\d+$/.test(s)) {
+    s = s.replace(",", ".");
+  }
+  const n = parseFloat(s);
   return Number.isNaN(n) ? null : n;
 }
 
