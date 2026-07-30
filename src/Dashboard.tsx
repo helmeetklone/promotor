@@ -1,4 +1,4 @@
-// Dashboard.tsx — v15
+// Dashboard.tsx — v17
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -29,6 +29,13 @@
 //        parseFloat berhenti di koma dan kepotong jadi "112" doang. Ini penyebab banyak GPS
 //        di Timestamp keliatan "identik" padahal aslinya beda-beda. Fix yang sama juga
 //        diterapkan ke toNum() di mergertool.html (buat parsing lat/lon Outlet Master).
+//   v16: kolom Koordinat Check-in/Check-out + Jarak In-Out (m) ditambahin ke tabel/export
+//        Absensi (biar kelihatan angkanya, bukan cuma label "GPS Jauh"); (0,0) juga sekarang
+//        dianggap GPS kosong di Absensi (konsisten sama fix di Timestamp)
+//   v17: BUG FIX PENTING #2 — GPS sekarang beneran dibandingin ke lokasi TOKO (Outlet
+//        Latitude/Longitude dari mergertool v2 OM+Outlet Master), bukan cuma check-in vs
+//        check-out satu sama lain lagi. Fallback ke in-vs-out kalau data outlet nggak ada.
+//        Berlaku utk Absensi (GPS Jauh dari Toko) dan Timestamp (kartu baru).
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -198,6 +205,15 @@ const getPosition = (r) =>
 
 const getStatus = (r) => r["Employment Status_HR"] || r["Status_DOP"] || "-";
 
+// Outlet reference coordinate, present only when the merger was run with
+// OM + Outlet Master uploaded (see mergertool.html). Falls back to null
+// when absent so callers can degrade gracefully.
+const getOutletCoord = (r) => {
+  const lat = toNum(r["Outlet Latitude"]);
+  const lon = toNum(r["Outlet Longitude"]);
+  return lat != null && lon != null ? { lat, lon } : null;
+};
+
 const isStatusAnomaly = (status) => {
   const s = String(status || "").trim().toLowerCase();
   return !!s && s !== "-" && s !== "active";
@@ -205,11 +221,13 @@ const isStatusAnomaly = (status) => {
 
 const describeFlagsTimestamp = (v) =>
   [v.zoneNotCompliant && `Zona Kurang (${v.distinctZoneCount}/3)`, v.gpsIdentical && "GPS Identik",
-   v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
+   v.farFromStore && "GPS Jauh dari Toko", v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
     .filter(Boolean).join(", ");
 
 const describeFlagsAbsensi = (s) =>
-  [s.gpsIssue && (s.noCoord ? "No-GPS" : "GPS Jauh"), s.statusAnomaly && "Status Non-Active", s.durationIssue && (s.noClockOut ? "No-Clockout" : s.shortShift ? "Durasi Pendek" : "Durasi Panjang")]
+  [s.gpsIssue && (s.noCoord ? "No-GPS" : s.usingStoreRef ? "GPS Jauh dari Toko" : "GPS Jauh (In≠Out)"),
+   s.statusAnomaly && "Status Non-Active",
+   s.durationIssue && (s.noClockOut ? "No-Clockout" : s.shortShift ? "Durasi Pendek" : "Durasi Panjang")]
     .filter(Boolean).join(", ");
 
 const TIMESTAMP_COLUMNS = [
@@ -220,6 +238,8 @@ const TIMESTAMP_COLUMNS = [
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
   { key: "coordsList", label: "Koordinat Check-in (lat, lon)" },
+  { key: "outletName", label: "Outlet", render: (v) => v.outletName || "-" },
+  { key: "distToStoreList", label: "Jarak ke Toko per Check-in (m)", render: (v) => v.distToStoreList || "-" },
   { key: "flags", label: "Flag", render: describeFlagsTimestamp },
 ];
 
@@ -229,6 +249,12 @@ const ABSENSI_COLUMNS = [
   { key: "position", label: "Role" },
   { key: "status", label: "Status" },
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
+  { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
+  { key: "coordOut", label: "Koordinat Check-out (lat, lon)" },
+  { key: "outletName", label: "Outlet", render: (r) => r.outletName || "-" },
+  { key: "distToStoreIn", label: "Jarak Check-in ke Toko (m)", render: (r) => r.distToStoreIn !== null && r.distToStoreIn !== undefined ? r.distToStoreIn.toFixed(0) : "-" },
+  { key: "distToStoreOut", label: "Jarak Check-out ke Toko (m)", render: (r) => r.distToStoreOut !== null && r.distToStoreOut !== undefined ? r.distToStoreOut.toFixed(0) : "-" },
+  { key: "moveM", label: "Jarak In-Out (m)", render: (r) => r.moveM !== null ? r.moveM.toFixed(0) : "-" },
   { key: "flags", label: "Flag", render: describeFlagsAbsensi },
 ];
 
@@ -253,18 +279,33 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     return t === "In Store Promotor" || t === "Out Store Promotor";
   });
   const shifts = scopedRows.map((r) => {
-    const latIn = toNum(r["Latitude In_ABSENSI"]);
-    const lonIn = toNum(r["Longitude In_ABSENSI"]);
-    const latOut = toNum(r["Latitude Out_ABSENSI"]);
-    const lonOut = toNum(r["Longitude Out_ABSENSI"]);
+    let latIn = toNum(r["Latitude In_ABSENSI"]);
+    let lonIn = toNum(r["Longitude In_ABSENSI"]);
+    let latOut = toNum(r["Latitude Out_ABSENSI"]);
+    let lonOut = toNum(r["Longitude Out_ABSENSI"]);
+    // (0,0) is a common sentinel for "GPS failed to capture" — treat as missing.
+    if (latIn === 0 && lonIn === 0) { latIn = null; lonIn = null; }
+    if (latOut === 0 && lonOut === 0) { latOut = null; lonOut = null; }
     const hasIn = latIn !== null && lonIn !== null;
     const hasOut = latOut !== null && lonOut !== null;
-    const distM = hasIn && hasOut ? haversineMeters({ lat: latIn, lon: lonIn }, { lat: latOut, lon: lonOut }) : null;
+    const inOutDistM = hasIn && hasOut ? haversineMeters({ lat: latIn, lon: lonIn }, { lat: latOut, lon: lonOut }) : null;
+
+    // Preferred comparison: check-in/out GPS vs the assigned OUTLET's actual
+    // coordinate (from OM + Outlet Master, joined via Sales Code in the
+    // merger tool). Falls back to comparing check-in vs check-out to each
+    // other only when no outlet reference is available in this data.
+    const outlet = getOutletCoord(r);
+    const distToStoreIn = outlet && hasIn ? haversineMeters({ lat: latIn, lon: lonIn }, outlet) : null;
+    const distToStoreOut = outlet && hasOut ? haversineMeters({ lat: latOut, lon: lonOut }, outlet) : null;
+    const usingStoreRef = !!outlet;
+    const farFromStore = usingStoreRef
+      ? (distToStoreIn !== null && distToStoreIn > moveThresholdM) || (distToStoreOut !== null && distToStoreOut > moveThresholdM)
+      : (inOutDistM !== null && inOutDistM > moveThresholdM);
+
     const durHr = toNum(r["Time Duration Adj (Hours)_ABSENSI"] ?? r["Time Duration (Hours)_ABSENSI"]);
     const position = getPosition(r);
     const status = getStatus(r);
     const noCoord = !hasIn;
-    const bigMove = distM !== null && distM > moveThresholdM;
     const noClockOut = !String(r["Time Out_ABSENSI"] || "").trim();
     const shortShift = durHr !== null && durHr < shortHr;
     const longShift = durHr !== null && durHr > longHr;
@@ -280,10 +321,16 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
       noClockOut,
       shortShift,
       longShift,
-      moveM: distM,
+      moveM: inOutDistM,
+      outletName: outlet ? (r["Outlet Name"] || "-") : null,
+      distToStoreIn,
+      distToStoreOut,
+      usingStoreRef,
+      coordIn: latIn == null ? "(kosong)" : `(${latIn}, ${lonIn})`,
+      coordOut: latOut == null ? "(kosong)" : `(${latOut}, ${lonOut})`,
       noCoord,
       // 3 currently-detectable signals given field data limitations:
-      gpsIssue: noCoord || bigMove,
+      gpsIssue: noCoord || farFromStore,
       statusAnomaly: isStatusAnomaly(status),
       durationIssue: noClockOut || shortShift || longShift,
     };
@@ -366,7 +413,7 @@ function deriveZone(v) {
 // latitude/longitude values are precisely the same, not just close.
 const coordKey = (lat, lon) => (lat == null || lon == null ? null : lat + "," + lon);
 
-function processTimestamp(rows) {
+function processTimestamp(rows, storeThresholdM) {
   // Cuma In Store Promotor & Out Store Promotor yang masuk hitungan anomali.
   const scopedRows = rows.filter((r) => {
     const t = classifyPromotorType(getPosition(r));
@@ -387,13 +434,15 @@ function processTimestamp(rows) {
     const position = getPosition(first);
     const status = getStatus(first);
 
+    const outlet = getOutletCoord(first);
     const checks = groupRows.map((r) => {
       let lat = toNum(r["Latitude In_TIMESTAMP"]);
       let lon = toNum(r["Longitude In_TIMESTAMP"]);
       // (0,0) is a common sentinel for "GPS failed to capture", not a real
       // location — treat it the same as missing, not as a valid coordinate.
       if (lat === 0 && lon === 0) { lat = null; lon = null; }
-      return { zone: deriveZone(r["Start Time_TIMESTAMP"]), lat, lon };
+      const distToStore = outlet && lat != null && lon != null ? haversineMeters({ lat, lon }, outlet) : null;
+      return { zone: deriveZone(r["Start Time_TIMESTAMP"]), lat, lon, distToStore };
     });
 
     const distinctZones = new Set(checks.map((c) => c.zone).filter(Boolean));
@@ -417,6 +466,10 @@ function processTimestamp(rows) {
     // human-readable list of every check-in's coordinate for this day, so it's
     // visible (and exportable) exactly which raw lat/lon values were compared.
     const coordsList = checks.map((c) => (c.lat == null ? "(kosong)" : `(${c.lat}, ${c.lon})`)).join(" | ");
+    const distToStoreList = outlet
+      ? checks.map((c) => (c.distToStore == null ? "-" : c.distToStore.toFixed(0))).join(" | ")
+      : null;
+    const farFromStore = outlet ? checks.some((c) => c.distToStore !== null && c.distToStore > storeThresholdM) : false;
 
     return {
       date: first["Date_TIMESTAMP"] || "-",
@@ -428,6 +481,9 @@ function processTimestamp(rows) {
       checkinCount,
       distinctZoneCount: distinctZones.size,
       coordsList,
+      outletName: outlet ? (first["Outlet Name"] || "-") : null,
+      distToStoreList,
+      farFromStore,
       zoneNotCompliant,
       gpsIdentical,
       noCoord,
@@ -436,12 +492,13 @@ function processTimestamp(rows) {
   });
 
   const total = visits.length;
-  const isFlagged = (v) => v.zoneNotCompliant || v.gpsIdentical || v.noCoord || v.statusAnomaly;
+  const isFlagged = (v) => v.zoneNotCompliant || v.gpsIdentical || v.noCoord || v.statusAnomaly || v.farFromStore;
   const anomalyCounts = {
     zone: visits.filter((v) => v.zoneNotCompliant).length,
     gpsIdentical: visits.filter((v) => v.gpsIdentical).length,
     noCoord: visits.filter((v) => v.noCoord).length,
     status: visits.filter((v) => v.statusAnomaly).length,
+    farFromStore: visits.filter((v) => v.farFromStore).length,
   };
   const gpsIdenticalPeople = new Set(visits.filter((v) => v.gpsIdentical).map((v) => v.employee_id)).size;
 
@@ -991,7 +1048,7 @@ function DashboardPage(props) {
   const openDetail = useCallback((title, rows, columns) => setDetail({ title, rows, columns }), []);
   const closeDetail = useCallback(() => setDetail(null), []);
 
-  const timestampResult = useMemo(() => timestampData ? processTimestamp(timestampData) : null, [timestampData]);
+  const timestampResult = useMemo(() => timestampData ? processTimestamp(timestampData, moveThresholdM) : null, [timestampData, moveThresholdM]);
   const absensiResult = useMemo(() => absensiData ? processAbsensi(absensiData, moveThresholdM, shortHr, longHr) : null, [absensiData, moveThresholdM, shortHr, longHr]);
   const insights = useMemo(() => computeInsights(timestampResult, absensiResult), [timestampResult, absensiResult]);
 
@@ -1012,7 +1069,7 @@ function DashboardPage(props) {
 
       {/* threshold controls row — Timestamp has none now (no duration/checkout concept for check-in-only events) */}
       <div className="mb-3 grid md:grid-cols-2 gap-5 min-w-0 items-start">
-        <div className="text-[11px] text-gray-400 italic">Tidak ada threshold — cuma cek GPS ada/nggak &amp; status employment.</div>
+        <div className="text-[11px] text-gray-400 italic">Pakai threshold GPS (m) yang sama dengan Absensi, buat cek jarak ke toko.</div>
         <div className="flex flex-wrap gap-3 items-center text-[11px] text-gray-500">
           <label className="flex items-center gap-1.5">Pendek &lt; (jam):
             <input type="number" value={shortHr} onChange={(e) => setShortHr(parseFloat(e.target.value) || 0)}
@@ -1049,6 +1106,9 @@ function DashboardPage(props) {
                   <StatCard icon={AlertTriangle} label="Status Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
                     onClick={() => openDetail("Timestamp — Status Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
                     exportRows={filterTs((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-status-non-active" />
+                  <StatCard icon={MapPin} label="GPS Jauh dari Toko" value={timestampResult.anomalyCounts.farFromStore} tone="red"
+                    onClick={() => openDetail("Timestamp — GPS Jauh dari Toko", filterTs((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
+                    exportRows={filterTs((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-jauh-dari-toko" />
                 </>
               ) : (
                 <div className="col-span-2 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Timestamp</div>
@@ -1265,7 +1325,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v15</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v17</div>
       </div>
     </div>
   );
