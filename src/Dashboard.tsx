@@ -1,4 +1,4 @@
-// Dashboard.tsx — v31
+// Dashboard.tsx — v32
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -96,6 +96,8 @@
 //        "Total Promotor" biasa; (3) angka besar "38.650 hari-kerja" di section Compliance
 //        dihapus (beda satuan, bikin bingung), dipindah jadi catatan kecil di bawah
 //        "Promotor di Timestamp" (kolom kiri) — nambah field `all` di processAbsensi juga.
+//   v32: swap nilai "Promotor di Timestamp"/"Promotor di Absensi" atas permintaan eksplisit
+//        user — labelnya tetap sama, tapi angka yang ditampilkan ditukar posisinya.
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -1186,15 +1188,15 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
           <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
             <div>
-              <div className="text-xl font-bold text-teal-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
+              <div className="text-xl font-bold text-teal-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
               <div className="text-[11px] text-gray-500 mt-1">Promotor di Timestamp</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-indigo-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
+              <div className="text-[11px] text-gray-500 mt-1">Promotor di Absensi</div>
               {timestampResult && (
                 <div className="text-[10px] text-gray-400 mt-0.5">{timestampResult.total.toLocaleString("id-ID")} hari-kerja dinilai</div>
               )}
-            </div>
-            <div>
-              <div className="text-xl font-bold text-indigo-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
-              <div className="text-[11px] text-gray-500 mt-1">Promotor di Absensi</div>
             </div>
           </div>
 
@@ -1569,7 +1571,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v31</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v32</div>
       </div>
     </div>
   );
