@@ -1,4 +1,4 @@
-// Dashboard.tsx — v22
+// Dashboard.tsx — v25
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -61,6 +61,16 @@
 //        (2) Setiap file export sekarang selalu bawa sheet "Metodologi" — dokumentasi
 //        lengkap cara hitung semua kategori anomali, biar logic-nya portable & auditable
 //        tanpa perlu buka dashboard lagi.
+//   v23: kejelasan unit — beberapa kartu udah jadi "jumlah orang/toko unik" (v21) sementara
+//        Overview Total & Key Insights masih "jumlah aktivitas/hari-kerja", bikin campur aduk.
+//        Fix: label "Total Anomali Promotor" -> "Total Aktivitas Anomali" (lebih akurat, itu
+//        bukan hitungan orang); Key Insights dikasih catatan unit eksplisit + 1 insight baru
+//        yang nge-bridge ke angka jumlah-orang/toko biar nggak keliatan dua angka yang beda dunia.
+//   v24: (1) fix tanggal mentah (ISO timestamp) di Key Insights, sekarang diformat rapi lewat
+//        formatDateShort(); (2) layout — header Overview Total jadi grid 3 kolom eksplisit;
+//        grid stat card Absensi diganti dari 3 kolom ke 2 kolom biar label kayak
+//        "#Promotor GPS Jauh dari Toko" nggak kepotong lagi
+//   v25: hapus insight "Tanggal terparah" (Timestamp & Absensi) dari Key Insights
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -713,23 +723,17 @@ function computeInsights(timestampResult, absensiResult) {
 
   if (timestampResult && timestampResult.total > 0) {
     const rate = ((timestampResult.flagged.length / timestampResult.total) * 100).toFixed(1);
-    insights.push(`Timestamp: ${rate}% dari ${timestampResult.total.toLocaleString("id-ID")} hari-kerja (karyawan x tanggal) terindikasi anomali.`);
+    insights.push(`Timestamp: ${rate}% dari ${timestampResult.total.toLocaleString("id-ID")} hari-kerja (karyawan x tanggal, bukan jumlah orang) terindikasi anomali.`);
     if (timestampResult.worstRole && timestampResult.worstRole.anomali > 0) {
       insights.push(`Role dengan anomali Timestamp terbanyak: ${timestampResult.worstRole.role} (${timestampResult.worstRole.anomali} dari ${timestampResult.worstRole.total}).`);
-    }
-    if (timestampResult.worstDate && timestampResult.worstDate.anomali > 0) {
-      insights.push(`Tanggal terparah untuk Timestamp: ${timestampResult.worstDate.date} (${timestampResult.worstDate.anomali} anomali).`);
     }
   }
 
   if (absensiResult && absensiResult.total > 0) {
     const rate = ((absensiResult.flagged.length / absensiResult.total) * 100).toFixed(1);
-    insights.push(`Absensi: ${rate}% dari ${absensiResult.total.toLocaleString("id-ID")} shift terindikasi anomali.`);
+    insights.push(`Absensi: ${rate}% dari ${absensiResult.total.toLocaleString("id-ID")} shift (bukan jumlah orang) terindikasi anomali.`);
     if (absensiResult.worstRole && absensiResult.worstRole.anomali > 0) {
       insights.push(`Role dengan anomali Absensi terbanyak: ${absensiResult.worstRole.role} (${absensiResult.worstRole.anomali} dari ${absensiResult.worstRole.total}).`);
-    }
-    if (absensiResult.worstDate && absensiResult.worstDate.anomali > 0) {
-      insights.push(`Tanggal terparah untuk Absensi: ${absensiResult.worstDate.date} (${absensiResult.worstDate.anomali} anomali).`);
     }
   }
 
@@ -738,6 +742,15 @@ function computeInsights(timestampResult, absensiResult) {
     const aRate = absensiResult.flagged.length / absensiResult.total;
     if (tRate > aRate * 1.2) insights.push("Anomali lebih banyak muncul di data Timestamp (journey) dibanding Absensi.");
     else if (aRate > tRate * 1.2) insights.push("Anomali lebih banyak muncul di data Absensi (attendance) dibanding Timestamp.");
+  }
+
+  // Bridge to the "jumlah orang/toko" framing used on the stat cards below,
+  // so the row-based percentages above and the people/store counts don't
+  // read as two disconnected numbers.
+  const gpsFarPeople = (timestampResult?.anomalyCounts.farFromStore ?? 0) + (absensiResult?.anomalyCounts.gpsFar ?? 0);
+  const gpsNoOutletToko = Math.max(timestampResult?.anomalyCounts.noOutletData ?? 0, absensiResult?.anomalyCounts.gpsNoOutlet ?? 0);
+  if (gpsFarPeople > 0 || gpsNoOutletToko > 0) {
+    insights.push(`Dari sisi jumlah orang/toko: ${gpsFarPeople} promotor (unik) ke-flag GPS jauh dari toko, dan ${gpsNoOutletToko} toko (unik) datanya belum lengkap buat dicek.`);
   }
 
   const combinedTop = new Map();
@@ -1096,13 +1109,13 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">
         Overview Total — Timestamp (Journey) + Absensi (Attendance)
       </div>
-      <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+      <div className="grid grid-cols-3 gap-4">
         <Num
           value={combinedTotal.toLocaleString("id-ID")}
-          className="text-3xl font-bold text-gray-900 leading-none"
+          className="text-2xl sm:text-3xl font-bold text-gray-900 leading-none"
           onClick={() => onDetail("Semua Anomali", combinedFlagged(), mixedColumns)}
         >
-          <div className="text-[11px] text-gray-500 mt-1">Total Anomali Promotor</div>
+          <div className="text-[11px] text-gray-500 mt-1">Total Aktivitas Anomali (hari-kerja + shift, bukan jumlah orang)</div>
         </Num>
         <Num
           value={timestampTotal}
@@ -1273,7 +1286,7 @@ function DashboardPage(props) {
                 <div className="col-span-2 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Timestamp</div>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5">
               {absensiResult ? (
                 <>
                   <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={absensiResult.anomalyCounts.gpsFar} tone="red"
@@ -1285,12 +1298,12 @@ function DashboardPage(props) {
                   <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
                     onClick={() => openDetail("Absensi — Promotor Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
                     exportRows={filterAb((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-status-non-active" />
-                  <StatCard icon={Clock} label="Durasi Bermasalah" value={absensiResult.anomalyCounts.duration} tone="indigo"
+                  <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={absensiResult.anomalyCounts.duration} tone="indigo"
                     onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)}
                     exportRows={filterAb((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-durasi-bermasalah" />
                 </>
               ) : (
-                <div className="col-span-3 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Absensi</div>
+                <div className="col-span-2 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Absensi</div>
               )}
             </div>
           </div>
@@ -1487,7 +1500,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v22</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v25</div>
       </div>
     </div>
   );
