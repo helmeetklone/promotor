@@ -1,4 +1,4 @@
-// Dashboard.tsx — v20
+// Dashboard.tsx — v22
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -44,6 +44,23 @@
 //   v20: BUG FIX — kartu "GPS Bermasalah" Absensi kemarin gabungin 3 hal beda jadi 1 angka
 //        (GPS jauh + GPS kosong + GPS Toko N/A), bikin kelihatan bengkak. Sekarang dipecah
 //        jadi 3 kartu terpisah. Timestamp juga ditambahin kartu "GPS Toko N/A" biar konsisten.
+//   v21: rename istilah + ganti metrik jadi lebih actionable:
+//        - "#Absensi <3x/hari" (dulu "Zona Kurang dari 3") — tetap hit-count
+//        - GPS Identik sekarang pakai satuan "Hits", subtitle "X Promotor"
+//        - "GPS Tidak Ada" dihapus dari tampilan (bikin bingung, nol terus)
+//        - "#Promotor Non-Active", "#Promotor GPS Jauh dari Toko" — sekarang hitung ORANG unik,
+//          bukan jumlah baris/hit
+//        - "#Toko GPS N/A" — sekarang hitung TOKO unik (dari Outlet Code), bukan jumlah baris
+//        - BUG FIX: farFromStore kelupaan gak ke-simpen di object shift Absensi, jadi hitungan
+//          unique-nya sebelumnya selalu 0 — udah dibenerin & ditest
+//   v22: (1) FIX FAIRNESS — status Non-Active sekarang cuma di-flag kalau tanggal absen
+//        TERBUKTI setelah End Date (resign) di HR/DOP; status non-Active tanpa End Date buat
+//        dibandingin TIDAK lagi di-flag (dulu keliru diframe sebagai "sistem jebol" — itu
+//        cuma snapshot HR hari ini, bukan bukti pelanggaran). Kolom "End Date (Resign)"
+//        ditambahin ke tabel/export biar bisa diverifikasi manual.
+//        (2) Setiap file export sekarang selalu bawa sheet "Metodologi" — dokumentasi
+//        lengkap cara hitung semua kategori anomali, biar logic-nya portable & auditable
+//        tanpa perlu buka dashboard lagi.
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -179,6 +196,57 @@ const splitByRecordType = (rows) => {
 // column-spec objects used by the on-screen tables), the exported sheet
 // mirrors exactly what's shown on screen (using each column's render() where
 // present); otherwise the raw row objects are exported as-is.
+// Full calculation methodology, embedded as a second sheet in every export
+// so the logic travels WITH the data — auditable without needing the
+// dashboard open. Kept as one comprehensive document (rather than picking
+// a subset per button) so nothing is ever missing from an export by
+// accident.
+const METHODOLOGY_LINES = [
+  ["METODOLOGI PERHITUNGAN ANOMALI PROMOTOR"],
+  [`Diexport: ${new Date().toLocaleString("id-ID")}`],
+  [""],
+  ["Catatan penting: dashboard ini titik AWAL investigasi, bukan bukti final. Kroscek manual"],
+  ["dianjurkan sebelum dipakai untuk keputusan apapun ke karyawan."],
+  [""],
+  ["1. #ABSENSI <3x/HARI (Timestamp)"],
+  ["   Dihitung per kombinasi Karyawan + Tanggal (bukan per baris check-in mentah)."],
+  ["   Tiap check-in dikelompokkan ke 1 zona waktu berdasar jam Start Time:"],
+  ["   Pagi (07-10), Siang (11-14), Sore (15-18), Malam 1 (19-22), Malam 2 (23-00)."],
+  ["   Comply jika jumlah ZONA BERBEDA yang tercapai dalam 1 hari >= 3."],
+  ["   Check-in berulang di zona yang sama TIDAK menambah hitungan zona."],
+  [""],
+  ["2. GPS IDENTIK (Timestamp)"],
+  ["   Dalam 1 hari yang sama, dicek apakah ada 2+ check-in dengan koordinat lat/lon yang"],
+  ["   PERSIS SAMA (exact match, bukan dibulatkan). (0,0) dianggap GPS kosong, bukan lokasi valid."],
+  [""],
+  ["3. GPS JAUH DARI TOKO (Timestamp & Absensi)"],
+  ["   Jarak dihitung pakai formula Haversine (jarak permukaan bumi dari lat/lon)."],
+  ["   Absensi: dibandingkan GPS Check-in DAN Check-out vs koordinat Outlet (toko)."],
+  ["   Timestamp: tiap check-in di hari itu dibandingkan vs koordinat Outlet."],
+  ["   Kalau jarak > threshold GPS (m) yang diset di panel kontrol -> di-flag."],
+  ["   Koordinat Outlet didapat dari: Employee -> Sales Code -> file OM -> Outlet Code ->"],
+  ["   file Outlet Master -> Latitude/Longitude toko (di-generate lewat mergertool)."],
+  [""],
+  ["4. GPS TOKO N/A (Timestamp & Absensi)"],
+  ["   Muncul kalau rantai pencarian di atas GAGAL (Sales Code tidak ketemu di OM, atau Outlet"],
+  ["   Code tidak ketemu koordinatnya di Outlet Master) -- BUKAN klaim GPS jauh, murni data"],
+  ["   belum lengkap. Dihitung sebagai jumlah TOKO unik (Outlet Code) yang kekurangan data,"],
+  ["   bukan jumlah baris/kejadian."],
+  [""],
+  ["5. #PROMOTOR NON-ACTIVE (Timestamp & Absensi)"],
+  ["   HANYA di-flag kalau tanggal record (absen/check-in) TERBUKTI setelah tanggal End Date"],
+  ["   (tanggal resign) di data HR/DOP. Status \"non-Active\" hari ini SAJA (tanpa End Date yang"],
+  ["   bisa dibandingkan) TIDAK di-flag -- itu cuma snapshot HR hari export, bukan bukti"],
+  ["   pelanggaran. Dihitung sebagai jumlah PROMOTOR unik, bukan jumlah baris."],
+  [""],
+  ["6. DURASI BERMASALAH (Absensi)"],
+  ["   Shift kerja (Time Duration) lebih pendek dari threshold \"Pendek <\" ATAU lebih panjang"],
+  ["   dari threshold \"Panjang >\", ATAU tidak ada jam Clock-out sama sekali."],
+  [""],
+  ["Kunci join antar file (di mergertool): Employee ID (Employee No/Employee Number)."],
+  ["Kunci join ke data Outlet: Sales Code (Employee) -> OM -> Outlet Code -> Outlet Master."],
+];
+
 function exportRowsToXlsx(rows, filename, columns) {
   if (!rows || rows.length === 0) return;
   const data = columns
@@ -191,6 +259,9 @@ function exportRowsToXlsx(rows, filename, columns) {
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Data");
+  const methodWs = XLSX.utils.aoa_to_sheet(METHODOLOGY_LINES);
+  methodWs["!cols"] = [{ wch: 100 }];
+  XLSX.utils.book_append_sheet(wb, methodWs, "Metodologi");
   XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : filename + ".xlsx");
 }
 
@@ -222,10 +293,44 @@ const getOutletCoord = (r) => {
   return lat != null && lon != null ? { lat, lon } : null;
 };
 
-const isStatusAnomaly = (status) => {
+// Parses a date value that may already be a Date object, an Excel serial
+// number, or a date string, returning a comparable Date (or null).
+function formatDateShort(v) {
+  const d = parseAnyDate(v);
+  if (!d) return "-";
+  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function parseAnyDate(v) {
+  if (v == null || v === "" || v === "-") return null;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+  if (typeof v === "number") {
+    const epoch = Date.UTC(1899, 11, 30);
+    return new Date(epoch + v * 86400000);
+  }
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Fair status-anomaly check: only flags when we can PROVE the attendance/
+// journey record happened AFTER the employee's resignation date (End Date).
+// A status that is simply "not Active today" is NOT enough on its own —
+// that only reflects today's HR snapshot, not the status on the day the
+// record happened, so flagging on that alone would be misleading (it does
+// NOT mean the attendance system let a resigned employee clock in).
+function checkStatusAnomaly(status, recordDateVal, endDateVal) {
   const s = String(status || "").trim().toLowerCase();
-  return !!s && s !== "-" && s !== "active";
-};
+  const isNonActive = !!s && s !== "-" && s !== "active";
+  if (!isNonActive) return { flagged: false, verified: true };
+  const recordDate = parseAnyDate(recordDateVal);
+  const endDate = parseAnyDate(endDateVal);
+  if (recordDate && endDate) {
+    return { flagged: recordDate > endDate, verified: true };
+  }
+  // Non-active but no End Date to compare against — can't verify timing,
+  // so we do NOT flag (avoids an unfair claim we can't back up).
+  return { flagged: false, verified: false };
+}
 
 const describeFlagsTimestamp = (v) =>
   [v.zoneNotCompliant && `Zona Kurang (${v.distinctZoneCount}/3)`, v.gpsIdentical && "GPS Identik",
@@ -246,6 +351,7 @@ const TIMESTAMP_COLUMNS = [
   { key: "employee_name", label: "Nama" },
   { key: "position", label: "Role" },
   { key: "status", label: "Status" },
+  { key: "endDate", label: "End Date (Resign)", render: (v) => v.endDate ? formatDateShort(v.endDate) : "-" },
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
   { key: "coordsList", label: "Koordinat Check-in (lat, lon)" },
@@ -259,6 +365,7 @@ const ABSENSI_COLUMNS = [
   { key: "employee_name", label: "Nama" },
   { key: "position", label: "Role" },
   { key: "status", label: "Status" },
+  { key: "endDate", label: "End Date (Resign)", render: (r) => r.endDate ? formatDateShort(r.endDate) : "-" },
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
   { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
   { key: "coordOut", label: "Koordinat Check-out (lat, lon)" },
@@ -321,6 +428,8 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     const durHr = toNum(r["Time Duration Adj (Hours)_ABSENSI"] ?? r["Time Duration (Hours)_ABSENSI"]);
     const position = getPosition(r);
     const status = getStatus(r);
+    const endDate = r["End Date_HR"] ?? r["End Date_DOP"] ?? null;
+    const statusCheck = checkStatusAnomaly(status, r["Date_ABSENSI"], endDate);
     const noCoord = !hasIn;
     const noClockOut = !String(r["Time Out_ABSENSI"] || "").trim();
     const shortShift = durHr !== null && durHr < shortHr;
@@ -339,11 +448,13 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
       longShift,
       moveM: inOutDistM,
       outletName: outlet ? (r["Outlet Name"] || "-") : null,
+      rawOutletCode: r["Outlet Code"] || null,
       distToStoreIn,
       distToStoreOut,
       maxStoreDist,
       usingStoreRef,
       noOutletData,
+      farFromStore,
       coordIn: latIn == null ? "(kosong)" : `(${latIn}, ${lonIn})`,
       coordOut: latOut == null ? "(kosong)" : `(${latOut}, ${lonOut})`,
       noCoord,
@@ -351,22 +462,27 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
       // Outlet Data" surfaces here too (not as a real GPS claim) so the gap
       // is visible instead of silently passing through unflagged.
       gpsIssue: noCoord || farFromStore || noOutletData,
-      statusAnomaly: isStatusAnomaly(status),
+      endDate,
+      statusAnomaly: statusCheck.flagged,
+      statusUnverified: !statusCheck.verified,
       durationIssue: noClockOut || shortShift || longShift,
     };
   });
 
   const total = shifts.length;
   const isFlagged = (s) => s.gpsIssue || s.statusAnomaly || s.durationIssue;
+  const uniquePeople = (pred) => new Set(shifts.filter(pred).map((s) => s.employee_id).filter(Boolean)).size;
+  const uniqueOutlets = (pred) => new Set(shifts.filter(pred).map((s) => s.rawOutletCode).filter(Boolean)).size;
+
   const anomalyCounts = {
     // GPS is split into 3 distinct signals instead of one bucket — lumping
     // them together previously made "missing outlet data" (a data-completeness
     // gap, not real GPS misbehavior) inflate the same number as genuine
     // far-from-store cases.
-    gpsFar: shifts.filter((s) => s.farFromStore).length,
+    gpsFar: uniquePeople((s) => s.farFromStore), // # promotor (unique), not hit-count
     gpsNoCoord: shifts.filter((s) => s.noCoord).length,
-    gpsNoOutlet: shifts.filter((s) => s.noOutletData).length,
-    status: shifts.filter((s) => s.statusAnomaly).length,
+    gpsNoOutlet: uniqueOutlets((s) => s.noOutletData), // # toko (unique), not hit-count
+    status: uniquePeople((s) => s.statusAnomaly), // # promotor (unique), not hit-count
     duration: shifts.filter((s) => s.durationIssue).length,
   };
 
@@ -459,6 +575,8 @@ function processTimestamp(rows, storeThresholdM) {
     const first = groupRows[0];
     const position = getPosition(first);
     const status = getStatus(first);
+    const endDate = first["End Date_HR"] ?? first["End Date_DOP"] ?? null;
+    const statusCheck = checkStatusAnomaly(status, first["Date_TIMESTAMP"], endDate);
 
     const outlet = getOutletCoord(first);
     const checks = groupRows.map((r) => {
@@ -514,6 +632,7 @@ function processTimestamp(rows, storeThresholdM) {
       distinctZoneCount: distinctZones.size,
       coordsList,
       outletName: outlet ? (first["Outlet Name"] || "-") : null,
+      rawOutletCode: first["Outlet Code"] || null,
       distToStoreList,
       maxStoreDist,
       farFromStore,
@@ -521,19 +640,24 @@ function processTimestamp(rows, storeThresholdM) {
       zoneNotCompliant,
       gpsIdentical,
       noCoord,
-      statusAnomaly: isStatusAnomaly(status),
+      endDate,
+      statusAnomaly: statusCheck.flagged,
+      statusUnverified: !statusCheck.verified,
     };
   });
 
   const total = visits.length;
   const isFlagged = (v) => v.zoneNotCompliant || v.gpsIdentical || v.noCoord || v.statusAnomaly || v.farFromStore;
+  const uniquePeopleTs = (pred) => new Set(visits.filter(pred).map((v) => v.employee_id).filter(Boolean)).size;
+  const uniqueOutletsTs = (pred) => new Set(visits.filter(pred).map((v) => v.rawOutletCode).filter(Boolean)).size;
+
   const anomalyCounts = {
-    zone: visits.filter((v) => v.zoneNotCompliant).length,
-    gpsIdentical: visits.filter((v) => v.gpsIdentical).length,
+    zone: visits.filter((v) => v.zoneNotCompliant).length, // # absensi <3x/hari (hit-count)
+    gpsIdentical: visits.filter((v) => v.gpsIdentical).length, // Hits
     noCoord: visits.filter((v) => v.noCoord).length,
-    status: visits.filter((v) => v.statusAnomaly).length,
-    farFromStore: visits.filter((v) => v.farFromStore).length,
-    noOutletData: visits.filter((v) => v.noOutletData).length,
+    status: uniquePeopleTs((v) => v.statusAnomaly), // # promotor (unique), not hit-count
+    farFromStore: uniquePeopleTs((v) => v.farFromStore), // # promotor (unique), not hit-count
+    noOutletData: uniqueOutletsTs((v) => v.noOutletData), // # toko (unique), not hit-count
   };
   const gpsIdenticalPeople = new Set(visits.filter((v) => v.gpsIdentical).map((v) => v.employee_id)).size;
 
@@ -684,7 +808,7 @@ function UploadBox({ onFiles, label, fileNames }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, tone, onClick, subtitle, exportRows, exportColumns, exportFilename }) {
+function StatCard({ icon: Icon, label, value, tone, onClick, subtitle, unit, exportRows, exportColumns, exportFilename }) {
   const tones = {
     teal: "text-teal-700 bg-teal-100",
     amber: "text-amber-700 bg-amber-100",
@@ -703,7 +827,7 @@ function StatCard({ icon: Icon, label, value, tone, onClick, subtitle, exportRow
           <Icon className="w-3.5 h-3.5" />
         </div>
         <div className="min-w-0">
-          <div className="text-base font-bold text-gray-900 leading-none">{value.toLocaleString("id-ID")}</div>
+          <div className="text-base font-bold text-gray-900 leading-none">{value.toLocaleString("id-ID")}{unit ? ` ${unit}` : ""}</div>
           <div className="text-[10px] text-gray-500 mt-1 truncate">{label}{subtitle ? ` • ${subtitle}` : ""}</div>
         </div>
       </button>
@@ -1128,23 +1252,20 @@ function DashboardPage(props) {
             <div className="grid grid-cols-2 gap-2.5">
               {timestampResult ? (
                 <>
-                  <StatCard icon={AlertTriangle} label="Zona Kurang dari 3" value={timestampResult.anomalyCounts.zone} tone="indigo"
-                    onClick={() => openDetail("Timestamp — Zona Kurang dari 3", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
-                    exportRows={filterTs((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-zona-kurang" />
-                  <StatCard icon={MapPin} label="GPS Identik" value={timestampResult.anomalyCounts.gpsIdentical} tone="pink"
-                    subtitle={`${timestampResult.gpsIdenticalPeople} orang`}
+                  <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={timestampResult.anomalyCounts.zone} tone="indigo"
+                    onClick={() => openDetail("Timestamp — Absensi <3x/hari", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+                    exportRows={filterTs((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-absensi-kurang-3x" />
+                  <StatCard icon={MapPin} label="GPS Identik" unit="Hits" value={timestampResult.anomalyCounts.gpsIdentical} tone="pink"
+                    subtitle={`${timestampResult.gpsIdenticalPeople} Promotor`}
                     onClick={() => openDetail("Timestamp — GPS Identik", filterTs((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
                     exportRows={filterTs((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-identik" />
-                  <StatCard icon={FileWarning} label="GPS Tidak Ada" value={timestampResult.anomalyCounts.noCoord} tone="red"
-                    onClick={() => openDetail("Timestamp — GPS Tidak Ada", filterTs((v) => v.noCoord), TIMESTAMP_COLUMNS)}
-                    exportRows={filterTs((v) => v.noCoord)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-tidak-ada" />
-                  <StatCard icon={AlertTriangle} label="Status Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
-                    onClick={() => openDetail("Timestamp — Status Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
+                  <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
+                    onClick={() => openDetail("Timestamp — Promotor Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
                     exportRows={filterTs((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-status-non-active" />
-                  <StatCard icon={MapPin} label="GPS Jauh dari Toko" value={timestampResult.anomalyCounts.farFromStore} tone="red"
+                  <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={timestampResult.anomalyCounts.farFromStore} tone="red"
                     onClick={() => openDetail("Timestamp — GPS Jauh dari Toko", filterTs((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
                     exportRows={filterTs((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-jauh-dari-toko" />
-                  <StatCard icon={MapPin} label="GPS Toko N/A" value={timestampResult.anomalyCounts.noOutletData} tone="pink"
+                  <StatCard icon={MapPin} label="#Toko GPS N/A" value={timestampResult.anomalyCounts.noOutletData} tone="pink"
                     onClick={() => openDetail("Timestamp — GPS Toko N/A", filterTs((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
                     exportRows={filterTs((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-toko-na" />
                 </>
@@ -1155,17 +1276,14 @@ function DashboardPage(props) {
             <div className="grid grid-cols-3 gap-2.5">
               {absensiResult ? (
                 <>
-                  <StatCard icon={MapPin} label="GPS Jauh dari Toko" value={absensiResult.anomalyCounts.gpsFar} tone="red"
+                  <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={absensiResult.anomalyCounts.gpsFar} tone="red"
                     onClick={() => openDetail("Absensi — GPS Jauh dari Toko", filterAb((s) => s.farFromStore), ABSENSI_COLUMNS)}
                     exportRows={filterAb((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-jauh-dari-toko" />
-                  <StatCard icon={FileWarning} label="GPS Tidak Ada" value={absensiResult.anomalyCounts.gpsNoCoord} tone="red"
-                    onClick={() => openDetail("Absensi — GPS Tidak Ada", filterAb((s) => s.noCoord), ABSENSI_COLUMNS)}
-                    exportRows={filterAb((s) => s.noCoord)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-tidak-ada" />
-                  <StatCard icon={MapPin} label="GPS Toko N/A" value={absensiResult.anomalyCounts.gpsNoOutlet} tone="pink"
+                  <StatCard icon={MapPin} label="#Toko GPS N/A" value={absensiResult.anomalyCounts.gpsNoOutlet} tone="pink"
                     onClick={() => openDetail("Absensi — GPS Toko N/A", filterAb((s) => s.noOutletData), ABSENSI_COLUMNS)}
                     exportRows={filterAb((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-toko-na" />
-                  <StatCard icon={AlertTriangle} label="Status Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
-                    onClick={() => openDetail("Absensi — Status Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
+                  <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
+                    onClick={() => openDetail("Absensi — Promotor Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
                     exportRows={filterAb((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-status-non-active" />
                   <StatCard icon={Clock} label="Durasi Bermasalah" value={absensiResult.anomalyCounts.duration} tone="indigo"
                     onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)}
@@ -1369,7 +1487,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v20</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v22</div>
       </div>
     </div>
   );
