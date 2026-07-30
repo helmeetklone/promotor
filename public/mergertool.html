@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- mergertool.html — v2: tambah OM + Outlet Master (opsional) buat enrichment outlet assignment & koordinat -->
+<!-- mergertool.html — v3
+     v2: tambah OM + Outlet Master (opsional) buat enrichment outlet assignment & koordinat
+     v3: (1) fix toNum() salah parse desimal-koma Indonesia; (2) City/Kecamatan/Kelurahan/Provinsi
+         hasil parsing Address In; (3) Filter Role + checkbox per-baris sebelum export
+-->
 <title>Promotor Anomaly Merge</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -114,6 +118,9 @@
     gap: 12px; margin-bottom: 24px;
   }
   .stat-card { border-radius: 10px; border: 1px solid var(--border); background: var(--panel); padding: 16px; }
+  .card { border-radius: 10px; border: 1px solid var(--border); background: var(--panel); padding: 14px; }
+  .role-chip { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
+  .role-chip input { accent-color: var(--accent); }
   .stat-label { font-family: monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 0 0 4px; }
   .stat-value { font-family: monospace; font-size: 20px; font-weight: 700; margin: 0; }
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
@@ -140,7 +147,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; Outlet &rarr; 1 tabel deteksi &middot; v2</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; Outlet &rarr; 1 tabel deteksi &middot; v3</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -159,9 +166,21 @@
     <div class="stats" id="statsContainer"></div>
     <div class="warn-box" id="warnBox"></div>
     <div class="legend" id="legendContainer"></div>
-    <div class="actions-row" style="gap: 8px;">
-      <button class="ghost" id="downloadCsvBtn" type="button">&#8595; Download CSV (lebih cepat)</button>
-      <button class="primary" id="downloadBtn" type="button">&#8595; Download Excel</button>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <div style="font-size:13px; font-weight:600;">Filter Role</div>
+        <button class="ghost" id="roleFilterAllBtn" type="button" style="padding:4px 10px; font-size:11px;">Pilih semua</button>
+      </div>
+      <div id="roleFilterList" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+    </div>
+
+    <div class="actions-row" style="gap: 8px; justify-content: space-between;">
+      <p class="note" id="selectionNote" style="margin:0;"></p>
+      <div style="display:flex; gap:8px;">
+        <button class="ghost" id="downloadCsvBtn" type="button">&#8595; Download CSV (lebih cepat)</button>
+        <button class="primary" id="downloadBtn" type="button">&#8595; Download Excel</button>
+      </div>
     </div>
     <p class="note" id="cappedNote" style="display:none;"></p>
     <div class="table-wrap">
@@ -189,11 +208,13 @@ const SLOTS = [
 const CATEGORY_COLORS = {
   gps: "#FF6B6B", waktu: "#FFD966", remark: "#C39BD3",
   status: "#5DADE2", posisi: "#58D68D", timing: "#F0B27A", id: "#9CA3AF", outlet: "#22D3EE",
+  wilayah: "#A78BFA",
 };
 const CATEGORY_LABEL = {
   gps: "GPS / Lokasi", waktu: "Jam Kerja / Durasi", remark: "Remark / Catatan",
   status: "Status Employment", posisi: "Posisi / Tipe", timing: "Tanggal Input", id: "Identitas",
   outlet: "Outlet Assignment (dari OM + Outlet Master)",
+  wilayah: "Wilayah (City/Kecamatan/Kelurahan, hasil parsing Address)",
 };
 
 const ID_COLS = ["Employee ID", "Record_Type", "Employee Name_ABSENSI", "Employee Name_TIMESTAMP"];
@@ -215,6 +236,8 @@ const CATEGORY_MAP = {
   "Date_TIMESTAMP": "timing", "Date In_TIMESTAMP": "timing", "Creation Date_TIMESTAMP": "timing",
   "Created Date_DOP": "timing", "Join Date_DOP": "timing",
   "Outlet Code": "outlet", "Outlet Name": "outlet", "Outlet Latitude": "outlet", "Outlet Longitude": "outlet",
+  "City_ABSENSI": "wilayah", "Kecamatan_ABSENSI": "wilayah", "Kelurahan_ABSENSI": "wilayah", "Province_ABSENSI": "wilayah",
+  "City_TIMESTAMP": "wilayah", "Kecamatan_TIMESTAMP": "wilayah", "Kelurahan_TIMESTAMP": "wilayah", "Province_TIMESTAMP": "wilayah",
 };
 
 function neededRawColumnsFor(suffix) {
@@ -402,6 +425,51 @@ function processOutletMaster(rows) {
   return { data, resolvedKeys: { idKey, nameKey, latKey, lonKey, combinedKey } };
 }
 
+// Best-effort parse of Indonesian reverse-geocoded address strings into
+// Province/City/Kecamatan/Kelurahan. Real addresses are inconsistently
+// formatted (some explicitly say "Kecamatan X", some don't; occasionally an
+// admin-area name repeats at two levels) so this can't be 100% reliable —
+// the original Address In/Out columns are always kept alongside so anything
+// uncertain can be checked manually.
+const INDONESIA_PROVINCES = [
+  "Aceh", "Sumatera Utara", "Sumatra Utara", "Sumatera Barat", "Sumatra Barat", "Riau",
+  "Kepulauan Riau", "Jambi", "Sumatera Selatan", "Sumatra Selatan", "Bangka Belitung",
+  "Kepulauan Bangka Belitung", "Bengkulu", "Lampung", "DKI Jakarta", "Jakarta",
+  "Jawa Barat", "Jawa Tengah", "DI Yogyakarta", "Daerah Istimewa Yogyakarta", "Yogyakarta",
+  "Jawa Timur", "Banten", "Bali", "Nusa Tenggara Barat", "Nusa Tenggara Timur",
+  "Kalimantan Barat", "Kalimantan Tengah", "Kalimantan Selatan", "Kalimantan Timur",
+  "Kalimantan Utara", "Sulawesi Utara", "Gorontalo", "Sulawesi Tengah", "Sulawesi Barat",
+  "Sulawesi Selatan", "Sulawesi Tenggara", "Maluku", "Maluku Utara", "Papua",
+  "Papua Barat", "Papua Tengah", "Papua Pegunungan", "Papua Selatan", "Papua Barat Daya",
+];
+
+function parseAddressParts(address) {
+  if (!address) return { province: null, city: null, kecamatan: null, kelurahan: null };
+  let parts = String(address).split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length && /indonesia/i.test(parts[parts.length - 1])) parts.pop();
+  if (parts.length) {
+    const last = parts[parts.length - 1];
+    if (/^\d{4,5}$/.test(last)) parts.pop();
+    else parts[parts.length - 1] = last.replace(/\s*\d{4,5}$/, "").trim();
+  }
+  let province = null;
+  const provIdx = parts.findIndex((p) => INDONESIA_PROVINCES.some((pv) => p.toLowerCase() === pv.toLowerCase()));
+  if (provIdx !== -1) { province = parts[provIdx]; parts.splice(provIdx); }
+  let kecamatan = null;
+  const kecIdx = parts.findIndex((p) => /^kecamatan\s+/i.test(p) || /^kec\.\s*/i.test(p));
+  if (kecIdx !== -1) { kecamatan = parts[kecIdx].replace(/^kecamatan\s+|^kec\.\s*/i, "").trim(); parts.splice(kecIdx, 1); }
+  let kelurahan = null;
+  const kelIdx = parts.findIndex((p) => /^kelurahan\s+/i.test(p) || /^desa\s+/i.test(p));
+  if (kelIdx !== -1) { kelurahan = parts[kelIdx].replace(/^kelurahan\s+|^desa\s+/i, "").trim(); parts.splice(kelIdx, 1); }
+  let city = null;
+  const cityIdx = parts.findIndex((p) => /^kota\s+/i.test(p) || /^kabupaten\s+/i.test(p) || /^kab\.\s*/i.test(p));
+  if (cityIdx !== -1) { city = parts[cityIdx]; parts.splice(cityIdx, 1); }
+  else if (parts.length) { city = parts.pop(); }
+  if (!kecamatan && parts.length) kecamatan = parts.pop();
+  if (!kelurahan && parts.length) kelurahan = parts[parts.length - 1];
+  return { province, city, kecamatan, kelurahan };
+}
+
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
   if (typeof v === "number") return Number.isNaN(v) ? null : v;
@@ -504,7 +572,17 @@ const state = {
   headers: {},    // slotKey -> array of header names (kept for preview)
   status: {},     // slotKey -> "reading" | "ok" | "error"
   result: null,
+  excludedRoles: new Set(),   // role values unchecked in the Filter Role list
+  excludedRowIndices: new Set(), // individual row indices unchecked in the table (applies to the on-screen 500-row cap)
 };
+
+const getRowRole = (row) => row["Position_HR"] || row["Position_ABSENSI"] || row["Position_TIMESTAMP"] || row["Position_DOP"] || "-";
+
+function getFilteredRows() {
+  const r = state.result;
+  if (!r) return [];
+  return r.rows.filter((row, i) => !state.excludedRowIndices.has(i) && !state.excludedRoles.has(getRowRole(row)));
+}
 
 function el(tag, props, children) {
   const e = document.createElement(tag);
@@ -662,11 +740,23 @@ function process() {
         });
       }
 
+      // derive City/Kecamatan/Kelurahan/Province from "Address In" for each
+      // source — best-effort, see parseAddressParts() above.
+      const withAddressParts = (row, suffix) => {
+        const parts = parseAddressParts(row[`Address In_${suffix}`]);
+        return Object.assign({}, row, {
+          [`City_${suffix}`]: parts.city,
+          [`Kecamatan_${suffix}`]: parts.kecamatan,
+          [`Kelurahan_${suffix}`]: parts.kelurahan,
+          [`Province_${suffix}`]: parts.province,
+        });
+      };
+
       const absensiJoined = leftJoinMaster(absensiSrc.data, master).map((r) =>
-        Object.assign({}, r.merged, { Record_Type: "Absensi", __matched: r.matched })
+        withAddressParts(Object.assign({}, r.merged, { Record_Type: "Absensi", __matched: r.matched }), "ABSENSI")
       );
       const timestampJoined = leftJoinMaster(timestampSrc.data, master).map((r) =>
-        Object.assign({}, r.merged, { Record_Type: "Timestamp", __matched: r.matched })
+        withAddressParts(Object.assign({}, r.merged, { Record_Type: "Timestamp", __matched: r.matched }), "TIMESTAMP")
       );
 
       const combined = absensiJoined.concat(timestampJoined);
@@ -734,18 +824,44 @@ function renderResults() {
     ]));
   });
 
+  // role filter checkboxes
+  const roleList = document.getElementById("roleFilterList");
+  roleList.innerHTML = "";
+  const roles = [...new Set(r.rows.map(getRowRole))].sort();
+  roles.forEach((role) => {
+    const id = "role-" + role.replace(/\W+/g, "_");
+    const label = el("label", { class: "role-chip" }, []);
+    const cb = el("input", { type: "checkbox" });
+    cb.checked = !state.excludedRoles.has(role);
+    cb.addEventListener("change", () => {
+      if (cb.checked) state.excludedRoles.delete(role);
+      else state.excludedRoles.add(role);
+      renderResults();
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(role));
+    roleList.appendChild(label);
+  });
+
+  const filtered = getFilteredRows();
+
   // capped note
   const cappedNote = document.getElementById("cappedNote");
-  if (r.totalCount > 500) {
+  if (filtered.length > 500) {
     cappedNote.style.display = "block";
-    cappedNote.textContent = "Menampilkan 500 dari " + r.totalCount + " baris di layar (biar ringan). File Excel yang di-download tetap berisi semua baris.";
+    cappedNote.textContent = "Menampilkan 500 dari " + filtered.length + " baris terpilih di layar (biar ringan). File yang di-download tetap berisi semua baris terpilih.";
   } else {
     cappedNote.style.display = "none";
   }
 
+  const selectionNote = document.getElementById("selectionNote");
+  const totalExcluded = state.excludedRowIndices.size;
+  selectionNote.textContent = `${filtered.length} dari ${r.totalCount} baris akan diexport` + (totalExcluded > 0 ? ` (${totalExcluded} baris di-uncheck manual)` : "");
+
   // table
   const headRow = document.getElementById("tableHeadRow");
   headRow.innerHTML = "";
+  headRow.appendChild(el("th", { style: { backgroundColor: "#2A3138" } }, [""]));
   r.columns.forEach((col) => {
     const cat = ID_COLS.includes(col) ? "id" : CATEGORY_MAP[col];
     const color = CATEGORY_COLORS[cat] || "#9CA3AF";
@@ -757,8 +873,23 @@ function renderResults() {
 
   const body = document.getElementById("tableBody");
   body.innerHTML = "";
-  r.rows.slice(0, 500).forEach((row, i) => {
-    const tr = el("tr", { class: i % 2 ? "alt" : "base" }, []);
+  // NOTE: checkbox toggling below works against `r.rows` indices (the full,
+  // unfiltered array) so a row keeps the same checkbox identity regardless
+  // of which role filters are active — only the first 500 *currently
+  // filtered* rows are shown/checkable at a time.
+  filtered.slice(0, 500).forEach((row) => {
+    const rowIndex = r.rows.indexOf(row);
+    const tr = el("tr", { class: rowIndex % 2 ? "alt" : "base" }, []);
+    const cbTd = el("td", {}, []);
+    const cb = el("input", { type: "checkbox" });
+    cb.checked = !state.excludedRowIndices.has(rowIndex);
+    cb.addEventListener("change", () => {
+      if (cb.checked) state.excludedRowIndices.delete(rowIndex);
+      else state.excludedRowIndices.add(rowIndex);
+      renderResults();
+    });
+    cbTd.appendChild(cb);
+    tr.appendChild(cbTd);
     r.columns.forEach((col) => {
       const isIdNoMatch = col === "Employee ID" && !row.__matched;
       const td = el("td", { class: isIdNoMatch ? "id-nomatch" : "" }, [formatCell(row[col])]);
@@ -788,7 +919,7 @@ function downloadExcel() {
   const r = state.result;
   if (!r) return;
   withButtonBusy(document.getElementById("downloadBtn"), "⏳ Menyiapkan file...", () => {
-    const exportRows = r.rows.map((row) => {
+    const exportRows = getFilteredRows().map((row) => {
       const copy = Object.assign({}, row);
       delete copy.__matched;
       return copy;
@@ -816,7 +947,7 @@ function downloadCsv() {
   if (!r) return;
   withButtonBusy(document.getElementById("downloadCsvBtn"), "⏳ Menyiapkan file...", () => {
     const lines = [r.columns.map(csvEscape).join(",")];
-    r.rows.forEach((row) => {
+    getFilteredRows().forEach((row) => {
       lines.push(r.columns.map((c) => csvEscape(formatCell(row[c]))).join(","));
     });
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
@@ -835,6 +966,8 @@ function resetApp() {
   state.headers = {};
   state.status = {};
   state.result = null;
+  state.excludedRoles = new Set();
+  state.excludedRowIndices = new Set();
   document.getElementById("uploadSection").style.display = "block";
   document.getElementById("resultsSection").style.display = "none";
   document.getElementById("resetBtn").style.display = "none";
@@ -847,6 +980,10 @@ function resetApp() {
 document.getElementById("processBtn").addEventListener("click", process);
 document.getElementById("downloadBtn").addEventListener("click", downloadExcel);
 document.getElementById("downloadCsvBtn").addEventListener("click", downloadCsv);
+document.getElementById("roleFilterAllBtn").addEventListener("click", () => {
+  state.excludedRoles.clear();
+  renderResults();
+});
 document.getElementById("resetBtn").addEventListener("click", resetApp);
 
 renderSlots();
