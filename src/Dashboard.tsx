@@ -1,4 +1,4 @@
-// Dashboard.tsx — v25
+// Dashboard.tsx — v26
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -71,6 +71,9 @@
 //        grid stat card Absensi diganti dari 3 kolom ke 2 kolom biar label kayak
 //        "#Promotor GPS Jauh dari Toko" nggak kepotong lagi
 //   v25: hapus insight "Tanggal terparah" (Timestamp & Absensi) dari Key Insights
+//   v26: "Role dengan anomali terbanyak" di Key Insights sekarang hitung PROMOTOR unik,
+//        bukan jumlah aktivitas/hit — konsisten sama kartu-kartu di bawahnya yang udah
+//        people-based
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -503,6 +506,21 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     if (isFlagged(s)) byRole[s.position].anomali++;
   });
 
+  // Same grouping but counting UNIQUE PROMOTOR per role, not activity rows —
+  // used for the "role with most anomali" Key Insight so it reads as people,
+  // not raw hit-count.
+  const byRolePeopleRaw = {};
+  shifts.forEach((s) => {
+    if (!s.employee_id) return;
+    byRolePeopleRaw[s.position] = byRolePeopleRaw[s.position] || { role: s.position, peopleSet: new Set(), anomaliSet: new Set() };
+    byRolePeopleRaw[s.position].peopleSet.add(s.employee_id);
+    if (isFlagged(s)) byRolePeopleRaw[s.position].anomaliSet.add(s.employee_id);
+  });
+  const byRolePeople = Object.values(byRolePeopleRaw)
+    .map((r) => ({ role: r.role, anomaliPeople: r.anomaliSet.size, totalPeople: r.peopleSet.size }))
+    .sort((a, b) => b.anomaliPeople - a.anomaliPeople);
+  const worstRolePeople = byRolePeople.length && byRolePeople[0].anomaliPeople > 0 ? byRolePeople[0] : null;
+
   const byPromotorType = {};
   shifts.forEach((s) => {
     byPromotorType[s.promotorType] = byPromotorType[s.promotorType] || { type: s.promotorType, anomali: 0, total: 0 };
@@ -533,6 +551,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     byDate: byDateArr,
     flagged,
     worstRole,
+    worstRolePeople,
     worstDate,
     coverage,
     topOffenders: topNWithRole(flagged, (s) => s.employee_name, (s) => s.position, 5),
@@ -678,6 +697,18 @@ function processTimestamp(rows, storeThresholdM) {
     if (isFlagged(v)) byRole[v.position].anomali++;
   });
 
+  const byRolePeopleRawTs = {};
+  visits.forEach((v) => {
+    if (!v.employee_id) return;
+    byRolePeopleRawTs[v.position] = byRolePeopleRawTs[v.position] || { role: v.position, peopleSet: new Set(), anomaliSet: new Set() };
+    byRolePeopleRawTs[v.position].peopleSet.add(v.employee_id);
+    if (isFlagged(v)) byRolePeopleRawTs[v.position].anomaliSet.add(v.employee_id);
+  });
+  const byRolePeople = Object.values(byRolePeopleRawTs)
+    .map((r) => ({ role: r.role, anomaliPeople: r.anomaliSet.size, totalPeople: r.peopleSet.size }))
+    .sort((a, b) => b.anomaliPeople - a.anomaliPeople);
+  const worstRolePeople = byRolePeople.length && byRolePeople[0].anomaliPeople > 0 ? byRolePeople[0] : null;
+
   const byPromotorType = {};
   visits.forEach((v) => {
     byPromotorType[v.promotorType] = byPromotorType[v.promotorType] || { type: v.promotorType, anomali: 0, total: 0 };
@@ -710,6 +741,7 @@ function processTimestamp(rows, storeThresholdM) {
     byDate: byDateArr,
     flagged,
     worstRole,
+    worstRolePeople,
     worstDate,
     coverage,
     topOffenders: topNWithRole(flagged, (v) => v.employee_name, (v) => v.position, 5),
@@ -724,16 +756,16 @@ function computeInsights(timestampResult, absensiResult) {
   if (timestampResult && timestampResult.total > 0) {
     const rate = ((timestampResult.flagged.length / timestampResult.total) * 100).toFixed(1);
     insights.push(`Timestamp: ${rate}% dari ${timestampResult.total.toLocaleString("id-ID")} hari-kerja (karyawan x tanggal, bukan jumlah orang) terindikasi anomali.`);
-    if (timestampResult.worstRole && timestampResult.worstRole.anomali > 0) {
-      insights.push(`Role dengan anomali Timestamp terbanyak: ${timestampResult.worstRole.role} (${timestampResult.worstRole.anomali} dari ${timestampResult.worstRole.total}).`);
+    if (timestampResult.worstRolePeople) {
+      insights.push(`Role dengan anomali Timestamp terbanyak: ${timestampResult.worstRolePeople.role} (${timestampResult.worstRolePeople.anomaliPeople} dari ${timestampResult.worstRolePeople.totalPeople} promotor).`);
     }
   }
 
   if (absensiResult && absensiResult.total > 0) {
     const rate = ((absensiResult.flagged.length / absensiResult.total) * 100).toFixed(1);
     insights.push(`Absensi: ${rate}% dari ${absensiResult.total.toLocaleString("id-ID")} shift (bukan jumlah orang) terindikasi anomali.`);
-    if (absensiResult.worstRole && absensiResult.worstRole.anomali > 0) {
-      insights.push(`Role dengan anomali Absensi terbanyak: ${absensiResult.worstRole.role} (${absensiResult.worstRole.anomali} dari ${absensiResult.worstRole.total}).`);
+    if (absensiResult.worstRolePeople) {
+      insights.push(`Role dengan anomali Absensi terbanyak: ${absensiResult.worstRolePeople.role} (${absensiResult.worstRolePeople.anomaliPeople} dari ${absensiResult.worstRolePeople.totalPeople} promotor).`);
     }
   }
 
@@ -1500,7 +1532,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v25</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v26</div>
       </div>
     </div>
   );
