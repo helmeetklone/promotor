@@ -1,4 +1,4 @@
-// Dashboard.tsx — v26
+// Dashboard.tsx — v27
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -74,6 +74,11 @@
 //   v26: "Role dengan anomali terbanyak" di Key Insights sekarang hitung PROMOTOR unik,
 //        bukan jumlah aktivitas/hit — konsisten sama kartu-kartu di bawahnya yang udah
 //        people-based
+//   v27: header Overview Total dirombak sesuai sketsa — angka utama sekarang "Total Promotor"
+//        (headcount SEMUA promotor di data, BUKAN hitungan anomali), disusun vertikal:
+//        Total Promotor besar di atas, di bawahnya dipecah Promotor di Timestamp / Promotor
+//        di Absensi (juga headcount, bukan anomali). Ini bagian (a) dari revisi layout — bagian
+//        Type Promotor & Compliance per tipe menyusul.
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -1100,9 +1105,16 @@ function UploadPage({ fileNames, onFiles, onGoDashboard, canGo }) {
 function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
   const absensiTotal = absensiResult?.flagged.length ?? 0;
   const timestampTotal = timestampResult?.flagged.length ?? 0;
-  const combinedTotal = absensiTotal + timestampTotal;
   const absensiRate = absensiResult ? ((absensiTotal / absensiResult.total) * 100).toFixed(1) : "-";
   const timestampRate = timestampResult ? ((timestampTotal / timestampResult.total) * 100).toFixed(1) : "-";
+
+  // TRUE total promotor headcount — everyone seen in the data, regardless of
+  // anomaly status. NOT an anomaly count.
+  const tsIds = timestampResult?.coverage.employeeIds || new Set();
+  const abIds = absensiResult?.coverage.employeeIds || new Set();
+  const totalPromotorAll = new Set([...tsIds, ...abIds]).size;
+  const timestampPromotorAll = tsIds.size;
+  const absensiPromotorAll = abIds.size;
 
   const inStore =
     (timestampResult?.byPromotorType["In Store Promotor"]?.anomali ?? 0) +
@@ -1111,8 +1123,6 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     (timestampResult?.byPromotorType["Out Store Promotor"]?.anomali ?? 0) +
     (absensiResult?.byPromotorType["Out Store Promotor"]?.anomali ?? 0);
 
-  const tsIds = timestampResult?.coverage.employeeIds || new Set();
-  const abIds = absensiResult?.coverage.employeeIds || new Set();
   const onlyInTimestamp = new Set([...tsIds].filter((id) => !abIds.has(id)));
   const onlyInAbsensi = new Set([...abIds].filter((id) => !tsIds.has(id)));
 
@@ -1141,28 +1151,22 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">
         Overview Total — Timestamp (Journey) + Absensi (Attendance)
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        <Num
-          value={combinedTotal.toLocaleString("id-ID")}
-          className="text-2xl sm:text-3xl font-bold text-gray-900 leading-none"
-          onClick={() => onDetail("Semua Anomali", combinedFlagged(), mixedColumns)}
-        >
-          <div className="text-[11px] text-gray-500 mt-1">Total Aktivitas Anomali (hari-kerja + shift, bukan jumlah orang)</div>
-        </Num>
-        <Num
-          value={timestampTotal}
-          className="text-xl font-bold text-teal-700 leading-none"
-          onClick={() => timestampResult && onDetail("Anomali Timestamp", timestampResult.flagged, TIMESTAMP_COLUMNS)}
-        >
-          <div className="text-[11px] text-gray-500 mt-1">Timestamp &middot; {timestampRate}%</div>
-        </Num>
-        <Num
-          value={absensiTotal}
-          className="text-xl font-bold text-indigo-700 leading-none"
-          onClick={() => absensiResult && onDetail("Anomali Absensi", absensiResult.flagged, ABSENSI_COLUMNS)}
-        >
-          <div className="text-[11px] text-gray-500 mt-1">Absensi &middot; {absensiRate}%</div>
-        </Num>
+      <Num
+        value={totalPromotorAll.toLocaleString("id-ID")}
+        className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none"
+      >
+        <div className="text-[11px] text-gray-500 mt-1">Total Promotor (semua, bukan hitungan anomali)</div>
+      </Num>
+
+      <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
+        <div>
+          <div className="text-xl font-bold text-teal-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
+          <div className="text-[11px] text-gray-500 mt-1">Promotor di Timestamp</div>
+        </div>
+        <div>
+          <div className="text-xl font-bold text-indigo-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
+          <div className="text-[11px] text-gray-500 mt-1">Promotor di Absensi</div>
+        </div>
       </div>
 
       <div className="mt-4 pt-4 border-t border-emerald-200/50 flex flex-wrap items-end gap-x-8 gap-y-3">
@@ -1532,7 +1536,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v26</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v27</div>
       </div>
     </div>
   );
