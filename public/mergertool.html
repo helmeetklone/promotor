@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- mergertool.html — v3
+<!-- mergertool.html — v4
+     v4: tambah Region_DOP/Cluster_DOP/Sub Cluster_DOP ke kolom yang di-keep (sebelumnya kebuang
+         pas merge) — dibutuhin buat fitur filter Region/Cluster di Dashboard v40
      v2: tambah OM + Outlet Master (opsional) buat enrichment outlet assignment & koordinat
      v3: (1) fix toNum() salah parse desimal-koma Indonesia; (2) City/Kecamatan/Kelurahan/Provinsi
          hasil parsing Address In; (3) Filter Role + checkbox per-baris sebelum export
@@ -147,7 +149,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; Outlet &rarr; 1 tabel deteksi &middot; v3</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; Outlet &rarr; 1 tabel deteksi &middot; v4</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -208,13 +210,14 @@ const SLOTS = [
 const CATEGORY_COLORS = {
   gps: "#FF6B6B", waktu: "#FFD966", remark: "#C39BD3",
   status: "#5DADE2", posisi: "#58D68D", timing: "#F0B27A", id: "#9CA3AF", outlet: "#22D3EE",
-  wilayah: "#A78BFA",
+  wilayah: "#A78BFA", region: "#34D399",
 };
 const CATEGORY_LABEL = {
   gps: "GPS / Lokasi", waktu: "Jam Kerja / Durasi", remark: "Remark / Catatan",
   status: "Status Employment", posisi: "Posisi / Tipe", timing: "Tanggal Input", id: "Identitas",
   outlet: "Outlet Assignment (dari OM + Outlet Master)",
   wilayah: "Wilayah (City/Kecamatan/Kelurahan, hasil parsing Address)",
+  region: "Region / Cluster / Sub Cluster (dari DOP)",
 };
 
 const ID_COLS = ["Employee ID", "Record_Type", "Employee Name_ABSENSI", "Employee Name_TIMESTAMP"];
@@ -238,6 +241,7 @@ const CATEGORY_MAP = {
   "Outlet Code": "outlet", "Outlet Name": "outlet", "Outlet Latitude": "outlet", "Outlet Longitude": "outlet",
   "City_ABSENSI": "wilayah", "Kecamatan_ABSENSI": "wilayah", "Kelurahan_ABSENSI": "wilayah", "Province_ABSENSI": "wilayah",
   "City_TIMESTAMP": "wilayah", "Kecamatan_TIMESTAMP": "wilayah", "Kelurahan_TIMESTAMP": "wilayah", "Province_TIMESTAMP": "wilayah",
+  "Region_DOP": "region", "Cluster_DOP": "region", "Sub Cluster_DOP": "region",
 };
 
 function neededRawColumnsFor(suffix) {
