@@ -1,4 +1,4 @@
-// Dashboard.tsx — v27
+// Dashboard.tsx — v28
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -79,6 +79,9 @@
 //        Total Promotor besar di atas, di bawahnya dipecah Promotor di Timestamp / Promotor
 //        di Absensi (juga headcount, bukan anomali). Ini bagian (a) dari revisi layout — bagian
 //        Type Promotor & Compliance per tipe menyusul.
+//   v28: layout Overview Total jadi 2 kolom bersisian (dipisah garis vertikal) sesuai sketsa:
+//        KIRI = Total Promotor + split Timestamp/Absensi; KANAN = Type Promotor (In/Out Store)
+//        + Compliance absen Timestamp. Cakupan/Gap tetap di bawah, full-width, 3 kolom.
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -1151,61 +1154,70 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">
         Overview Total — Timestamp (Journey) + Absensi (Attendance)
       </div>
-      <Num
-        value={totalPromotorAll.toLocaleString("id-ID")}
-        className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none"
-      >
-        <div className="text-[11px] text-gray-500 mt-1">Total Promotor (semua, bukan hitungan anomali)</div>
-      </Num>
 
-      <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
-        <div>
-          <div className="text-xl font-bold text-teal-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
-          <div className="text-[11px] text-gray-500 mt-1">Promotor di Timestamp</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-emerald-200/50">
+        <div className="md:pr-6">
+          <Num
+            value={totalPromotorAll.toLocaleString("id-ID")}
+            className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none"
+          >
+            <div className="text-[11px] text-gray-500 mt-1">Total Promotor (semua, bukan hitungan anomali)</div>
+          </Num>
+
+          <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
+            <div>
+              <div className="text-xl font-bold text-teal-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
+              <div className="text-[11px] text-gray-500 mt-1">Promotor di Timestamp</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-indigo-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
+              <div className="text-[11px] text-gray-500 mt-1">Promotor di Absensi</div>
+            </div>
+          </div>
         </div>
-        <div>
-          <div className="text-xl font-bold text-indigo-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
-          <div className="text-[11px] text-gray-500 mt-1">Promotor di Absensi</div>
+
+        <div className="md:pl-6">
+          <div className="text-[11px] text-gray-500 mb-2">Berdasarkan tipe promotor (dari kolom Position)</div>
+          <div className="grid grid-cols-2 gap-4">
+            <Num
+              value={inStore.toLocaleString("id-ID")}
+              className="text-xl font-bold text-amber-700 leading-none"
+              onClick={() => onDetail("In Store Promotor — Semua Anomali", combinedFlagged().filter((r) => r.promotorType === "In Store Promotor"), mixedColumns)}
+            >
+              <div className="text-[11px] text-gray-500 mt-1">In Store Promotor</div>
+            </Num>
+            <Num
+              value={outStore.toLocaleString("id-ID")}
+              className="text-xl font-bold text-fuchsia-700 leading-none"
+              onClick={() => onDetail("Out Store Promotor — Semua Anomali", combinedFlagged().filter((r) => r.promotorType === "Out Store Promotor"), mixedColumns)}
+            >
+              <div className="text-[11px] text-gray-500 mt-1">Out Store Promotor</div>
+            </Num>
+          </div>
+
+          {timestampResult && (
+            <div className="mt-4 pt-4 border-t border-emerald-200/50">
+              <div className="text-[11px] text-gray-500 mb-2">Compliance absen Timestamp (min. 3 zona waktu berbeda)</div>
+              <div className="grid grid-cols-2 gap-4">
+                <Num
+                  value={(timestampResult.total - timestampResult.anomalyCounts.zone).toLocaleString("id-ID")}
+                  className="text-xl font-bold text-emerald-700 leading-none"
+                  onClick={() => onDetail("Absen Comply (≥3 zona)", (timestampResult.all || []).filter((v) => !v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+                >
+                  <div className="text-[11px] text-gray-500 mt-1">Absen Comply (&ge;3x)</div>
+                </Num>
+                <Num
+                  value={timestampResult.anomalyCounts.zone.toLocaleString("id-ID")}
+                  className="text-xl font-bold text-red-700 leading-none"
+                  onClick={() => onDetail("Absen Not Comply (<3 zona)", timestampResult.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+                >
+                  <div className="text-[11px] text-gray-500 mt-1">Absen Not Comply (&lt;3x)</div>
+                </Num>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-
-      <div className="mt-4 pt-4 border-t border-emerald-200/50 flex flex-wrap items-end gap-x-8 gap-y-3">
-        <div className="text-[11px] text-gray-500 w-full">Berdasarkan tipe promotor (dari kolom Position)</div>
-        <Num
-          value={inStore.toLocaleString("id-ID")}
-          className="text-xl font-bold text-amber-700 leading-none"
-          onClick={() => onDetail("In Store Promotor — Semua Anomali", combinedFlagged().filter((r) => r.promotorType === "In Store Promotor"), mixedColumns)}
-        >
-          <div className="text-[11px] text-gray-500 mt-1">In Store Promotor</div>
-        </Num>
-        <Num
-          value={outStore.toLocaleString("id-ID")}
-          className="text-xl font-bold text-fuchsia-700 leading-none"
-          onClick={() => onDetail("Out Store Promotor — Semua Anomali", combinedFlagged().filter((r) => r.promotorType === "Out Store Promotor"), mixedColumns)}
-        >
-          <div className="text-[11px] text-gray-500 mt-1">Out Store Promotor</div>
-        </Num>
-      </div>
-
-      {timestampResult && (
-        <div className="mt-4 pt-4 border-t border-emerald-200/50 flex flex-wrap items-end gap-x-8 gap-y-3">
-          <div className="text-[11px] text-gray-500 w-full">Compliance absen Timestamp (min. 3 zona waktu berbeda)</div>
-          <Num
-            value={(timestampResult.total - timestampResult.anomalyCounts.zone).toLocaleString("id-ID")}
-            className="text-xl font-bold text-emerald-700 leading-none"
-            onClick={() => onDetail("Absen Comply (≥3 zona)", (timestampResult.all || []).filter((v) => !v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
-          >
-            <div className="text-[11px] text-gray-500 mt-1">Absen Comply (&ge;3x)</div>
-          </Num>
-          <Num
-            value={timestampResult.anomalyCounts.zone.toLocaleString("id-ID")}
-            className="text-xl font-bold text-red-700 leading-none"
-            onClick={() => onDetail("Absen Not Comply (<3 zona)", timestampResult.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
-          >
-            <div className="text-[11px] text-gray-500 mt-1">Absen Not Comply (&lt;3x)</div>
-          </Num>
-        </div>
-      )}
 
       <div className="mt-4 pt-4 border-t border-emerald-200/50 grid grid-cols-3 gap-3">
         <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
@@ -1536,7 +1548,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v27</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v28</div>
       </div>
     </div>
   );
