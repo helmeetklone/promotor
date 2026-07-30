@@ -1,4 +1,4 @@
-// Dashboard.tsx — v28
+// Dashboard.tsx — v29
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -82,6 +82,9 @@
 //   v28: layout Overview Total jadi 2 kolom bersisian (dipisah garis vertikal) sesuai sketsa:
 //        KIRI = Total Promotor + split Timestamp/Absensi; KANAN = Type Promotor (In/Out Store)
 //        + Compliance absen Timestamp. Cakupan/Gap tetap di bawah, full-width, 3 kolom.
+//   v29: tambah angka TOTAL berukuran sama kayak "Total Promotor" di atas breakdown Type
+//        Promotor (In+Out Store) dan Compliance (Comply+Not Comply), biar formatnya konsisten
+//        di kedua kolom.
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -1178,6 +1181,8 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
         <div className="md:pl-6">
           <div className="text-[11px] text-gray-500 mb-2">Berdasarkan tipe promotor (dari kolom Position)</div>
+          <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
+          <div className="text-[11px] text-gray-500 mt-1 mb-3">Total Anomali per Tipe Promotor</div>
           <div className="grid grid-cols-2 gap-4">
             <Num
               value={inStore.toLocaleString("id-ID")}
@@ -1198,6 +1203,8 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
           {timestampResult && (
             <div className="mt-4 pt-4 border-t border-emerald-200/50">
               <div className="text-[11px] text-gray-500 mb-2">Compliance absen Timestamp (min. 3 zona waktu berbeda)</div>
+              <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{timestampResult.total.toLocaleString("id-ID")}</div>
+              <div className="text-[11px] text-gray-500 mt-1 mb-3">Total Hari-Kerja Timestamp Dinilai</div>
               <div className="grid grid-cols-2 gap-4">
                 <Num
                   value={(timestampResult.total - timestampResult.anomalyCounts.zone).toLocaleString("id-ID")}
@@ -1548,7 +1555,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v28</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v29</div>
       </div>
     </div>
   );
