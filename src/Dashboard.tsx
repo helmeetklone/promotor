@@ -1,4 +1,4 @@
-// Dashboard.tsx — v19
+// Dashboard.tsx — v20
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -41,6 +41,9 @@
 //        bukan diklaim "GPS Jauh" berdasar in-vs-out fallback yang nggak valid dibandingin toko
 //   v19: label dipendekin jadi "GPS Toko N/A" (dari "No Outlet Data") — biar nggak disalahartikan
 //        seolah outlet/ID-nya nggak ada, padahal cuma koordinat toko-nya yang belum ketemu
+//   v20: BUG FIX — kartu "GPS Bermasalah" Absensi kemarin gabungin 3 hal beda jadi 1 angka
+//        (GPS jauh + GPS kosong + GPS Toko N/A), bikin kelihatan bengkak. Sekarang dipecah
+//        jadi 3 kartu terpisah. Timestamp juga ditambahin kartu "GPS Toko N/A" biar konsisten.
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -356,7 +359,13 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
   const total = shifts.length;
   const isFlagged = (s) => s.gpsIssue || s.statusAnomaly || s.durationIssue;
   const anomalyCounts = {
-    gps: shifts.filter((s) => s.gpsIssue).length,
+    // GPS is split into 3 distinct signals instead of one bucket — lumping
+    // them together previously made "missing outlet data" (a data-completeness
+    // gap, not real GPS misbehavior) inflate the same number as genuine
+    // far-from-store cases.
+    gpsFar: shifts.filter((s) => s.farFromStore).length,
+    gpsNoCoord: shifts.filter((s) => s.noCoord).length,
+    gpsNoOutlet: shifts.filter((s) => s.noOutletData).length,
     status: shifts.filter((s) => s.statusAnomaly).length,
     duration: shifts.filter((s) => s.durationIssue).length,
   };
@@ -524,6 +533,7 @@ function processTimestamp(rows, storeThresholdM) {
     noCoord: visits.filter((v) => v.noCoord).length,
     status: visits.filter((v) => v.statusAnomaly).length,
     farFromStore: visits.filter((v) => v.farFromStore).length,
+    noOutletData: visits.filter((v) => v.noOutletData).length,
   };
   const gpsIdenticalPeople = new Set(visits.filter((v) => v.gpsIdentical).map((v) => v.employee_id)).size;
 
@@ -1134,6 +1144,9 @@ function DashboardPage(props) {
                   <StatCard icon={MapPin} label="GPS Jauh dari Toko" value={timestampResult.anomalyCounts.farFromStore} tone="red"
                     onClick={() => openDetail("Timestamp — GPS Jauh dari Toko", filterTs((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
                     exportRows={filterTs((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-jauh-dari-toko" />
+                  <StatCard icon={MapPin} label="GPS Toko N/A" value={timestampResult.anomalyCounts.noOutletData} tone="pink"
+                    onClick={() => openDetail("Timestamp — GPS Toko N/A", filterTs((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
+                    exportRows={filterTs((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-toko-na" />
                 </>
               ) : (
                 <div className="col-span-2 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Timestamp</div>
@@ -1142,9 +1155,15 @@ function DashboardPage(props) {
             <div className="grid grid-cols-3 gap-2.5">
               {absensiResult ? (
                 <>
-                  <StatCard icon={MapPin} label="GPS Bermasalah" value={absensiResult.anomalyCounts.gps} tone="red"
-                    onClick={() => openDetail("Absensi — GPS Bermasalah", filterAb((s) => s.gpsIssue), ABSENSI_COLUMNS)}
-                    exportRows={filterAb((s) => s.gpsIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-bermasalah" />
+                  <StatCard icon={MapPin} label="GPS Jauh dari Toko" value={absensiResult.anomalyCounts.gpsFar} tone="red"
+                    onClick={() => openDetail("Absensi — GPS Jauh dari Toko", filterAb((s) => s.farFromStore), ABSENSI_COLUMNS)}
+                    exportRows={filterAb((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-jauh-dari-toko" />
+                  <StatCard icon={FileWarning} label="GPS Tidak Ada" value={absensiResult.anomalyCounts.gpsNoCoord} tone="red"
+                    onClick={() => openDetail("Absensi — GPS Tidak Ada", filterAb((s) => s.noCoord), ABSENSI_COLUMNS)}
+                    exportRows={filterAb((s) => s.noCoord)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-tidak-ada" />
+                  <StatCard icon={MapPin} label="GPS Toko N/A" value={absensiResult.anomalyCounts.gpsNoOutlet} tone="pink"
+                    onClick={() => openDetail("Absensi — GPS Toko N/A", filterAb((s) => s.noOutletData), ABSENSI_COLUMNS)}
+                    exportRows={filterAb((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-toko-na" />
                   <StatCard icon={AlertTriangle} label="Status Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
                     onClick={() => openDetail("Absensi — Status Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
                     exportRows={filterAb((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-status-non-active" />
@@ -1350,7 +1369,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v19</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v20</div>
       </div>
     </div>
   );
