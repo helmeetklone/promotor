@@ -1,4 +1,4 @@
-// Dashboard.tsx — v17
+// Dashboard.tsx — v18
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -36,6 +36,9 @@
 //        Latitude/Longitude dari mergertool v2 OM+Outlet Master), bukan cuma check-in vs
 //        check-out satu sama lain lagi. Fallback ke in-vs-out kalau data outlet nggak ada.
 //        Berlaku utk Absensi (GPS Jauh dari Toko) dan Timestamp (kartu baru).
+//   v18: (1) jarak dalam meter ditampilin langsung di teks flag "GPS Jauh dari Toko (Xm)";
+//        (2) kalau data Outlet nggak ada sama sekali, dilabelin jelas "No Outlet Data" —
+//        bukan diklaim "GPS Jauh" berdasar in-vs-out fallback yang nggak valid dibandingin toko
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -221,11 +224,14 @@ const isStatusAnomaly = (status) => {
 
 const describeFlagsTimestamp = (v) =>
   [v.zoneNotCompliant && `Zona Kurang (${v.distinctZoneCount}/3)`, v.gpsIdentical && "GPS Identik",
-   v.farFromStore && "GPS Jauh dari Toko", v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
+   v.farFromStore && `GPS Jauh dari Toko (${v.maxStoreDist !== null ? v.maxStoreDist.toFixed(0) : "-"}m)`,
+   v.noOutletData && "No Outlet Data",
+   v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
     .filter(Boolean).join(", ");
 
 const describeFlagsAbsensi = (s) =>
-  [s.gpsIssue && (s.noCoord ? "No-GPS" : s.usingStoreRef ? "GPS Jauh dari Toko" : "GPS Jauh (In≠Out)"),
+  [s.gpsIssue && (s.noCoord ? "No-GPS" : `GPS Jauh dari Toko (${s.maxStoreDist !== null ? s.maxStoreDist.toFixed(0) : "-"}m)`),
+   s.noOutletData && "No Outlet Data",
    s.statusAnomaly && "Status Non-Active",
    s.durationIssue && (s.noClockOut ? "No-Clockout" : s.shortShift ? "Durasi Pendek" : "Durasi Panjang")]
     .filter(Boolean).join(", ");
@@ -298,9 +304,14 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     const distToStoreIn = outlet && hasIn ? haversineMeters({ lat: latIn, lon: lonIn }, outlet) : null;
     const distToStoreOut = outlet && hasOut ? haversineMeters({ lat: latOut, lon: lonOut }, outlet) : null;
     const usingStoreRef = !!outlet;
+    // Only claim "far from store" when we actually HAVE a store to compare
+    // against — without an outlet reference we can't verify anything, so we
+    // report that gap plainly (noOutletData) instead of guessing via in-vs-out.
     const farFromStore = usingStoreRef
       ? (distToStoreIn !== null && distToStoreIn > moveThresholdM) || (distToStoreOut !== null && distToStoreOut > moveThresholdM)
-      : (inOutDistM !== null && inOutDistM > moveThresholdM);
+      : false;
+    const noOutletData = !usingStoreRef && hasIn;
+    const maxStoreDist = usingStoreRef ? Math.max(distToStoreIn ?? 0, distToStoreOut ?? 0) : null;
 
     const durHr = toNum(r["Time Duration Adj (Hours)_ABSENSI"] ?? r["Time Duration (Hours)_ABSENSI"]);
     const position = getPosition(r);
@@ -325,12 +336,16 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
       outletName: outlet ? (r["Outlet Name"] || "-") : null,
       distToStoreIn,
       distToStoreOut,
+      maxStoreDist,
       usingStoreRef,
+      noOutletData,
       coordIn: latIn == null ? "(kosong)" : `(${latIn}, ${lonIn})`,
       coordOut: latOut == null ? "(kosong)" : `(${latOut}, ${lonOut})`,
       noCoord,
-      // 3 currently-detectable signals given field data limitations:
-      gpsIssue: noCoord || farFromStore,
+      // 3 currently-detectable signals given field data limitations. "No
+      // Outlet Data" surfaces here too (not as a real GPS claim) so the gap
+      // is visible instead of silently passing through unflagged.
+      gpsIssue: noCoord || farFromStore || noOutletData,
       statusAnomaly: isStatusAnomaly(status),
       durationIssue: noClockOut || shortShift || longShift,
     };
@@ -470,6 +485,12 @@ function processTimestamp(rows, storeThresholdM) {
       ? checks.map((c) => (c.distToStore == null ? "-" : c.distToStore.toFixed(0))).join(" | ")
       : null;
     const farFromStore = outlet ? checks.some((c) => c.distToStore !== null && c.distToStore > storeThresholdM) : false;
+    const storeDists = checks.map((c) => c.distToStore).filter((d) => d !== null);
+    const maxStoreDist = outlet && storeDists.length ? Math.max(...storeDists) : null;
+    // No outlet reference at all for this employee (didn't match via Sales
+    // Code -> OM -> Outlet Master) — report that plainly instead of
+    // silently skipping the store-distance check.
+    const noOutletData = !outlet && checks.some((c) => c.lat != null);
 
     return {
       date: first["Date_TIMESTAMP"] || "-",
@@ -483,7 +504,9 @@ function processTimestamp(rows, storeThresholdM) {
       coordsList,
       outletName: outlet ? (first["Outlet Name"] || "-") : null,
       distToStoreList,
+      maxStoreDist,
       farFromStore,
+      noOutletData,
       zoneNotCompliant,
       gpsIdentical,
       noCoord,
@@ -1325,7 +1348,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v17</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v18</div>
       </div>
     </div>
   );
