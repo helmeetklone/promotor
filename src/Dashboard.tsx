@@ -1,4 +1,4 @@
-// Dashboard.tsx — v18
+// Dashboard.tsx — v19
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -39,6 +39,8 @@
 //   v18: (1) jarak dalam meter ditampilin langsung di teks flag "GPS Jauh dari Toko (Xm)";
 //        (2) kalau data Outlet nggak ada sama sekali, dilabelin jelas "No Outlet Data" —
 //        bukan diklaim "GPS Jauh" berdasar in-vs-out fallback yang nggak valid dibandingin toko
+//   v19: label dipendekin jadi "GPS Toko N/A" (dari "No Outlet Data") — biar nggak disalahartikan
+//        seolah outlet/ID-nya nggak ada, padahal cuma koordinat toko-nya yang belum ketemu
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -225,13 +227,13 @@ const isStatusAnomaly = (status) => {
 const describeFlagsTimestamp = (v) =>
   [v.zoneNotCompliant && `Zona Kurang (${v.distinctZoneCount}/3)`, v.gpsIdentical && "GPS Identik",
    v.farFromStore && `GPS Jauh dari Toko (${v.maxStoreDist !== null ? v.maxStoreDist.toFixed(0) : "-"}m)`,
-   v.noOutletData && "No Outlet Data",
+   v.noOutletData && "GPS Toko N/A",
    v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
     .filter(Boolean).join(", ");
 
 const describeFlagsAbsensi = (s) =>
   [s.gpsIssue && (s.noCoord ? "No-GPS" : `GPS Jauh dari Toko (${s.maxStoreDist !== null ? s.maxStoreDist.toFixed(0) : "-"}m)`),
-   s.noOutletData && "No Outlet Data",
+   s.noOutletData && "GPS Toko N/A",
    s.statusAnomaly && "Status Non-Active",
    s.durationIssue && (s.noClockOut ? "No-Clockout" : s.shortShift ? "Durasi Pendek" : "Durasi Panjang")]
     .filter(Boolean).join(", ");
@@ -1348,7 +1350,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v18</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v19</div>
       </div>
     </div>
   );
