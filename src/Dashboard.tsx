@@ -1,4 +1,4 @@
-// Dashboard.tsx — v33
+// Dashboard.tsx — v40
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -898,7 +898,7 @@ function StatCard({ icon: Icon, label, value, tone, onClick, subtitle, unit, exp
         </div>
         <div className="min-w-0">
           <div className="text-base font-bold text-gray-900 leading-none">{value.toLocaleString("id-ID")}{unit ? ` ${unit}` : ""}</div>
-          <div className="text-[10px] text-gray-500 mt-1 truncate">{label}{subtitle ? ` • ${subtitle}` : ""}</div>
+          <div className="text-[10px] text-gray-700 mt-1 truncate">{label}{subtitle ? ` • ${subtitle}` : ""}</div>
         </div>
       </button>
       {exportRows && (
@@ -1183,19 +1183,19 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
             value={totalPromotorAll.toLocaleString("id-ID")}
             className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none"
           >
-            <div className="text-[11px] text-gray-500 mt-1">Total Promotor (semua, bukan hitungan anomali)</div>
+            <div className="text-[11px] text-gray-700 mt-1">Total Promotor (semua, bukan hitungan anomali)</div>
           </Num>
 
           <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
             <div>
               <div className="text-xl font-bold text-teal-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
-              <div className="text-[11px] text-gray-500 mt-1">Promotor di Timestamp</div>
+              <div className="text-[11px] text-gray-700 mt-1">Promotor di Timestamp</div>
             </div>
             <div>
               <div className="text-xl font-bold text-indigo-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
-              <div className="text-[11px] text-gray-500 mt-1">Promotor di Absensi</div>
+              <div className="text-[11px] text-gray-700 mt-1">Promotor di Absensi</div>
               {timestampResult && (
-                <div className="text-[10px] text-gray-400 mt-0.5">{timestampResult.total.toLocaleString("id-ID")} hari-kerja dinilai</div>
+                <div className="text-[10px] text-gray-600 mt-0.5">{timestampResult.total.toLocaleString("id-ID")} hari-kerja dinilai</div>
               )}
             </div>
           </div>
@@ -1234,45 +1234,80 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
         <div className="md:pl-6">
           <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
-          <div className="text-[11px] text-gray-500 mt-1">Total Promotor (dari kolom Position)</div>
+          <div className="text-[11px] text-gray-700 mt-1">Total Promotor (dari kolom Position)</div>
           <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
             <Num
               value={inStore.toLocaleString("id-ID")}
               className="text-xl font-bold text-amber-700 leading-none"
               onClick={() => onDetail("In Store Promotor — Semua Anomali", combinedFlagged().filter((r) => r.promotorType === "In Store Promotor"), mixedColumns)}
             >
-              <div className="text-[11px] text-gray-500 mt-1">In Store Promotor</div>
+              <div className="text-[11px] text-gray-700 mt-1">In Store Promotor</div>
             </Num>
             <Num
               value={outStore.toLocaleString("id-ID")}
               className="text-xl font-bold text-fuchsia-700 leading-none"
               onClick={() => onDetail("Out Store Promotor — Semua Anomali", combinedFlagged().filter((r) => r.promotorType === "Out Store Promotor"), mixedColumns)}
             >
-              <div className="text-[11px] text-gray-500 mt-1">Out Store Promotor</div>
+              <div className="text-[11px] text-gray-700 mt-1">Out Store Promotor</div>
             </Num>
           </div>
 
-          {timestampResult && (
-            <div className="mt-4 pt-4 border-t border-emerald-200/50">
-              <div className="text-[11px] text-gray-500 mb-2">Compliance Absen Timestamp (min. 3 zona waktu berbeda)</div>
-              <div className="grid grid-cols-2 gap-4">
-                <Num
-                  value={(timestampResult.total - timestampResult.anomalyCounts.zone).toLocaleString("id-ID")}
-                  className="text-xl font-bold text-emerald-700 leading-none"
-                  onClick={() => onDetail("Absen Comply (≥3 zona)", (timestampResult.all || []).filter((v) => !v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
-                >
-                  <div className="text-[11px] text-gray-500 mt-1">Absen Comply (&ge;3x)</div>
-                </Num>
-                <Num
-                  value={timestampResult.anomalyCounts.zone.toLocaleString("id-ID")}
-                  className="text-xl font-bold text-red-700 leading-none"
-                  onClick={() => onDetail("Absen Not Comply (<3 zona)", timestampResult.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
-                >
-                  <div className="text-[11px] text-gray-500 mt-1">Absen Not Comply (&lt;3x)</div>
-                </Num>
+          {timestampResult && (() => {
+            // Classify each UNIQUE promotor by their pattern across all their
+            // days — mutually exclusive, so these 3 always sum exactly to
+            // timestampPromotorAll (no double-counting like Comply+NotComply
+            // hit-counts would, since one person can be compliant on some
+            // days and not on others).
+            const patternMap = new Map();
+            (timestampResult.all || []).forEach((v) => {
+              if (!v.employee_id) return;
+              const entry = patternMap.get(v.employee_id) || { comply: false, notComply: false };
+              if (v.zoneNotCompliant) entry.notComply = true; else entry.comply = true;
+              patternMap.set(v.employee_id, entry);
+            });
+            const alwaysComplyIds = [], alwaysNotComplyIds = [], mixedIds = [];
+            patternMap.forEach((e, id) => {
+              if (e.comply && e.notComply) mixedIds.push(id);
+              else if (e.comply) alwaysComplyIds.push(id);
+              else alwaysNotComplyIds.push(id);
+            });
+            const byIds = (ids) => {
+              const set = new Set(ids);
+              return (timestampResult.all || []).filter((v) => set.has(v.employee_id));
+            };
+            return (
+              <div className="mt-4 pt-4 border-t border-emerald-200/50">
+                <div className="text-sm font-bold text-gray-900 mb-1">Timestamp Compliance Only</div>
+                <div className="text-[11px] text-gray-900 mb-2">Compliance Absen Timestamp per Promotor (min. 3 zona waktu berbeda, unik &amp; saling lepas)</div>
+                <div className="grid grid-cols-3 gap-3">
+                  <Num
+                    value={alwaysComplyIds.length.toLocaleString("id-ID")}
+                    className="text-lg font-bold text-emerald-700 leading-none"
+                    onClick={() => onDetail("Selalu Comply (≥3x tiap hari)", byIds(alwaysComplyIds), TIMESTAMP_COLUMNS)}
+                  >
+                    <div className="text-[10px] text-gray-700 mt-1">Selalu Comply</div>
+                  </Num>
+                  <Num
+                    value={alwaysNotComplyIds.length.toLocaleString("id-ID")}
+                    className="text-lg font-bold text-red-700 leading-none"
+                    onClick={() => onDetail("Selalu Not Comply (<3x tiap hari)", byIds(alwaysNotComplyIds), TIMESTAMP_COLUMNS)}
+                  >
+                    <div className="text-[10px] text-gray-700 mt-1">Selalu Not Comply</div>
+                  </Num>
+                  <Num
+                    value={mixedIds.length.toLocaleString("id-ID")}
+                    className="text-lg font-bold text-amber-700 leading-none"
+                    onClick={() => onDetail("Campuran (irisan Comply & Not Comply)", byIds(mixedIds), TIMESTAMP_COLUMNS)}
+                  >
+                    <div className="text-[10px] text-gray-700 mt-1">Campuran (irisan)</div>
+                  </Num>
+                </div>
+                <div className="text-[10px] text-gray-600 mt-2">
+                  {alwaysComplyIds.length.toLocaleString("id-ID")} + {alwaysNotComplyIds.length.toLocaleString("id-ID")} + {mixedIds.length.toLocaleString("id-ID")} = {(alwaysComplyIds.length + alwaysNotComplyIds.length + mixedIds.length).toLocaleString("id-ID")} promotor — ini scope-nya cuma yang PUNYA data Timestamp ({timestampPromotorAll.toLocaleString("id-ID")}), bukan total gabungan {totalPromotorAll.toLocaleString("id-ID")}; sisanya ({onlyInAbsensi.size.toLocaleString("id-ID")} orang) cuma ada di Absensi jadi nggak bisa dinilai compliance-nya sama sekali.
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -1308,18 +1343,113 @@ function DashboardPage(props) {
       {/*
         Layout note: every block below has "md:col-start-N md:row-start-N".
         On desktop (md+) that pins Timestamp/Absensi into the same grid row
-        so they stay aligned side-by-side. On mobile there's no explicit
-        placement, so items just stack in DOM order — and since ALL of
-        Timestamp's blocks are emitted before ANY of Absensi's, mobile shows
-        one clearly grouped section at a time instead of interleaved rows.
+        so they stay aligned side-by-side, REGARDLESS of DOM order. On mobile
+        there's no column/row override, so items stack in plain DOM order —
+        which is why every Timestamp block is written before any Absensi
+        block below: mobile shows one fully-grouped section at a time
+        instead of alternating row-by-row.
       */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0">
 
-        {/* row 1: section title + controls */}
+        {/* ───────── TIMESTAMP (all blocks, in order) ───────── */}
+
         <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0">
           <div className="text-sm font-bold text-teal-700 mb-2">Data Timestamp (Journey)</div>
           <div className="text-[11px] text-gray-400 italic">Pakai threshold GPS (m) yang sama dengan Absensi, buat cek jarak ke toko.</div>
         </div>
+
+        {timestampResult && (
+          <>
+            <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0">
+              <div className="grid grid-cols-2 gap-2.5">
+                <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={timestampResult.anomalyCounts.zone} tone="indigo"
+                  onClick={() => openDetail("Timestamp — Absensi <3x/hari", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+                  exportRows={filterTs((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-absensi-kurang-3x" />
+                <StatCard icon={MapPin} label="GPS Identik" unit="Hits" value={timestampResult.anomalyCounts.gpsIdentical} tone="pink"
+                  subtitle={`${timestampResult.gpsIdenticalPeople} Promotor`}
+                  onClick={() => openDetail("Timestamp — GPS Identik", filterTs((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
+                  exportRows={filterTs((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-identik" />
+                <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
+                  onClick={() => openDetail("Timestamp — Promotor Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
+                  exportRows={filterTs((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-status-non-active" />
+                <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={timestampResult.anomalyCounts.farFromStore} tone="red"
+                  onClick={() => openDetail("Timestamp — GPS Jauh dari Toko", filterTs((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
+                  exportRows={filterTs((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-jauh-dari-toko" />
+                <StatCard icon={MapPin} label="#Toko GPS N/A" value={timestampResult.anomalyCounts.noOutletData} tone="pink"
+                  onClick={() => openDetail("Timestamp — GPS Toko N/A", filterTs((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
+                  exportRows={filterTs((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-toko-na" />
+              </div>
+            </div>
+
+            <div className="md:col-start-1 md:row-start-3 mb-3 md:mb-0">
+              <Panel title="Tren Anomali per Tanggal (Timestamp)" height={160} exportData={timestampResult.byDate} exportFilename="timestamp-tren-tanggal">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={timestampResult.byDate}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
+                    <YAxis stroke="#6b7280" fontSize={10} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                    <Line type="monotone" dataKey="anomali" stroke="#2dd4bf" strokeWidth={2}
+                      dot={{ r: 3, cursor: "pointer" }}
+                      activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Timestamp — ${p.payload.date}`, filterTs((v) => v.date === p.payload.date), TIMESTAMP_COLUMNS) }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Panel>
+            </div>
+
+            <div className="md:col-start-1 md:row-start-4 mb-3 md:mb-0">
+              <Panel title="Anomali per Tipe Promotor (Timestamp)" height={140} exportData={timestampResult.byPromotorTypeChart} exportFilename="timestamp-per-tipe-promotor">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={timestampResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
+                    <YAxis type="category" dataKey="type" stroke="#6b7280" fontSize={9} width={100} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                    <Bar dataKey="anomali" fill="#f472b6" radius={[0, 4, 4, 0]} cursor="pointer"
+                      onClick={(d) => openDetail(`Timestamp — ${d.type}`, filterTs((v) => v.promotorType === d.type), TIMESTAMP_COLUMNS)}>
+                      <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Panel>
+            </div>
+
+            <div className="md:col-start-1 md:row-start-5 mb-3 md:mb-0">
+              <Panel title="Anomali per Role (Timestamp)" height={roleChartHeight} exportData={timestampResult.byRole} exportFilename="timestamp-per-role">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={timestampResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
+                    <YAxis type="category" dataKey="role" stroke="#6b7280" fontSize={9} width={100} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                    <Bar dataKey="anomali" fill="#2dd4bf" radius={[0, 4, 4, 0]} cursor="pointer"
+                      onClick={(d) => openDetail(`Timestamp — ${d.role}`, filterTs((v) => v.position === d.role), TIMESTAMP_COLUMNS)}>
+                      <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Panel>
+            </div>
+
+            <div className="md:col-start-1 md:row-start-6 mb-3 md:mb-0">
+              <Leaderboard title="Top 5 Anomali per Orang — Timestamp (dengan Role)" data={timestampResult.topOffenders} tone="teal"
+                onItemClick={(d) => openDetail(`Timestamp — ${d.name}`, filterTs((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
+                exportFilename="timestamp-leaderboard" />
+            </div>
+
+            <div className="md:col-start-1 md:row-start-7 mb-3 md:mb-0">
+              <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Timestamp ({timestampResult.flagged.length}/{timestampResult.total})</div>
+              <FlaggedTable rows={timestampResult.flagged} columns={TIMESTAMP_COLUMNS} exportFilename="timestamp-detail-anomali" />
+            </div>
+          </>
+        )}
+        {!timestampResult && (
+          <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Timestamp</div>
+        )}
+
+        {/* ───────── ABSENSI (all blocks, in order) ───────── */}
+
         <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0">
           <div className="text-sm font-bold text-indigo-700 mb-2">Data Absensi (Attendance)</div>
           <div className="flex flex-wrap gap-3 items-center text-[11px] text-gray-500">
@@ -1338,194 +1468,90 @@ function DashboardPage(props) {
           </div>
         </div>
 
-        {(timestampResult || absensiResult) && (
+        {absensiResult && (
           <>
-            {/* row 2: stat cards */}
-            <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0">
-              <div className="grid grid-cols-2 gap-2.5">
-                {timestampResult ? (
-                  <>
-                    <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={timestampResult.anomalyCounts.zone} tone="indigo"
-                      onClick={() => openDetail("Timestamp — Absensi <3x/hari", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
-                      exportRows={filterTs((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-absensi-kurang-3x" />
-                    <StatCard icon={MapPin} label="GPS Identik" unit="Hits" value={timestampResult.anomalyCounts.gpsIdentical} tone="pink"
-                      subtitle={`${timestampResult.gpsIdenticalPeople} Promotor`}
-                      onClick={() => openDetail("Timestamp — GPS Identik", filterTs((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
-                      exportRows={filterTs((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-identik" />
-                    <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
-                      onClick={() => openDetail("Timestamp — Promotor Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
-                      exportRows={filterTs((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-status-non-active" />
-                    <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={timestampResult.anomalyCounts.farFromStore} tone="red"
-                      onClick={() => openDetail("Timestamp — GPS Jauh dari Toko", filterTs((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
-                      exportRows={filterTs((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-jauh-dari-toko" />
-                    <StatCard icon={MapPin} label="#Toko GPS N/A" value={timestampResult.anomalyCounts.noOutletData} tone="pink"
-                      onClick={() => openDetail("Timestamp — GPS Toko N/A", filterTs((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
-                      exportRows={filterTs((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-toko-na" />
-                  </>
-                ) : (
-                  <div className="col-span-2 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Timestamp</div>
-                )}
-              </div>
-            </div>
             <div className="md:col-start-2 md:row-start-2 mb-3 md:mb-0">
               <div className="grid grid-cols-2 gap-2.5">
-                {absensiResult ? (
-                  <>
-                    <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={absensiResult.anomalyCounts.gpsFar} tone="red"
-                      onClick={() => openDetail("Absensi — GPS Jauh dari Toko", filterAb((s) => s.farFromStore), ABSENSI_COLUMNS)}
-                      exportRows={filterAb((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-jauh-dari-toko" />
-                    <StatCard icon={MapPin} label="#Toko GPS N/A" value={absensiResult.anomalyCounts.gpsNoOutlet} tone="pink"
-                      onClick={() => openDetail("Absensi — GPS Toko N/A", filterAb((s) => s.noOutletData), ABSENSI_COLUMNS)}
-                      exportRows={filterAb((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-toko-na" />
-                    <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
-                      onClick={() => openDetail("Absensi — Promotor Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
-                      exportRows={filterAb((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-status-non-active" />
-                    <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={absensiResult.anomalyCounts.duration} tone="indigo"
-                      onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)}
-                      exportRows={filterAb((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-durasi-bermasalah" />
-                  </>
-                ) : (
-                  <div className="col-span-2 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Absensi</div>
-                )}
+                <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={absensiResult.anomalyCounts.gpsFar} tone="red"
+                  onClick={() => openDetail("Absensi — GPS Jauh dari Toko", filterAb((s) => s.farFromStore), ABSENSI_COLUMNS)}
+                  exportRows={filterAb((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-jauh-dari-toko" />
+                <StatCard icon={MapPin} label="#Toko GPS N/A" value={absensiResult.anomalyCounts.gpsNoOutlet} tone="pink"
+                  onClick={() => openDetail("Absensi — GPS Toko N/A", filterAb((s) => s.noOutletData), ABSENSI_COLUMNS)}
+                  exportRows={filterAb((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-toko-na" />
+                <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
+                  onClick={() => openDetail("Absensi — Promotor Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
+                  exportRows={filterAb((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-status-non-active" />
+                <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={absensiResult.anomalyCounts.duration} tone="indigo"
+                  onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)}
+                  exportRows={filterAb((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-durasi-bermasalah" />
               </div>
             </div>
 
-            {/* row 3: trend chart */}
-            <div className="md:col-start-1 md:row-start-3 mb-3 md:mb-0">
-              <Panel title="Tren Anomali per Tanggal (Timestamp)" height={160} exportData={timestampResult?.byDate} exportFilename="timestamp-tren-tanggal">
-                {timestampResult && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={timestampResult.byDate}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
-                      <YAxis stroke="#6b7280" fontSize={10} />
-                      <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                      <Line type="monotone" dataKey="anomali" stroke="#2dd4bf" strokeWidth={2}
-                        dot={{ r: 3, cursor: "pointer" }}
-                        activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Timestamp — ${p.payload.date}`, filterTs((v) => v.date === p.payload.date), TIMESTAMP_COLUMNS) }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </Panel>
-            </div>
             <div className="md:col-start-2 md:row-start-3 mb-3 md:mb-0">
-              <Panel title="Tren Anomali per Tanggal (Absensi)" height={160} exportData={absensiResult?.byDate} exportFilename="absensi-tren-tanggal">
-                {absensiResult && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={absensiResult.byDate}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
-                      <YAxis stroke="#6b7280" fontSize={10} />
-                      <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                      <Line type="monotone" dataKey="anomali" stroke="#f59e0b" strokeWidth={2}
-                        dot={{ r: 3, cursor: "pointer" }}
-                        activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Absensi — ${p.payload.date}`, filterAb((s) => s.date === p.payload.date), ABSENSI_COLUMNS) }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
+              <Panel title="Tren Anomali per Tanggal (Absensi)" height={160} exportData={absensiResult.byDate} exportFilename="absensi-tren-tanggal">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={absensiResult.byDate}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
+                    <YAxis stroke="#6b7280" fontSize={10} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                    <Line type="monotone" dataKey="anomali" stroke="#f59e0b" strokeWidth={2}
+                      dot={{ r: 3, cursor: "pointer" }}
+                      activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Absensi — ${p.payload.date}`, filterAb((s) => s.date === p.payload.date), ABSENSI_COLUMNS) }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </Panel>
             </div>
 
-            {/* row 4: promotor type chart */}
-            <div className="md:col-start-1 md:row-start-4 mb-3 md:mb-0">
-              <Panel title="Anomali per Tipe Promotor (Timestamp)" height={140} exportData={timestampResult?.byPromotorTypeChart} exportFilename="timestamp-per-tipe-promotor">
-                {timestampResult && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={timestampResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                      <XAxis type="number" stroke="#6b7280" fontSize={10} />
-                      <YAxis type="category" dataKey="type" stroke="#6b7280" fontSize={9} width={100} />
-                      <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                      <Bar dataKey="anomali" fill="#f472b6" radius={[0, 4, 4, 0]} cursor="pointer"
-                        onClick={(d) => openDetail(`Timestamp — ${d.type}`, filterTs((v) => v.promotorType === d.type), TIMESTAMP_COLUMNS)}>
-                        <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </Panel>
-            </div>
             <div className="md:col-start-2 md:row-start-4 mb-3 md:mb-0">
-              <Panel title="Anomali per Tipe Promotor (Absensi)" height={140} exportData={absensiResult?.byPromotorTypeChart} exportFilename="absensi-per-tipe-promotor">
-                {absensiResult && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={absensiResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                      <XAxis type="number" stroke="#6b7280" fontSize={10} />
-                      <YAxis type="category" dataKey="type" stroke="#6b7280" fontSize={9} width={100} />
-                      <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                      <Bar dataKey="anomali" fill="#818cf8" radius={[0, 4, 4, 0]} cursor="pointer"
-                        onClick={(d) => openDetail(`Absensi — ${d.type}`, filterAb((s) => s.promotorType === d.type), ABSENSI_COLUMNS)}>
-                        <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
+              <Panel title="Anomali per Tipe Promotor (Absensi)" height={140} exportData={absensiResult.byPromotorTypeChart} exportFilename="absensi-per-tipe-promotor">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={absensiResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
+                    <YAxis type="category" dataKey="type" stroke="#6b7280" fontSize={9} width={100} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                    <Bar dataKey="anomali" fill="#818cf8" radius={[0, 4, 4, 0]} cursor="pointer"
+                      onClick={(d) => openDetail(`Absensi — ${d.type}`, filterAb((s) => s.promotorType === d.type), ABSENSI_COLUMNS)}>
+                      <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </Panel>
             </div>
 
-            {/* row 5: role chart */}
-            <div className="md:col-start-1 md:row-start-5 mb-3 md:mb-0">
-              <Panel title="Anomali per Role (Timestamp)" height={roleChartHeight} exportData={timestampResult?.byRole} exportFilename="timestamp-per-role">
-                {timestampResult && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={timestampResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                      <XAxis type="number" stroke="#6b7280" fontSize={10} />
-                      <YAxis type="category" dataKey="role" stroke="#6b7280" fontSize={9} width={100} />
-                      <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                      <Bar dataKey="anomali" fill="#2dd4bf" radius={[0, 4, 4, 0]} cursor="pointer"
-                        onClick={(d) => openDetail(`Timestamp — ${d.role}`, filterTs((v) => v.position === d.role), TIMESTAMP_COLUMNS)}>
-                        <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </Panel>
-            </div>
             <div className="md:col-start-2 md:row-start-5 mb-3 md:mb-0">
-              <Panel title="Anomali per Role (Absensi)" height={roleChartHeight} exportData={absensiResult?.byRole} exportFilename="absensi-per-role">
-                {absensiResult && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={absensiResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                      <XAxis type="number" stroke="#6b7280" fontSize={10} />
-                      <YAxis type="category" dataKey="role" stroke="#6b7280" fontSize={9} width={100} />
-                      <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                      <Bar dataKey="anomali" fill="#f59e0b" radius={[0, 4, 4, 0]} cursor="pointer"
-                        onClick={(d) => openDetail(`Absensi — ${d.role}`, filterAb((s) => s.position === d.role), ABSENSI_COLUMNS)}>
-                        <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
+              <Panel title="Anomali per Role (Absensi)" height={roleChartHeight} exportData={absensiResult.byRole} exportFilename="absensi-per-role">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={absensiResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
+                    <YAxis type="category" dataKey="role" stroke="#6b7280" fontSize={9} width={100} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                    <Bar dataKey="anomali" fill="#f59e0b" radius={[0, 4, 4, 0]} cursor="pointer"
+                      onClick={(d) => openDetail(`Absensi — ${d.role}`, filterAb((s) => s.position === d.role), ABSENSI_COLUMNS)}>
+                      <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </Panel>
             </div>
 
-            {/* row 6: leaderboard */}
-            <div className="md:col-start-1 md:row-start-6 mb-3 md:mb-0">
-              <Leaderboard title="Top 5 Anomali per Orang — Timestamp (dengan Role)" data={timestampResult?.topOffenders || []} tone="teal"
-                onItemClick={(d) => openDetail(`Timestamp — ${d.name}`, filterTs((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
-                exportFilename="timestamp-leaderboard" />
-            </div>
             <div className="md:col-start-2 md:row-start-6 mb-3 md:mb-0">
-              <Leaderboard title="Top 5 Anomali per Orang — Absensi (dengan Role)" data={absensiResult?.topOffenders || []} tone="indigo"
+              <Leaderboard title="Top 5 Anomali per Orang — Absensi (dengan Role)" data={absensiResult.topOffenders} tone="indigo"
                 onItemClick={(d) => openDetail(`Absensi — ${d.name}`, filterAb((s) => s.employee_name === d.name), ABSENSI_COLUMNS)}
                 exportFilename="absensi-leaderboard" />
             </div>
 
-            {/* row 7: detail table */}
-            <div className="md:col-start-1 md:row-start-7">
-              <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Timestamp ({timestampResult?.flagged.length ?? 0}/{timestampResult?.total ?? 0})</div>
-              <FlaggedTable rows={timestampResult?.flagged || []} columns={TIMESTAMP_COLUMNS} exportFilename="timestamp-detail-anomali" />
-            </div>
             <div className="md:col-start-2 md:row-start-7">
-              <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Absensi ({absensiResult?.flagged.length ?? 0}/{absensiResult?.total ?? 0})</div>
-              <FlaggedTable rows={absensiResult?.flagged || []} columns={ABSENSI_COLUMNS} exportFilename="absensi-detail-anomali" />
+              <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Absensi ({absensiResult.flagged.length}/{absensiResult.total})</div>
+              <FlaggedTable rows={absensiResult.flagged} columns={ABSENSI_COLUMNS} exportFilename="absensi-detail-anomali" />
             </div>
           </>
+        )}
+        {!absensiResult && (
+          <div className="md:col-start-2 md:row-start-2 mb-3 md:mb-0 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Absensi</div>
         )}
       </div>
 
@@ -1553,10 +1579,43 @@ export default function Dashboard() {
     setFileNames((prev) => [...prev, ...files.map((f) => f.name)]);
   }, []);
 
-  const { absensi: absensiData, timestamp: timestampData } = useMemo(
+  const { absensi: absensiDataAll, timestamp: timestampDataAll } = useMemo(
     () => (rawRows ? splitByRecordType(rawRows) : { absensi: null, timestamp: null }),
     [rawRows]
   );
+
+  // Region/Cluster filter — national view by default ("Semua"), drills down
+  // using Region_DOP/Cluster_DOP (present once the merger has been re-run
+  // with the version that keeps these columns from the DOP source).
+  const [selectedRegion, setSelectedRegion] = useState("Semua");
+  const [selectedCluster, setSelectedCluster] = useState("Semua");
+
+  const regionOptions = useMemo(() => {
+    if (!rawRows) return [];
+    return [...new Set(rawRows.map((r) => r["Region_DOP"]).filter(Boolean))].sort();
+  }, [rawRows]);
+
+  const clusterOptions = useMemo(() => {
+    if (!rawRows) return [];
+    const scoped = selectedRegion === "Semua" ? rawRows : rawRows.filter((r) => r["Region_DOP"] === selectedRegion);
+    return [...new Set(scoped.map((r) => r["Cluster_DOP"]).filter(Boolean))].sort();
+  }, [rawRows, selectedRegion]);
+
+  const timestampData = useMemo(() => {
+    if (!timestampDataAll) return null;
+    return timestampDataAll.filter((r) =>
+      (selectedRegion === "Semua" || r["Region_DOP"] === selectedRegion) &&
+      (selectedCluster === "Semua" || r["Cluster_DOP"] === selectedCluster)
+    );
+  }, [timestampDataAll, selectedRegion, selectedCluster]);
+
+  const absensiData = useMemo(() => {
+    if (!absensiDataAll) return null;
+    return absensiDataAll.filter((r) =>
+      (selectedRegion === "Semua" || r["Region_DOP"] === selectedRegion) &&
+      (selectedCluster === "Semua" || r["Cluster_DOP"] === selectedCluster)
+    );
+  }, [absensiDataAll, selectedRegion, selectedCluster]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 overflow-x-hidden">
@@ -1583,13 +1642,51 @@ export default function Dashboard() {
             canGo={!!rawRows && rawRows.length > 0}
           />
         ) : (
-          <DashboardPage
-            timestampData={timestampData}
-            absensiData={absensiData} moveThresholdM={moveThresholdM} setMoveThresholdM={setMoveThresholdM}
-            shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
-          />
+          <>
+            {regionOptions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-gray-200 rounded-xl px-4 py-3">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tampilan:</span>
+                <label className="flex items-center gap-1.5 text-xs text-gray-700">
+                  Region:
+                  <select
+                    value={selectedRegion}
+                    onChange={(e) => { setSelectedRegion(e.target.value); setSelectedCluster("Semua"); }}
+                    className="bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-800"
+                  >
+                    <option value="Semua">Semua (Nasional)</option>
+                    {regionOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-gray-700">
+                  Cluster:
+                  <select
+                    value={selectedCluster}
+                    onChange={(e) => setSelectedCluster(e.target.value)}
+                    className="bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-800"
+                  >
+                    <option value="Semua">Semua Cluster</option>
+                    {clusterOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+                {(selectedRegion !== "Semua" || selectedCluster !== "Semua") && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedRegion("Semua"); setSelectedCluster("Semua"); }}
+                    className="text-[11px] text-teal-700 hover:underline"
+                  >
+                    Reset ke Nasional
+                  </button>
+                )}
+              </div>
+            )}
+            <DashboardPage
+              timestampData={timestampData}
+              absensiData={absensiData} moveThresholdM={moveThresholdM} setMoveThresholdM={setMoveThresholdM}
+              shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
+            />
+          </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v33</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v40</div>
       </div>
     </div>
   );
