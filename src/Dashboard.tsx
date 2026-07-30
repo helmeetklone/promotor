@@ -1,4 +1,4 @@
-// Dashboard.tsx — v14
+// Dashboard.tsx — v15
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -25,6 +25,10 @@
 //        dan modal detail) — berlaku di Timestamp maupun Absensi karena komponennya di-share
 //   v14: kolom koordinat mentah (lat, lon) ditambahin ke tabel/export Timestamp biar bisa dicek
 //        manual; (0,0) sekarang dianggap GPS kosong/gagal-capture, bukan lokasi identik valid
+//   v15: BUG FIX PENTING — toNum() salah parse format desimal-koma Indonesia ("112,64118"),
+//        parseFloat berhenti di koma dan kepotong jadi "112" doang. Ini penyebab banyak GPS
+//        di Timestamp keliatan "identik" padahal aslinya beda-beda. Fix yang sama juga
+//        diterapkan ke toNum() di mergertool.html (buat parsing lat/lon Outlet Master).
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -108,7 +112,16 @@ const haversineMeters = (a, b) => {
 
 const toNum = (v) => {
   if (v === null || v === undefined || v === "") return null;
-  const n = parseFloat(v);
+  if (typeof v === "number") return Number.isNaN(v) ? null : v;
+  let s = String(v).trim();
+  // Handle Indonesian/European decimal-comma format (e.g. "112,64118",
+  // "-7,2478937") — parseFloat alone stops at the comma and silently
+  // truncates to the integer part, which is what caused GPS coordinates to
+  // collapse to near-identical truncated values after merging.
+  if (/^-?\d+,\d+$/.test(s)) {
+    s = s.replace(",", ".");
+  }
+  const n = parseFloat(s);
   return Number.isNaN(n) ? null : n;
 };
 
@@ -1252,7 +1265,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v14</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v15</div>
       </div>
     </div>
   );
