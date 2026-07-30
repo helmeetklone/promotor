@@ -1,4 +1,4 @@
-// Dashboard.tsx — v30
+// Dashboard.tsx — v31
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -90,6 +90,12 @@
 //        (2) Type Promotor sekarang hitung PROMOTOR unik (dedup employee_id), bukan jumlah
 //        aktivitas; (3) urutan angka-besar-dulu-baru-label disamain di kedua kolom biar
 //        sejajar sama "Total Promotor".
+//   v31: fix konsistensi angka — (1) In Store + Out Store sekarang hitung SEMUA promotor per
+//        tipe (bukan cuma yang ke-flag), jadi totalnya PERSIS sama dengan "Total Promotor"
+//        (di-test: 3.813 = In Store + Out Store); (2) label "Total Promotor Ter-flag" jadi
+//        "Total Promotor" biasa; (3) angka besar "38.650 hari-kerja" di section Compliance
+//        dihapus (beda satuan, bikin bingung), dipindah jadi catatan kecil di bawah
+//        "Promotor di Timestamp" (kolom kiri) — nambah field `all` di processAbsensi juga.
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -560,6 +566,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
 
   return {
     total,
+    all: shifts,
     anomalyCounts,
     byRole: byRoleArr,
     byPromotorType,
@@ -1133,10 +1140,16 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     return [...t, ...a];
   };
 
-  // Unique PROMOTOR (not activity) counts per type — dedup by employee_id
-  // so a person with several flagged records only counts once.
-  const inStore = new Set(combinedFlagged().filter((r) => r.promotorType === "In Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
-  const outStore = new Set(combinedFlagged().filter((r) => r.promotorType === "Out Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
+  // Unique PROMOTOR by type, counting EVERYONE (not just flagged) — this is
+  // guaranteed to sum exactly to totalPromotorAll, since both processors
+  // already restrict their data to In Store / Out Store promotors only.
+  const allRecords = () => {
+    const t = (timestampResult?.all || []).map((r) => ({ ...r, _source: "Timestamp" }));
+    const a = (absensiResult?.all || []).map((r) => ({ ...r, _source: "Absensi" }));
+    return [...t, ...a];
+  };
+  const inStore = new Set(allRecords().filter((r) => r.promotorType === "In Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
+  const outStore = new Set(allRecords().filter((r) => r.promotorType === "Out Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
 
   const onlyInTimestamp = new Set([...tsIds].filter((id) => !abIds.has(id)));
   const onlyInAbsensi = new Set([...abIds].filter((id) => !tsIds.has(id)));
@@ -1175,6 +1188,9 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
             <div>
               <div className="text-xl font-bold text-teal-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
               <div className="text-[11px] text-gray-500 mt-1">Promotor di Timestamp</div>
+              {timestampResult && (
+                <div className="text-[10px] text-gray-400 mt-0.5">{timestampResult.total.toLocaleString("id-ID")} hari-kerja dinilai</div>
+              )}
             </div>
             <div>
               <div className="text-xl font-bold text-indigo-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
@@ -1216,7 +1232,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
         <div className="md:pl-6">
           <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
-          <div className="text-[11px] text-gray-500 mt-1">Total Promotor Ter-flag per Tipe (dari kolom Position)</div>
+          <div className="text-[11px] text-gray-500 mt-1">Total Promotor (dari kolom Position)</div>
           <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
             <Num
               value={inStore.toLocaleString("id-ID")}
@@ -1236,9 +1252,8 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
           {timestampResult && (
             <div className="mt-4 pt-4 border-t border-emerald-200/50">
-              <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{timestampResult.total.toLocaleString("id-ID")}</div>
-              <div className="text-[11px] text-gray-500 mt-1">Total Hari-Kerja Timestamp Dinilai (min. 3 zona waktu berbeda)</div>
-              <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
+              <div className="text-[11px] text-gray-500 mb-2">Compliance Absen Timestamp (min. 3 zona waktu berbeda)</div>
+              <div className="grid grid-cols-2 gap-4">
                 <Num
                   value={(timestampResult.total - timestampResult.anomalyCounts.zone).toLocaleString("id-ID")}
                   className="text-xl font-bold text-emerald-700 leading-none"
@@ -1554,7 +1569,7 @@ export default function Dashboard() {
             shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
           />
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v30</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v31</div>
       </div>
     </div>
   );
