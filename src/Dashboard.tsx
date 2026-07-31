@@ -1,4 +1,4 @@
-// Dashboard.tsx — v45
+// Dashboard.tsx — v46
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1179,8 +1179,8 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-emerald-200/50">
         <div className="md:pr-6">
+          <div className="text-base font-bold text-gray-900 mb-1.5">Total Promotor (dari kolom Position)</div>
           <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
-          <div className="text-[11px] text-gray-700 mt-1">Total Promotor (dari kolom Position)</div>
           <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
             <Num
               value={inStore.toLocaleString("id-ID")}
@@ -1730,7 +1730,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v45</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v46</div>
       </div>
     </div>
   );
