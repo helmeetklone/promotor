@@ -1,4 +1,4 @@
-// Dashboard.tsx — v61
+// Dashboard.tsx — v62
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1373,71 +1373,74 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
         </div>
       </div>
 
-      {/* Detail tambahan: cakupan data per sumber */}
-      <div className="mt-4 pt-4 border-t border-emerald-200/50 space-y-2.5">
-        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Timestamp</div>
-          {timestampResult ? (
-            <div className="text-sm text-gray-800">
-              <span className="font-bold text-gray-900">{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
-              {" "}&middot; {formatDateShort(timestampResult.coverage.dateMin)} s.d. {formatDateShort(timestampResult.coverage.dateMax)}
-            </div>
-          ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 pt-4 border-t border-emerald-200/50 md:divide-x md:divide-emerald-200/50">
+        <div className="md:pr-6 space-y-2.5">
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Timestamp</div>
+            {timestampResult ? (
+              <div className="text-sm text-gray-800">
+                <span className="font-bold text-gray-900">{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
+                {" "}&middot; {formatDateShort(timestampResult.coverage.dateMin)} s.d. {formatDateShort(timestampResult.coverage.dateMax)}
+              </div>
+            ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
+          </div>
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Absensi</div>
+            {absensiResult ? (
+              <div className="text-sm text-gray-800">
+                <span className="font-bold text-gray-900">{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
+                {" "}&middot; {formatDateShort(absensiResult.coverage.dateMin)} s.d. {formatDateShort(absensiResult.coverage.dateMax)}
+              </div>
+            ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
+          </div>
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp vs Absensi</div>
+            {timestampResult && absensiResult ? (
+              <ul className="text-sm text-gray-800 list-disc list-inside space-y-1">
+                <li>Selisih total Timestamp: <span className="font-bold text-gray-900">{onlyInAbsensi.size.toLocaleString("id-ID")} karyawan</span></li>
+                <li>Selisih total Absensi: <span className="font-bold text-gray-900">{onlyInTimestamp.size.toLocaleString("id-ID")} karyawan</span></li>
+              </ul>
+            ) : <div className="text-sm text-gray-400">Perlu kedua dataset untuk dibandingkan</div>}
+          </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Absensi</div>
-          {absensiResult ? (
-            <div className="text-sm text-gray-800">
-              <span className="font-bold text-gray-900">{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
-              {" "}&middot; {formatDateShort(absensiResult.coverage.dateMin)} s.d. {formatDateShort(absensiResult.coverage.dateMax)}
-            </div>
-          ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
-        </div>
-        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp vs Absensi</div>
-          {timestampResult && absensiResult ? (
-            <ul className="text-sm text-gray-800 list-disc list-inside space-y-1">
-              <li>Selisih total Timestamp: <span className="font-bold text-gray-900">{onlyInAbsensi.size.toLocaleString("id-ID")} karyawan</span></li>
-              <li>Selisih total Absensi: <span className="font-bold text-gray-900">{onlyInTimestamp.size.toLocaleString("id-ID")} karyawan</span></li>
-            </ul>
-          ) : <div className="text-sm text-gray-400">Perlu kedua dataset untuk dibandingkan</div>}
+
+        <div className="md:pl-6">
+          {timestampResult && (
+            <>
+              <div className="text-sm font-bold text-gray-900 mb-1">Detail Zona Waktu (Timestamp)</div>
+              <div className="text-[11px] text-gray-500 mb-2">Klik angka untuk melihat daftar promotor.</div>
+              <div className="grid grid-cols-3 gap-3">
+                <Num
+                  value={alwaysComplyIds.length.toLocaleString("id-ID")}
+                  className="text-lg font-bold text-emerald-700 leading-none"
+                  onClick={() => onDetail("Selalu Comply (≥3x tiap hari)", byZoneIds(alwaysComplyIds), TIMESTAMP_COLUMNS)}
+                >
+                  <div className="text-[10px] text-gray-700 mt-1">Selalu Comply</div>
+                </Num>
+                <Num
+                  value={alwaysNotComplyIds.length.toLocaleString("id-ID")}
+                  className="text-lg font-bold text-red-700 leading-none"
+                  onClick={() => onDetail("Selalu Not Comply (<3x tiap hari)", byZoneIds(alwaysNotComplyIds), TIMESTAMP_COLUMNS)}
+                >
+                  <div className="text-[10px] text-gray-700 mt-1">Selalu Not Comply</div>
+                </Num>
+                <Num
+                  value={mixedIds.length.toLocaleString("id-ID")}
+                  className="text-lg font-bold text-amber-700 leading-none"
+                  onClick={() => onDetail("Campuran (irisan Comply & Not Comply)", byZoneIds(mixedIds), TIMESTAMP_COLUMNS)}
+                >
+                  <div className="text-[10px] text-gray-700 mt-1">Campuran (irisan)</div>
+                </Num>
+              </div>
+              <ul className="text-[11px] text-gray-600 mt-2 list-disc list-inside">
+                <li>Comply/Not Comply hanya melihat 3 zona waktu</li>
+                <li>Jarak GPS tidak menjadi parameter perhitungan</li>
+              </ul>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Detail interaktif: Zona Waktu per promotor (klik untuk lihat) */}
-      {timestampResult && (
-        <div className="mt-4 pt-4 border-t border-emerald-200/50">
-          <div className="text-sm font-bold text-gray-900 mb-1">Detail Zona Waktu (Timestamp)</div>
-          <div className="text-[11px] text-gray-500 mb-2">Klik angka untuk melihat daftar promotor.</div>
-          <div className="grid grid-cols-3 gap-3">
-            <Num
-              value={alwaysComplyIds.length.toLocaleString("id-ID")}
-              className="text-lg font-bold text-emerald-700 leading-none"
-              onClick={() => onDetail("Selalu Comply (≥3x tiap hari)", byZoneIds(alwaysComplyIds), TIMESTAMP_COLUMNS)}
-            >
-              <div className="text-[10px] text-gray-700 mt-1">Selalu Comply</div>
-            </Num>
-            <Num
-              value={alwaysNotComplyIds.length.toLocaleString("id-ID")}
-              className="text-lg font-bold text-red-700 leading-none"
-              onClick={() => onDetail("Selalu Not Comply (<3x tiap hari)", byZoneIds(alwaysNotComplyIds), TIMESTAMP_COLUMNS)}
-            >
-              <div className="text-[10px] text-gray-700 mt-1">Selalu Not Comply</div>
-            </Num>
-            <Num
-              value={mixedIds.length.toLocaleString("id-ID")}
-              className="text-lg font-bold text-amber-700 leading-none"
-              onClick={() => onDetail("Campuran (irisan Comply & Not Comply)", byZoneIds(mixedIds), TIMESTAMP_COLUMNS)}
-            >
-              <div className="text-[10px] text-gray-700 mt-1">Campuran (irisan)</div>
-            </Num>
-          </div>
-          <ul className="text-[11px] text-gray-600 mt-2 list-disc list-inside">
-            <li>Comply/Not Comply hanya melihat 3 zona waktu</li>
-            <li>Jarak GPS tidak menjadi parameter perhitungan</li>
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
@@ -1862,7 +1865,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v61</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v62</div>
       </div>
     </div>
   );
