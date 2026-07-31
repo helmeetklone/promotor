@@ -1,4 +1,4 @@
-// Dashboard.tsx — v47
+// Dashboard.tsx — v48
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1249,7 +1249,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
                   </Num>
                 </div>
                 <div className="text-[10px] text-gray-600 mt-2">
-                  {alwaysComplyIds.length.toLocaleString("id-ID")} + {alwaysNotComplyIds.length.toLocaleString("id-ID")} + {mixedIds.length.toLocaleString("id-ID")} = {(alwaysComplyIds.length + alwaysNotComplyIds.length + mixedIds.length).toLocaleString("id-ID")} promotor — ini scope-nya cuma yang PUNYA data Timestamp ({timestampPromotorAll.toLocaleString("id-ID")}), bukan total gabungan {totalPromotorAll.toLocaleString("id-ID")}; sisanya ({onlyInAbsensi.size.toLocaleString("id-ID")} orang) cuma ada di Absensi jadi nggak bisa dinilai compliance-nya sama sekali.
+                  Hanya berlaku untuk kategori Timestamp.
                 </div>
               </div>
             );
@@ -1726,7 +1726,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v47</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v48</div>
       </div>
     </div>
   );
