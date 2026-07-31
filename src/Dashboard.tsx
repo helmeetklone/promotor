@@ -1,4 +1,4 @@
-// Dashboard.tsx — v41
+// Dashboard.tsx — v45
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1179,60 +1179,6 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-emerald-200/50">
         <div className="md:pr-6">
-          <Num
-            value={totalPromotorAll.toLocaleString("id-ID")}
-            className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none"
-          >
-            <div className="text-[11px] text-gray-700 mt-1">Total Promotor (semua, bukan hitungan anomali)</div>
-          </Num>
-
-          <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
-            <div>
-              <div className="text-xl font-bold text-teal-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
-              <div className="text-[11px] text-gray-700 mt-1">Promotor di Timestamp</div>
-            </div>
-            <div>
-              <div className="text-xl font-bold text-indigo-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
-              <div className="text-[11px] text-gray-700 mt-1">Promotor di Absensi</div>
-              {timestampResult && (
-                <div className="text-[10px] text-gray-600 mt-0.5">{timestampResult.total.toLocaleString("id-ID")} hari-kerja dinilai</div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-emerald-200/50 space-y-2.5">
-            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Timestamp</div>
-              {timestampResult ? (
-                <div className="text-sm text-gray-800">
-                  <span className="font-bold text-gray-900">{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
-                  {" "}&middot; {formatDateShort(timestampResult.coverage.dateMin)} s.d. {formatDateShort(timestampResult.coverage.dateMax)}
-                </div>
-              ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Absensi</div>
-              {absensiResult ? (
-                <div className="text-sm text-gray-800">
-                  <span className="font-bold text-gray-900">{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
-                  {" "}&middot; {formatDateShort(absensiResult.coverage.dateMin)} s.d. {formatDateShort(absensiResult.coverage.dateMax)}
-                </div>
-              ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan Data</div>
-              {timestampResult && absensiResult ? (
-                <div className="text-sm text-gray-800">
-                  <span className="font-bold text-gray-900">{onlyInTimestamp.size} karyawan</span> hanya tercatat di Timestamp,{" "}
-                  <span className="font-bold text-gray-900">{onlyInAbsensi.size} karyawan</span> hanya tercatat di Absensi
-                  {" "}(total {totalPromotorAll.toLocaleString("id-ID")} karyawan unik).
-                </div>
-              ) : <div className="text-sm text-gray-400">Perlu kedua dataset untuk dibandingkan</div>}
-            </div>
-          </div>
-        </div>
-
-        <div className="md:pl-6">
           <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
           <div className="text-[11px] text-gray-700 mt-1">Total Promotor (dari kolom Position)</div>
           <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
@@ -1308,6 +1254,56 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
               </div>
             );
           })()}
+        </div>
+
+        <div className="md:pl-6">
+          <div className="grid grid-cols-2 gap-6 divide-x divide-emerald-200/50">
+            <div>
+              <div className="text-base font-bold text-gray-900 mb-1.5">Promotor di Timestamp</div>
+              <div className="text-3xl sm:text-4xl font-bold text-teal-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
+              {timestampResult && (
+                <div className="text-[10px] text-gray-600 mt-1.5">{timestampResult.total.toLocaleString("id-ID")} hari-kerja dinilai</div>
+              )}
+            </div>
+            <div className="pl-6">
+              <div className="text-base font-bold text-gray-900 mb-1.5">Promotor di Absensi</div>
+              <div className="text-3xl sm:text-4xl font-bold text-indigo-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-emerald-200/50 space-y-2.5">
+            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Timestamp</div>
+              {timestampResult ? (
+                <div className="text-sm text-gray-800">
+                  <span className="font-bold text-gray-900">{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
+                  {" "}&middot; {formatDateShort(timestampResult.coverage.dateMin)} s.d. {formatDateShort(timestampResult.coverage.dateMax)}
+                </div>
+              ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Absensi</div>
+              {absensiResult ? (
+                <div className="text-sm text-gray-800">
+                  <span className="font-bold text-gray-900">{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
+                  {" "}&middot; {formatDateShort(absensiResult.coverage.dateMin)} s.d. {formatDateShort(absensiResult.coverage.dateMax)}
+                </div>
+              ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Perbandingan Cakupan: Timestamp vs Absensi</div>
+              {timestampResult && absensiResult ? (
+                <div className="text-sm text-gray-800">
+                  <div className="text-[11px] text-gray-500 mb-1.5">Dari karyawan yang sama, mana yang tercatat di sumber data mana:</div>
+                  <span className="font-bold text-gray-900">{onlyInTimestamp.size} karyawan</span> HANYA ada di Timestamp (tidak ada di Absensi),{" "}
+                  <span className="font-bold text-gray-900">{onlyInAbsensi.size} karyawan</span> HANYA ada di Absensi (tidak ada di Timestamp),{" "}
+                  <span className="font-bold text-gray-900">{new Set([...tsIds].filter((id) => abIds.has(id))).size} karyawan</span> ADA DI KEDUANYA (irisan)
+                  {" "}— total {totalPromotorAll.toLocaleString("id-ID")} karyawan unik.
+                  <div className="text-[10px] text-gray-500 mt-1">Catatan: angka "Promotor di Timestamp"/"Promotor di Absensi" di atas TIDAK bisa dijumlahkan langsung untuk dapat total — keduanya beririsan (orang yang sama bisa masuk dua-duanya).</div>
+                </div>
+              ) : <div className="text-sm text-gray-400">Perlu kedua dataset untuk dibandingkan</div>}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1601,15 +1597,34 @@ export default function Dashboard() {
     return !rowIsActive(r); // "Non-Active"
   };
 
+  // Only surface Region/Cluster values with a meaningful amount of data —
+  // filters out stray typo/inconsistent entries (e.g. "Central" alongside
+  // "CENTRAL JAVA") that only ever have a handful of rows.
+  const MIN_GROUP_SIZE = 3;
+  const groupOptionsByCount = (rows, key) => {
+    const idsByValue = new Map();
+    rows.forEach((r) => {
+      const value = r[key];
+      if (!value) return;
+      if (!idsByValue.has(value)) idsByValue.set(value, new Set());
+      const id = r["Employee ID"];
+      if (id) idsByValue.get(value).add(id);
+    });
+    return [...idsByValue.entries()]
+      .filter(([, ids]) => ids.size >= MIN_GROUP_SIZE)
+      .map(([value]) => value)
+      .sort();
+  };
+
   const regionOptions = useMemo(() => {
     if (!rawRows) return [];
-    return [...new Set(rawRows.map((r) => r["Region_DOP"]).filter(Boolean))].sort();
+    return groupOptionsByCount(rawRows, "Region_DOP");
   }, [rawRows]);
 
   const clusterOptions = useMemo(() => {
     if (!rawRows) return [];
     const scoped = selectedRegion === "Semua" ? rawRows : rawRows.filter((r) => r["Region_DOP"] === selectedRegion);
-    return [...new Set(scoped.map((r) => r["Cluster_DOP"]).filter(Boolean))].sort();
+    return groupOptionsByCount(scoped, "Cluster_DOP");
   }, [rawRows, selectedRegion]);
 
   const timestampData = useMemo(() => {
@@ -1715,7 +1730,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v41</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v45</div>
       </div>
     </div>
   );
