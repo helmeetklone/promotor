@@ -1,4 +1,4 @@
-// Dashboard.tsx — v40
+// Dashboard.tsx — v41
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -780,25 +780,25 @@ function computeInsights(timestampResult, absensiResult) {
 
   if (timestampResult && timestampResult.total > 0) {
     const rate = ((timestampResult.flagged.length / timestampResult.total) * 100).toFixed(1);
-    insights.push(`Timestamp: ${rate}% dari ${timestampResult.total.toLocaleString("id-ID")} hari-kerja (karyawan x tanggal, bukan jumlah orang) terindikasi anomali.`);
+    insights.push(`Timestamp: ${rate}% dari ${timestampResult.total.toLocaleString("id-ID")} hari-kerja terindikasi anomali (unit: karyawan × tanggal).`);
     if (timestampResult.worstRolePeople) {
-      insights.push(`Role dengan anomali Timestamp terbanyak: ${timestampResult.worstRolePeople.role} (${timestampResult.worstRolePeople.anomaliPeople} dari ${timestampResult.worstRolePeople.totalPeople} promotor).`);
+      insights.push(`Role Timestamp dengan anomali tertinggi: ${timestampResult.worstRolePeople.role} (${timestampResult.worstRolePeople.anomaliPeople}/${timestampResult.worstRolePeople.totalPeople} promotor).`);
     }
   }
 
   if (absensiResult && absensiResult.total > 0) {
     const rate = ((absensiResult.flagged.length / absensiResult.total) * 100).toFixed(1);
-    insights.push(`Absensi: ${rate}% dari ${absensiResult.total.toLocaleString("id-ID")} shift (bukan jumlah orang) terindikasi anomali.`);
+    insights.push(`Absensi: ${rate}% dari ${absensiResult.total.toLocaleString("id-ID")} shift terindikasi anomali.`);
     if (absensiResult.worstRolePeople) {
-      insights.push(`Role dengan anomali Absensi terbanyak: ${absensiResult.worstRolePeople.role} (${absensiResult.worstRolePeople.anomaliPeople} dari ${absensiResult.worstRolePeople.totalPeople} promotor).`);
+      insights.push(`Role Absensi dengan anomali tertinggi: ${absensiResult.worstRolePeople.role} (${absensiResult.worstRolePeople.anomaliPeople}/${absensiResult.worstRolePeople.totalPeople} promotor).`);
     }
   }
 
   if (timestampResult && absensiResult && timestampResult.total > 0 && absensiResult.total > 0) {
     const tRate = timestampResult.flagged.length / timestampResult.total;
     const aRate = absensiResult.flagged.length / absensiResult.total;
-    if (tRate > aRate * 1.2) insights.push("Anomali lebih banyak muncul di data Timestamp (journey) dibanding Absensi.");
-    else if (aRate > tRate * 1.2) insights.push("Anomali lebih banyak muncul di data Absensi (attendance) dibanding Timestamp.");
+    if (tRate > aRate * 1.2) insights.push("Tingkat anomali Timestamp lebih tinggi dibanding Absensi.");
+    else if (aRate > tRate * 1.2) insights.push("Tingkat anomali Absensi lebih tinggi dibanding Timestamp.");
   }
 
   // Bridge to the "jumlah orang/toko" framing used on the stat cards below,
@@ -807,7 +807,7 @@ function computeInsights(timestampResult, absensiResult) {
   const gpsFarPeople = (timestampResult?.anomalyCounts.farFromStore ?? 0) + (absensiResult?.anomalyCounts.gpsFar ?? 0);
   const gpsNoOutletToko = Math.max(timestampResult?.anomalyCounts.noOutletData ?? 0, absensiResult?.anomalyCounts.gpsNoOutlet ?? 0);
   if (gpsFarPeople > 0 || gpsNoOutletToko > 0) {
-    insights.push(`Dari sisi jumlah orang/toko: ${gpsFarPeople} promotor (unik) ke-flag GPS jauh dari toko, dan ${gpsNoOutletToko} toko (unik) datanya belum lengkap buat dicek.`);
+    insights.push(`Berdasarkan jumlah unik: ${gpsFarPeople} promotor ter-flag GPS jauh dari toko; ${gpsNoOutletToko} toko belum memiliki data lengkap untuk verifikasi.`);
   }
 
   const combinedTop = new Map();
@@ -818,7 +818,7 @@ function computeInsights(timestampResult, absensiResult) {
     });
   });
   const topPerson = [...combinedTop.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (topPerson) insights.push(`Orang dengan total anomali terbanyak (gabungan): ${topPerson[0]} (${topPerson[1]} kejadian).`);
+  if (topPerson) insights.push(`Promotor dengan anomali gabungan tertinggi: ${topPerson[0]} (${topPerson[1]} kejadian).`);
 
   return insights;
 }
@@ -1589,6 +1589,17 @@ export default function Dashboard() {
   // with the version that keeps these columns from the DOP source).
   const [selectedRegion, setSelectedRegion] = useState("Semua");
   const [selectedCluster, setSelectedCluster] = useState("Semua");
+  const [selectedStatus, setSelectedStatus] = useState("Semua");
+
+  const rowIsActive = (r) => {
+    const s = String(r["Employment Status_HR"] ?? r["Status_DOP"] ?? "").trim().toLowerCase();
+    return s === "active";
+  };
+  const matchesStatus = (r) => {
+    if (selectedStatus === "Semua") return true;
+    if (selectedStatus === "Active") return rowIsActive(r);
+    return !rowIsActive(r); // "Non-Active"
+  };
 
   const regionOptions = useMemo(() => {
     if (!rawRows) return [];
@@ -1605,17 +1616,19 @@ export default function Dashboard() {
     if (!timestampDataAll) return null;
     return timestampDataAll.filter((r) =>
       (selectedRegion === "Semua" || r["Region_DOP"] === selectedRegion) &&
-      (selectedCluster === "Semua" || r["Cluster_DOP"] === selectedCluster)
+      (selectedCluster === "Semua" || r["Cluster_DOP"] === selectedCluster) &&
+      matchesStatus(r)
     );
-  }, [timestampDataAll, selectedRegion, selectedCluster]);
+  }, [timestampDataAll, selectedRegion, selectedCluster, selectedStatus]);
 
   const absensiData = useMemo(() => {
     if (!absensiDataAll) return null;
     return absensiDataAll.filter((r) =>
       (selectedRegion === "Semua" || r["Region_DOP"] === selectedRegion) &&
-      (selectedCluster === "Semua" || r["Cluster_DOP"] === selectedCluster)
+      (selectedCluster === "Semua" || r["Cluster_DOP"] === selectedCluster) &&
+      matchesStatus(r)
     );
-  }, [absensiDataAll, selectedRegion, selectedCluster]);
+  }, [absensiDataAll, selectedRegion, selectedCluster, selectedStatus]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 overflow-x-hidden">
@@ -1643,35 +1656,51 @@ export default function Dashboard() {
           />
         ) : (
           <>
-            {regionOptions.length > 0 && (
+            {rawRows && (
               <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-gray-200 rounded-xl px-4 py-3">
                 <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tampilan:</span>
+                {regionOptions.length > 0 && (
+                  <>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-700">
+                      Region:
+                      <select
+                        value={selectedRegion}
+                        onChange={(e) => { setSelectedRegion(e.target.value); setSelectedCluster("Semua"); }}
+                        className="bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-800"
+                      >
+                        <option value="Semua">Semua (Nasional)</option>
+                        {regionOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-700">
+                      Cluster:
+                      <select
+                        value={selectedCluster}
+                        onChange={(e) => setSelectedCluster(e.target.value)}
+                        className="bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-800"
+                      >
+                        <option value="Semua">Semua Cluster</option>
+                        {clusterOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </label>
+                  </>
+                )}
                 <label className="flex items-center gap-1.5 text-xs text-gray-700">
-                  Region:
+                  Status:
                   <select
-                    value={selectedRegion}
-                    onChange={(e) => { setSelectedRegion(e.target.value); setSelectedCluster("Semua"); }}
+                    value={selectedStatus}
+                    onChange={(e) => setSelectedStatus(e.target.value)}
                     className="bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-800"
                   >
-                    <option value="Semua">Semua (Nasional)</option>
-                    {regionOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                    <option value="Semua">Semua Status</option>
+                    <option value="Active">Active</option>
+                    <option value="Non-Active">Non-Active</option>
                   </select>
                 </label>
-                <label className="flex items-center gap-1.5 text-xs text-gray-700">
-                  Cluster:
-                  <select
-                    value={selectedCluster}
-                    onChange={(e) => setSelectedCluster(e.target.value)}
-                    className="bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-800"
-                  >
-                    <option value="Semua">Semua Cluster</option>
-                    {clusterOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </label>
-                {(selectedRegion !== "Semua" || selectedCluster !== "Semua") && (
+                {(selectedRegion !== "Semua" || selectedCluster !== "Semua" || selectedStatus !== "Semua") && (
                   <button
                     type="button"
-                    onClick={() => { setSelectedRegion("Semua"); setSelectedCluster("Semua"); }}
+                    onClick={() => { setSelectedRegion("Semua"); setSelectedCluster("Semua"); setSelectedStatus("Semua"); }}
                     className="text-[11px] text-teal-700 hover:underline"
                   >
                     Reset ke Nasional
@@ -1686,7 +1715,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v40</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v41</div>
       </div>
     </div>
   );
