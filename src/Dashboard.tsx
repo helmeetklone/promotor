@@ -1,4 +1,4 @@
-// Dashboard.tsx — v58
+// Dashboard.tsx — v60
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1070,7 +1070,7 @@ function DetailModal({ detail, onClose }) {
               </thead>
               <tbody>
                 {shown.map((r, i) => (
-                  <tr key={i} className="border-b border-gray-200/60 text-gray-700">
+                  <tr key={i} className={`border-b border-gray-200/60 ${detail.title.includes("per Kategori") && i < 3 ? "text-red-700 font-semibold" : "text-gray-700"}`}>
                     {detail.columns.map((c) => (
                       <td key={c.key} className="px-2.5 py-2 whitespace-nowrap">{c.render ? c.render(r) : r[c.key]}</td>
                     ))}
@@ -1250,9 +1250,9 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
   };
   const categorySummaryColumns = [
     { key: "kategori", label: "Kategori" },
-    { key: "jumlahPromotor", label: "Jumlah Promotor" },
+    { key: "jumlahPromotor", label: "Jumlah Promotor", render: (r) => r.jumlahPromotor.toLocaleString("id-ID") },
     { key: "persen", label: "Persentase" },
-    { key: "totalKejadian", label: "Total Kejadian" },
+    { key: "totalKejadian", label: "Total Kejadian", render: (r) => r.totalKejadian.toLocaleString("id-ID") },
   ];
 
   // ── Rincian 6 kategori (masing-masing independen; unit & cakupan beda-beda,
@@ -1858,7 +1858,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v58</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v60</div>
       </div>
     </div>
   );
