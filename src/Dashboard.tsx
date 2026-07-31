@@ -1,4 +1,4 @@
-// Dashboard.tsx — v60
+// Dashboard.tsx — v61
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1305,68 +1305,72 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
         Overview Total — Timestamp (Journey) + Absensi (Attendance)
       </div>
 
-      {/* 1. Total Promotor */}
-      <div className="text-base font-bold text-gray-900 mb-1.5">Total Promotor</div>
-      <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
-      <div className="text-xs text-gray-700 mt-1.5">In Store: {inStore.toLocaleString("id-ID")} &middot; Out Store: {outStore.toLocaleString("id-ID")}</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-emerald-200/50">
+        <div className="md:pr-6">
+          {/* 1. Total Promotor */}
+          <div className="text-base font-bold text-gray-900 mb-1.5">Total Promotor</div>
+          <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
+          <div className="text-xs text-gray-700 mt-1.5">In Store: {inStore.toLocaleString("id-ID")} &middot; Out Store: {outStore.toLocaleString("id-ID")}</div>
 
-      {/* 2. Total Anomali (Terindikasi) */}
-      <div className="mt-4 pt-4 border-t border-emerald-200/50">
-        <div className="text-base font-bold text-gray-900 mb-1">Total Anomali (Terindikasi)</div>
-        <div className="text-[11px] text-gray-500 mb-2">Promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp &amp; Absensi).</div>
-        <div className="grid grid-cols-2 gap-4">
-          <Num
-            value={<>{anomaliInStoreCount.toLocaleString("id-ID")}/{inStore.toLocaleString("id-ID")} <span className="text-sm">({pctIn}%)</span></>}
-            className="text-2xl font-bold text-amber-700 leading-none"
-            onClick={() => onDetail("Total Anomali — In Store Promotor (per Kategori)", buildCategorySummary("In Store Promotor"), categorySummaryColumns)}
-          >
-            <div className="text-[11px] text-gray-700 mt-1">In Store Promotor</div>
-          </Num>
-          <Num
-            value={<>{anomaliOutStoreCount.toLocaleString("id-ID")}/{outStore.toLocaleString("id-ID")} <span className="text-sm">({pctOut}%)</span></>}
-            className="text-2xl font-bold text-fuchsia-700 leading-none"
-            onClick={() => onDetail("Total Anomali — Out Store Promotor (per Kategori)", buildCategorySummary("Out Store Promotor"), categorySummaryColumns)}
-          >
-            <div className="text-[11px] text-gray-700 mt-1">Out Store Promotor</div>
-          </Num>
+          {/* 2. Total Anomali (Terindikasi) */}
+          <div className="mt-4 pt-4 border-t border-emerald-200/50">
+            <div className="text-base font-bold text-gray-900 mb-1">Total Anomali (Terindikasi)</div>
+            <div className="text-[11px] text-gray-500 mb-2">Promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp &amp; Absensi).</div>
+            <div className="grid grid-cols-2 gap-4">
+              <Num
+                value={<>{anomaliInStoreCount.toLocaleString("id-ID")}/{inStore.toLocaleString("id-ID")} <span className="text-sm">({pctIn}%)</span></>}
+                className="text-2xl font-bold text-amber-700 leading-none"
+                onClick={() => onDetail("Total Anomali — In Store Promotor (per Kategori)", buildCategorySummary("In Store Promotor"), categorySummaryColumns)}
+              >
+                <div className="text-[11px] text-gray-700 mt-1">In Store Promotor</div>
+              </Num>
+              <Num
+                value={<>{anomaliOutStoreCount.toLocaleString("id-ID")}/{outStore.toLocaleString("id-ID")} <span className="text-sm">({pctOut}%)</span></>}
+                className="text-2xl font-bold text-fuchsia-700 leading-none"
+                onClick={() => onDetail("Total Anomali — Out Store Promotor (per Kategori)", buildCategorySummary("Out Store Promotor"), categorySummaryColumns)}
+              >
+                <div className="text-[11px] text-gray-700 mt-1">Out Store Promotor</div>
+              </Num>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* 3. Rincian per Kategori Anomali */}
-      <div className="mt-4 pt-4 border-t border-emerald-200/50">
-        <div className="text-base font-bold text-gray-900 mb-2">Rincian per Kategori Anomali</div>
-        <ol className="text-sm text-gray-800 space-y-1.5 list-decimal list-inside">
-          <li>
-            <span className="font-semibold">Zona Waktu — Selalu Not Comply</span>{" "}
-            <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
-            <b>{zoneAffectedCount.toLocaleString("id-ID")}</b> dari {timestampPromotorAll.toLocaleString("id-ID")} promotor
-          </li>
-          <li>
-            <span className="font-semibold">GPS Identik</span>{" "}
-            <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
-            <b>{gpsIdenticalCount.toLocaleString("id-ID")}</b> dari {timestampPromotorAll.toLocaleString("id-ID")} promotor
-          </li>
-          <li>
-            <span className="font-semibold">GPS Jauh dari Toko</span>{" "}
-            <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
-            <b>{gpsFarCombinedCount.toLocaleString("id-ID")}</b> dari {totalPromotorAll.toLocaleString("id-ID")} promotor
-          </li>
-          <li>
-            <span className="font-semibold">GPS Toko N/A</span>{" "}
-            <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
-            <b>{tokoNACount.toLocaleString("id-ID")}</b> dari {totalTokoCount.toLocaleString("id-ID")} toko
-          </li>
-          <li>
-            <span className="font-semibold">Status Non-Active</span>{" "}
-            <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
-            <b>{statusCombinedCount.toLocaleString("id-ID")}</b> dari {totalPromotorAll.toLocaleString("id-ID")} promotor
-          </li>
-          <li>
-            <span className="font-semibold">Durasi Bermasalah</span>{" "}
-            <span className="text-[11px] text-gray-500">(Absensi)</span>:{" "}
-            <b>{durasiCount.toLocaleString("id-ID")}</b> dari {absensiPromotorAll.toLocaleString("id-ID")} promotor
-          </li>
-        </ol>
+        <div className="md:pl-6">
+          {/* 3. Rincian per Kategori Anomali */}
+          <div className="text-base font-bold text-gray-900 mb-2">Rincian per Kategori Anomali</div>
+          <ol className="text-sm text-gray-800 space-y-1.5 list-decimal list-inside">
+            <li>
+              <span className="font-semibold">Zona Waktu — Selalu Not Comply</span>{" "}
+              <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
+              <b>{zoneAffectedCount.toLocaleString("id-ID")}</b> dari {timestampPromotorAll.toLocaleString("id-ID")} promotor
+            </li>
+            <li>
+              <span className="font-semibold">GPS Identik</span>{" "}
+              <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
+              <b>{gpsIdenticalCount.toLocaleString("id-ID")}</b> dari {timestampPromotorAll.toLocaleString("id-ID")} promotor
+            </li>
+            <li>
+              <span className="font-semibold">GPS Jauh dari Toko</span>{" "}
+              <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
+              <b>{gpsFarCombinedCount.toLocaleString("id-ID")}</b> dari {totalPromotorAll.toLocaleString("id-ID")} promotor
+            </li>
+            <li>
+              <span className="font-semibold">GPS Toko N/A</span>{" "}
+              <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
+              <b>{tokoNACount.toLocaleString("id-ID")}</b> dari {totalTokoCount.toLocaleString("id-ID")} toko
+            </li>
+            <li>
+              <span className="font-semibold">Status Non-Active</span>{" "}
+              <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
+              <b>{statusCombinedCount.toLocaleString("id-ID")}</b> dari {totalPromotorAll.toLocaleString("id-ID")} promotor
+            </li>
+            <li>
+              <span className="font-semibold">Durasi Bermasalah</span>{" "}
+              <span className="text-[11px] text-gray-500">(Absensi)</span>:{" "}
+              <b>{durasiCount.toLocaleString("id-ID")}</b> dari {absensiPromotorAll.toLocaleString("id-ID")} promotor
+            </li>
+          </ol>
+        </div>
       </div>
 
       {/* Detail tambahan: cakupan data per sumber */}
@@ -1858,7 +1862,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v60</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v61</div>
       </div>
     </div>
   );
