@@ -1,4 +1,4 @@
-// Dashboard.tsx — v49
+// Dashboard.tsx — v50
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1219,7 +1219,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
             };
             return (
               <div className="mt-4 pt-4 border-t border-emerald-200/50">
-                <div className="text-sm font-bold text-gray-900 mb-1">Timestamp Compliance Only</div>
+                <div className="text-sm font-bold text-gray-900 mb-1">Timestamp Compliance Only (#Promotor)</div>
                 <div className="text-[11px] text-gray-900 mb-2">Compliance Absen Timestamp per Promotor (min. 3 zona waktu berbeda, unik &amp; saling lepas)</div>
                 <div className="grid grid-cols-3 gap-3">
                   <Num
@@ -1722,7 +1722,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v49</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v50</div>
       </div>
     </div>
   );
