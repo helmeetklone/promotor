@@ -1,4 +1,4 @@
-// Dashboard.tsx — v51
+// Dashboard.tsx — v52
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -251,6 +251,9 @@ const METHODOLOGY_LINES = [
   ["   Pagi (07-10), Siang (11-14), Sore (15-18), Malam 1 (19-22), Malam 2 (23-00)."],
   ["   Comply jika jumlah ZONA BERBEDA yang tercapai dalam 1 hari >= 3."],
   ["   Check-in berulang di zona yang sama TIDAK menambah hitungan zona."],
+  ["   PENTING: status Comply/Not Comply ini HANYA soal zona waktu, terpisah dari kolom Flag"],
+  ["   (GPS, Status Non-Active, dll). Satu baris bisa berstatus Comply TAPI tetap punya flag GPS/"],
+  ["   Status lain di kolom Flag -- keduanya independen, bukan kontradiksi."],
   [""],
   ["2. GPS IDENTIK (Timestamp)"],
   ["   Dalam 1 hari yang sama, dicek apakah ada 2+ check-in dengan koordinat lat/lon yang"],
@@ -1037,6 +1040,13 @@ function DetailModal({ detail, onClose }) {
             </button>
           </div>
         </div>
+        {/(Comply|Campuran)/.test(detail.title) && (
+          <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-800">
+            Catatan: status Comply/Not Comply di sini murni soal <b>zona waktu</b>. Kolom "Flag" tetap
+            menampilkan isu LAIN (GPS, Status Non-Active, dll) yang independen — bisa saja satu baris
+            berstatus "Comply" tapi tetap punya flag GPS/Status di kolom Flag, itu bukan kontradiksi.
+          </div>
+        )}
 
         <div className="px-4 pt-3">
           <input
@@ -1720,7 +1730,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v51</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v52</div>
       </div>
     </div>
   );
