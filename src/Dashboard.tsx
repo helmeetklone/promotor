@@ -1,4 +1,4 @@
-// Dashboard.tsx — v52
+// Dashboard.tsx — v56
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -251,9 +251,8 @@ const METHODOLOGY_LINES = [
   ["   Pagi (07-10), Siang (11-14), Sore (15-18), Malam 1 (19-22), Malam 2 (23-00)."],
   ["   Comply jika jumlah ZONA BERBEDA yang tercapai dalam 1 hari >= 3."],
   ["   Check-in berulang di zona yang sama TIDAK menambah hitungan zona."],
-  ["   PENTING: status Comply/Not Comply ini HANYA soal zona waktu, terpisah dari kolom Flag"],
-  ["   (GPS, Status Non-Active, dll). Satu baris bisa berstatus Comply TAPI tetap punya flag GPS/"],
-  ["   Status lain di kolom Flag -- keduanya independen, bukan kontradiksi."],
+  ["   Comply/Not Comply hanya melihat 3 zona waktu."],
+  ["   Jarak GPS tidak menjadi parameter perhitungan."],
   [""],
   ["2. GPS IDENTIK (Timestamp)"],
   ["   Dalam 1 hari yang sama, dicek apakah ada 2+ check-in dengan koordinat lat/lon yang"],
@@ -1042,9 +1041,10 @@ function DetailModal({ detail, onClose }) {
         </div>
         {/(Comply|Campuran)/.test(detail.title) && (
           <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-800">
-            Catatan: status Comply/Not Comply di sini murni soal <b>zona waktu</b>. Kolom "Flag" tetap
-            menampilkan isu LAIN (GPS, Status Non-Active, dll) yang independen — bisa saja satu baris
-            berstatus "Comply" tapi tetap punya flag GPS/Status di kolom Flag, itu bukan kontradiksi.
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>Comply/Not Comply hanya melihat 3 zona waktu</li>
+              <li>Jarak GPS tidak menjadi parameter perhitungan</li>
+            </ul>
           </div>
         )}
 
@@ -1177,135 +1177,200 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     </button>
   );
 
+  // ── Total Anomali (Terindikasi): promotor dengan MINIMAL 3 kejadian anomali
+  // (gabungan dari 6 kategori & kedua sumber data) — bukan 1 kejadian tunggal,
+  // biar nggak nangkep orang yang cuma kesenggol sekali doang.
+  const ANOMALI_MIN_COUNT = 3;
+  const flaggedCountByEmployee = new Map();
+  combinedFlagged().forEach((r) => {
+    if (!r.employee_id) return;
+    flaggedCountByEmployee.set(r.employee_id, (flaggedCountByEmployee.get(r.employee_id) || 0) + 1);
+  });
+  const anomaliQualifiedIds = new Set(
+    [...flaggedCountByEmployee.entries()].filter(([, count]) => count >= ANOMALI_MIN_COUNT).map(([id]) => id)
+  );
+  const anomaliInStoreCount = new Set(combinedFlagged().filter((r) => r.promotorType === "In Store Promotor" && anomaliQualifiedIds.has(r.employee_id)).map((r) => r.employee_id)).size;
+  const anomaliOutStoreCount = new Set(combinedFlagged().filter((r) => r.promotorType === "Out Store Promotor" && anomaliQualifiedIds.has(r.employee_id)).map((r) => r.employee_id)).size;
+  const pctIn = inStore ? ((anomaliInStoreCount / inStore) * 100).toFixed(1).replace(".", ",") : "0,0";
+  const pctOut = outStore ? ((anomaliOutStoreCount / outStore) * 100).toFixed(1).replace(".", ",") : "0,0";
+
+  // ── Rincian 6 kategori (masing-masing independen; unit & cakupan beda-beda,
+  // dinyatakan eksplisit per baris).
+  // 1. Zona Waktu — Timestamp saja.
+  const zonePattern = new Map();
+  (timestampResult?.all || []).forEach((v) => {
+    if (!v.employee_id) return;
+    const e = zonePattern.get(v.employee_id) || { comply: false, notComply: false };
+    if (v.zoneNotCompliant) e.notComply = true; else e.comply = true;
+    zonePattern.set(v.employee_id, e);
+  });
+  let alwaysComplyIds = [], alwaysNotComplyIds = [], mixedIds = [];
+  zonePattern.forEach((e, id) => {
+    if (e.comply && e.notComply) mixedIds.push(id);
+    else if (e.comply) alwaysComplyIds.push(id);
+    else alwaysNotComplyIds.push(id);
+  });
+  const zoneAffectedCount = alwaysNotComplyIds.length; // konsisten TIDAK PERNAH comply (bukan "pernah gagal 1 hari")
+  const byZoneIds = (ids) => { const s = new Set(ids); return (timestampResult?.all || []).filter((v) => s.has(v.employee_id)); };
+
+  // 2. GPS Identik — Timestamp saja.
+  const gpsIdenticalCount = timestampResult?.gpsIdenticalPeople ?? 0;
+
+  // 3. GPS Jauh dari Toko — Timestamp & Absensi, promotor unik gabungan.
+  const tsFarIds = new Set((timestampResult?.flagged || []).filter((v) => v.farFromStore).map((v) => v.employee_id).filter(Boolean));
+  const abFarIds = new Set((absensiResult?.flagged || []).filter((s) => s.farFromStore).map((s) => s.employee_id).filter(Boolean));
+  const gpsFarCombinedCount = new Set([...tsFarIds, ...abFarIds]).size;
+
+  // 4. GPS Toko N/A — Timestamp & Absensi, TOKO unik gabungan (bukan promotor).
+  const tsTokoNA = new Set((timestampResult?.flagged || []).filter((v) => v.noOutletData).map((v) => v.rawOutletCode).filter(Boolean));
+  const abTokoNA = new Set((absensiResult?.flagged || []).filter((s) => s.noOutletData).map((s) => s.rawOutletCode).filter(Boolean));
+  const tokoNACount = new Set([...tsTokoNA, ...abTokoNA]).size;
+  const totalTokoCount = new Set([
+    ...(timestampResult?.all || []).map((v) => v.rawOutletCode),
+    ...(absensiResult?.all || []).map((s) => s.rawOutletCode),
+  ].filter(Boolean)).size;
+
+  // 5. Status Non-Active — Timestamp & Absensi, promotor unik gabungan.
+  const tsStatusIds = new Set((timestampResult?.flagged || []).filter((v) => v.statusAnomaly).map((v) => v.employee_id).filter(Boolean));
+  const abStatusIds = new Set((absensiResult?.flagged || []).filter((s) => s.statusAnomaly).map((s) => s.employee_id).filter(Boolean));
+  const statusCombinedCount = new Set([...tsStatusIds, ...abStatusIds]).size;
+
+  // 6. Durasi Bermasalah — Absensi saja, promotor unik.
+  const durasiCount = new Set((absensiResult?.flagged || []).filter((s) => s.durationIssue).map((s) => s.employee_id).filter(Boolean)).size;
+
   return (
     <div className="bg-gradient-to-r from-emerald-50 to-white border border-emerald-200 rounded-xl p-5 mb-4">
       <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">
         Overview Total — Timestamp (Journey) + Absensi (Attendance)
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-emerald-200/50">
-        <div className="md:pr-6">
-          <div className="text-base font-bold text-gray-900 mb-1.5">Total Promotor (dari kolom Position)</div>
-          <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
-          <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-emerald-200/50">
-            <Num
-              value={inStore.toLocaleString("id-ID")}
-              className="text-xl font-bold text-amber-700 leading-none"
-            >
-              <div className="text-[11px] text-gray-700 mt-1">In Store Promotor</div>
-            </Num>
-            <Num
-              value={outStore.toLocaleString("id-ID")}
-              className="text-xl font-bold text-fuchsia-700 leading-none"
-            >
-              <div className="text-[11px] text-gray-700 mt-1">Out Store Promotor</div>
-            </Num>
+      {/* 1. Total Promotor */}
+      <div className="text-base font-bold text-gray-900 mb-1.5">Total Promotor</div>
+      <div className="text-3xl sm:text-4xl font-bold text-gray-900 leading-none">{(inStore + outStore).toLocaleString("id-ID")}</div>
+      <div className="text-xs text-gray-700 mt-1.5">In Store: {inStore.toLocaleString("id-ID")} &middot; Out Store: {outStore.toLocaleString("id-ID")}</div>
+
+      {/* 2. Total Anomali (Terindikasi) */}
+      <div className="mt-4 pt-4 border-t border-emerald-200/50">
+        <div className="text-base font-bold text-gray-900 mb-1">Total Anomali (Terindikasi)</div>
+        <div className="text-[11px] text-gray-500 mb-2">Promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp &amp; Absensi).</div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="text-2xl font-bold text-amber-700 leading-none">
+              {anomaliInStoreCount.toLocaleString("id-ID")}/{inStore.toLocaleString("id-ID")} <span className="text-sm">({pctIn}%)</span>
+            </div>
+            <div className="text-[11px] text-gray-700 mt-1">In Store Promotor</div>
           </div>
-
-          {timestampResult && (() => {
-            // Classify each UNIQUE promotor by their pattern across all their
-            // days — mutually exclusive, so these 3 always sum exactly to
-            // timestampPromotorAll (no double-counting like Comply+NotComply
-            // hit-counts would, since one person can be compliant on some
-            // days and not on others).
-            const patternMap = new Map();
-            (timestampResult.all || []).forEach((v) => {
-              if (!v.employee_id) return;
-              const entry = patternMap.get(v.employee_id) || { comply: false, notComply: false };
-              if (v.zoneNotCompliant) entry.notComply = true; else entry.comply = true;
-              patternMap.set(v.employee_id, entry);
-            });
-            const alwaysComplyIds = [], alwaysNotComplyIds = [], mixedIds = [];
-            patternMap.forEach((e, id) => {
-              if (e.comply && e.notComply) mixedIds.push(id);
-              else if (e.comply) alwaysComplyIds.push(id);
-              else alwaysNotComplyIds.push(id);
-            });
-            const byIds = (ids) => {
-              const set = new Set(ids);
-              return (timestampResult.all || []).filter((v) => set.has(v.employee_id));
-            };
-            return (
-              <div className="mt-4 pt-4 border-t border-emerald-200/50">
-                <div className="text-sm font-bold text-gray-900 mb-1">Timestamp Compliance Only (#Promotor)</div>
-                <div className="text-[11px] text-gray-900 mb-2">Compliance Absen Timestamp per Promotor (min. 3 zona waktu berbeda, unik &amp; saling lepas)</div>
-                <div className="grid grid-cols-3 gap-3">
-                  <Num
-                    value={alwaysComplyIds.length.toLocaleString("id-ID")}
-                    className="text-lg font-bold text-emerald-700 leading-none"
-                    onClick={() => onDetail("Selalu Comply (≥3x tiap hari)", byIds(alwaysComplyIds), TIMESTAMP_COLUMNS)}
-                  >
-                    <div className="text-[10px] text-gray-700 mt-1">Selalu Comply</div>
-                  </Num>
-                  <Num
-                    value={alwaysNotComplyIds.length.toLocaleString("id-ID")}
-                    className="text-lg font-bold text-red-700 leading-none"
-                    onClick={() => onDetail("Selalu Not Comply (<3x tiap hari)", byIds(alwaysNotComplyIds), TIMESTAMP_COLUMNS)}
-                  >
-                    <div className="text-[10px] text-gray-700 mt-1">Selalu Not Comply</div>
-                  </Num>
-                  <Num
-                    value={mixedIds.length.toLocaleString("id-ID")}
-                    className="text-lg font-bold text-amber-700 leading-none"
-                    onClick={() => onDetail("Campuran (irisan Comply & Not Comply)", byIds(mixedIds), TIMESTAMP_COLUMNS)}
-                  >
-                    <div className="text-[10px] text-gray-700 mt-1">Campuran (irisan)</div>
-                  </Num>
-                </div>
-                <div className="text-[10px] text-gray-600 mt-2">
-                  Hanya berlaku untuk kategori Timestamp.
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-
-        <div className="md:pl-6">
-          <div className="grid grid-cols-2 gap-6 divide-x divide-emerald-200/50">
-            <div>
-              <div className="text-base font-bold text-gray-900 mb-1.5">Promotor di Timestamp</div>
-              <div className="text-3xl sm:text-4xl font-bold text-teal-700 leading-none">{timestampPromotorAll.toLocaleString("id-ID")}</div>
-              {timestampResult && (
-                <div className="text-[10px] text-gray-600 mt-1.5">{timestampResult.total.toLocaleString("id-ID")} hari-kerja dinilai</div>
-              )}
+          <div>
+            <div className="text-2xl font-bold text-fuchsia-700 leading-none">
+              {anomaliOutStoreCount.toLocaleString("id-ID")}/{outStore.toLocaleString("id-ID")} <span className="text-sm">({pctOut}%)</span>
             </div>
-            <div className="pl-6">
-              <div className="text-base font-bold text-gray-900 mb-1.5">Promotor di Absensi</div>
-              <div className="text-3xl sm:text-4xl font-bold text-indigo-700 leading-none">{absensiPromotorAll.toLocaleString("id-ID")}</div>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-emerald-200/50 space-y-2.5">
-            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Timestamp</div>
-              {timestampResult ? (
-                <div className="text-sm text-gray-800">
-                  <span className="font-bold text-gray-900">{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
-                  {" "}&middot; {formatDateShort(timestampResult.coverage.dateMin)} s.d. {formatDateShort(timestampResult.coverage.dateMax)}
-                </div>
-              ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Absensi</div>
-              {absensiResult ? (
-                <div className="text-sm text-gray-800">
-                  <span className="font-bold text-gray-900">{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
-                  {" "}&middot; {formatDateShort(absensiResult.coverage.dateMin)} s.d. {formatDateShort(absensiResult.coverage.dateMax)}
-                </div>
-              ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp vs Absensi</div>
-              {timestampResult && absensiResult ? (
-                <ul className="text-sm text-gray-800 list-disc list-inside space-y-1">
-                  <li>Selisih total Timestamp: <span className="font-bold text-gray-900">{onlyInAbsensi.size.toLocaleString("id-ID")} karyawan</span></li>
-                  <li>Selisih total Absensi: <span className="font-bold text-gray-900">{onlyInTimestamp.size.toLocaleString("id-ID")} karyawan</span></li>
-                </ul>
-              ) : <div className="text-sm text-gray-400">Perlu kedua dataset untuk dibandingkan</div>}
-            </div>
+            <div className="text-[11px] text-gray-700 mt-1">Out Store Promotor</div>
           </div>
         </div>
       </div>
+
+      {/* 3. Rincian per Kategori Anomali */}
+      <div className="mt-4 pt-4 border-t border-emerald-200/50">
+        <div className="text-base font-bold text-gray-900 mb-2">Rincian per Kategori Anomali</div>
+        <ol className="text-sm text-gray-800 space-y-1.5 list-decimal list-inside">
+          <li>
+            <span className="font-semibold">Zona Waktu — Selalu Not Comply</span>{" "}
+            <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
+            <b>{zoneAffectedCount.toLocaleString("id-ID")}</b> dari {timestampPromotorAll.toLocaleString("id-ID")} promotor
+          </li>
+          <li>
+            <span className="font-semibold">GPS Identik</span>{" "}
+            <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
+            <b>{gpsIdenticalCount.toLocaleString("id-ID")}</b> dari {timestampPromotorAll.toLocaleString("id-ID")} promotor
+          </li>
+          <li>
+            <span className="font-semibold">GPS Jauh dari Toko</span>{" "}
+            <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
+            <b>{gpsFarCombinedCount.toLocaleString("id-ID")}</b> dari {totalPromotorAll.toLocaleString("id-ID")} promotor
+          </li>
+          <li>
+            <span className="font-semibold">GPS Toko N/A</span>{" "}
+            <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
+            <b>{tokoNACount.toLocaleString("id-ID")}</b> dari {totalTokoCount.toLocaleString("id-ID")} toko
+          </li>
+          <li>
+            <span className="font-semibold">Status Non-Active</span>{" "}
+            <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
+            <b>{statusCombinedCount.toLocaleString("id-ID")}</b> dari {totalPromotorAll.toLocaleString("id-ID")} promotor
+          </li>
+          <li>
+            <span className="font-semibold">Durasi Bermasalah</span>{" "}
+            <span className="text-[11px] text-gray-500">(Absensi)</span>:{" "}
+            <b>{durasiCount.toLocaleString("id-ID")}</b> dari {absensiPromotorAll.toLocaleString("id-ID")} promotor
+          </li>
+        </ol>
+      </div>
+
+      {/* Detail tambahan: cakupan data per sumber */}
+      <div className="mt-4 pt-4 border-t border-emerald-200/50 space-y-2.5">
+        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Timestamp</div>
+          {timestampResult ? (
+            <div className="text-sm text-gray-800">
+              <span className="font-bold text-gray-900">{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
+              {" "}&middot; {formatDateShort(timestampResult.coverage.dateMin)} s.d. {formatDateShort(timestampResult.coverage.dateMax)}
+            </div>
+          ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Absensi</div>
+          {absensiResult ? (
+            <div className="text-sm text-gray-800">
+              <span className="font-bold text-gray-900">{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
+              {" "}&middot; {formatDateShort(absensiResult.coverage.dateMin)} s.d. {formatDateShort(absensiResult.coverage.dateMax)}
+            </div>
+          ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp vs Absensi</div>
+          {timestampResult && absensiResult ? (
+            <ul className="text-sm text-gray-800 list-disc list-inside space-y-1">
+              <li>Selisih total Timestamp: <span className="font-bold text-gray-900">{onlyInAbsensi.size.toLocaleString("id-ID")} karyawan</span></li>
+              <li>Selisih total Absensi: <span className="font-bold text-gray-900">{onlyInTimestamp.size.toLocaleString("id-ID")} karyawan</span></li>
+            </ul>
+          ) : <div className="text-sm text-gray-400">Perlu kedua dataset untuk dibandingkan</div>}
+        </div>
+      </div>
+
+      {/* Detail interaktif: Zona Waktu per promotor (klik untuk lihat) */}
+      {timestampResult && (
+        <div className="mt-4 pt-4 border-t border-emerald-200/50">
+          <div className="text-sm font-bold text-gray-900 mb-1">Detail Zona Waktu (Timestamp)</div>
+          <div className="text-[11px] text-gray-500 mb-2">Klik angka untuk melihat daftar promotor.</div>
+          <div className="grid grid-cols-3 gap-3">
+            <Num
+              value={alwaysComplyIds.length.toLocaleString("id-ID")}
+              className="text-lg font-bold text-emerald-700 leading-none"
+              onClick={() => onDetail("Selalu Comply (≥3x tiap hari)", byZoneIds(alwaysComplyIds), TIMESTAMP_COLUMNS)}
+            >
+              <div className="text-[10px] text-gray-700 mt-1">Selalu Comply</div>
+            </Num>
+            <Num
+              value={alwaysNotComplyIds.length.toLocaleString("id-ID")}
+              className="text-lg font-bold text-red-700 leading-none"
+              onClick={() => onDetail("Selalu Not Comply (<3x tiap hari)", byZoneIds(alwaysNotComplyIds), TIMESTAMP_COLUMNS)}
+            >
+              <div className="text-[10px] text-gray-700 mt-1">Selalu Not Comply</div>
+            </Num>
+            <Num
+              value={mixedIds.length.toLocaleString("id-ID")}
+              className="text-lg font-bold text-amber-700 leading-none"
+              onClick={() => onDetail("Campuran (irisan Comply & Not Comply)", byZoneIds(mixedIds), TIMESTAMP_COLUMNS)}
+            >
+              <div className="text-[10px] text-gray-700 mt-1">Campuran (irisan)</div>
+            </Num>
+          </div>
+          <ul className="text-[11px] text-gray-600 mt-2 list-disc list-inside">
+            <li>Comply/Not Comply hanya melihat 3 zona waktu</li>
+            <li>Jarak GPS tidak menjadi parameter perhitungan</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -1730,7 +1795,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v52</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v56</div>
       </div>
     </div>
   );
