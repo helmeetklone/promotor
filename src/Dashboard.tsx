@@ -1,4 +1,4 @@
-// Dashboard.tsx — v62
+// Dashboard.tsx — v63
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1747,6 +1747,11 @@ export default function Dashboard() {
     });
     return [...idsByValue.entries()]
       .filter(([, ids]) => ids.size >= MIN_GROUP_SIZE)
+      // Canonical Region/Cluster values in this data are written ALL CAPS
+      // (e.g. "CENTRAL JAVA", "KALIMANTAN"). Inconsistent Title-Case
+      // duplicates (e.g. "Central", "Kalimantan") are stray/typo entries —
+      // filter them out rather than guessing by name.
+      .filter(([value]) => value === value.toUpperCase())
       .map(([value]) => value)
       .sort();
   };
@@ -1865,7 +1870,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v62</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v63</div>
       </div>
     </div>
   );
