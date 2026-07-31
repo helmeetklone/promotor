@@ -1,4 +1,4 @@
-// Dashboard.tsx — v56
+// Dashboard.tsx — v58
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1194,6 +1194,67 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
   const pctIn = inStore ? ((anomaliInStoreCount / inStore) * 100).toFixed(1).replace(".", ",") : "0,0";
   const pctOut = outStore ? ((anomaliOutStoreCount / outStore) * 100).toFixed(1).replace(".", ",") : "0,0";
 
+  // Per-promotor breakdown, dipakai saat klik angka Total Anomali — label
+  // kolomnya SAMA PERSIS dengan "Rincian per Kategori Anomali" di bawah,
+  // biar konsisten.
+  const buildAnomaliDetail = (promotorType) => {
+    const map = new Map();
+    combinedFlagged().forEach((r) => {
+      if (!r.employee_id || !anomaliQualifiedIds.has(r.employee_id) || r.promotorType !== promotorType) return;
+      const entry = map.get(r.employee_id) || {
+        employee_name: r.employee_name, position: r.position,
+        total: 0, zona: 0, gpsIdentik: 0, gpsJauh: 0, gpsNA: 0, status: 0, durasi: 0,
+      };
+      entry.total++;
+      if (r.zoneNotCompliant) entry.zona++;
+      if (r.gpsIdentical) entry.gpsIdentik++;
+      if (r.farFromStore) entry.gpsJauh++;
+      if (r.noOutletData) entry.gpsNA++;
+      if (r.statusAnomaly) entry.status++;
+      if (r.durationIssue) entry.durasi++;
+      map.set(r.employee_id, entry);
+    });
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  };
+  const anomaliDetailColumns = [
+    { key: "employee_name", label: "Nama" },
+    { key: "position", label: "Role" },
+    { key: "total", label: "Total Kejadian" },
+    { key: "zona", label: "Zona Waktu (hari tidak comply)" },
+    { key: "gpsIdentik", label: "GPS Identik" },
+    { key: "gpsJauh", label: "GPS Jauh dari Toko" },
+    { key: "gpsNA", label: "GPS Toko N/A" },
+    { key: "status", label: "Status Non-Active" },
+    { key: "durasi", label: "Durasi Bermasalah" },
+  ];
+
+  // Ringkasan per kategori (bukan per orang) — ini yang muncul pas klik angka
+  // Total Anomali, biar langsung keliatan kategori mana yang tertinggi/terendah.
+  const CATEGORY_DEFS = [
+    { key: "zona", label: "Zona Waktu (hari tidak comply)" },
+    { key: "gpsIdentik", label: "GPS Identik" },
+    { key: "gpsJauh", label: "GPS Jauh dari Toko" },
+    { key: "gpsNA", label: "GPS Toko N/A" },
+    { key: "status", label: "Status Non-Active" },
+    { key: "durasi", label: "Durasi Bermasalah" },
+  ];
+  const buildCategorySummary = (promotorType) => {
+    const perPerson = buildAnomaliDetail(promotorType);
+    const totalPeople = perPerson.length;
+    return CATEGORY_DEFS.map((c) => {
+      const affected = perPerson.filter((p) => p[c.key] > 0).length;
+      const totalKejadian = perPerson.reduce((sum, p) => sum + p[c.key], 0);
+      const persen = totalPeople ? ((affected / totalPeople) * 100).toFixed(1).replace(".", ",") : "0,0";
+      return { kategori: c.label, jumlahPromotor: affected, persen: `${persen}%`, totalKejadian };
+    }).sort((a, b) => b.jumlahPromotor - a.jumlahPromotor);
+  };
+  const categorySummaryColumns = [
+    { key: "kategori", label: "Kategori" },
+    { key: "jumlahPromotor", label: "Jumlah Promotor" },
+    { key: "persen", label: "Persentase" },
+    { key: "totalKejadian", label: "Total Kejadian" },
+  ];
+
   // ── Rincian 6 kategori (masing-masing independen; unit & cakupan beda-beda,
   // dinyatakan eksplisit per baris).
   // 1. Zona Waktu — Timestamp saja.
@@ -1254,18 +1315,20 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
         <div className="text-base font-bold text-gray-900 mb-1">Total Anomali (Terindikasi)</div>
         <div className="text-[11px] text-gray-500 mb-2">Promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp &amp; Absensi).</div>
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <div className="text-2xl font-bold text-amber-700 leading-none">
-              {anomaliInStoreCount.toLocaleString("id-ID")}/{inStore.toLocaleString("id-ID")} <span className="text-sm">({pctIn}%)</span>
-            </div>
+          <Num
+            value={<>{anomaliInStoreCount.toLocaleString("id-ID")}/{inStore.toLocaleString("id-ID")} <span className="text-sm">({pctIn}%)</span></>}
+            className="text-2xl font-bold text-amber-700 leading-none"
+            onClick={() => onDetail("Total Anomali — In Store Promotor (per Kategori)", buildCategorySummary("In Store Promotor"), categorySummaryColumns)}
+          >
             <div className="text-[11px] text-gray-700 mt-1">In Store Promotor</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-fuchsia-700 leading-none">
-              {anomaliOutStoreCount.toLocaleString("id-ID")}/{outStore.toLocaleString("id-ID")} <span className="text-sm">({pctOut}%)</span>
-            </div>
+          </Num>
+          <Num
+            value={<>{anomaliOutStoreCount.toLocaleString("id-ID")}/{outStore.toLocaleString("id-ID")} <span className="text-sm">({pctOut}%)</span></>}
+            className="text-2xl font-bold text-fuchsia-700 leading-none"
+            onClick={() => onDetail("Total Anomali — Out Store Promotor (per Kategori)", buildCategorySummary("Out Store Promotor"), categorySummaryColumns)}
+          >
             <div className="text-[11px] text-gray-700 mt-1">Out Store Promotor</div>
-          </div>
+          </Num>
         </div>
       </div>
 
@@ -1795,7 +1858,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v56</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v58</div>
       </div>
     </div>
   );
