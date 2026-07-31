@@ -1,4 +1,4 @@
-// Dashboard.tsx — v63
+// Dashboard.tsx — v65
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1461,8 +1461,6 @@ function DashboardPage(props) {
   const absensiResult = useMemo(() => absensiData ? processAbsensi(absensiData, moveThresholdM, shortHr, longHr) : null, [absensiData, moveThresholdM, shortHr, longHr]);
   const insights = useMemo(() => computeInsights(timestampResult, absensiResult), [timestampResult, absensiResult]);
 
-  const roleChartHeight = Math.max(120, Math.max(timestampResult?.byRole.length || 0, absensiResult?.byRole.length || 0) * 34);
-
   const filterTs = (pred) => (timestampResult ? timestampResult.flagged.filter(pred) : []);
   const filterAb = (pred) => (absensiResult ? absensiResult.flagged.filter(pred) : []);
 
@@ -1539,7 +1537,7 @@ function DashboardPage(props) {
                     <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
                     <Bar dataKey="anomali" fill="#f472b6" radius={[0, 4, 4, 0]} cursor="pointer"
                       onClick={(d) => openDetail(`Timestamp — ${d.type}`, filterTs((v) => v.promotorType === d.type), TIMESTAMP_COLUMNS)}>
-                      <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
+                      <LabelList dataKey="anomali" position="insideLeft" fill="#ffffff" fontSize={11} fontWeight={700} formatter={(v) => v.toLocaleString("id-ID")} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -1547,29 +1545,12 @@ function DashboardPage(props) {
             </div>
 
             <div className="md:col-start-1 md:row-start-5 mb-3 md:mb-0">
-              <Panel title="Anomali per Role (Timestamp)" height={roleChartHeight} exportData={timestampResult.byRole} exportFilename="timestamp-per-role">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={timestampResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
-                    <YAxis type="category" dataKey="role" stroke="#6b7280" fontSize={9} width={100} />
-                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                    <Bar dataKey="anomali" fill="#2dd4bf" radius={[0, 4, 4, 0]} cursor="pointer"
-                      onClick={(d) => openDetail(`Timestamp — ${d.role}`, filterTs((v) => v.position === d.role), TIMESTAMP_COLUMNS)}>
-                      <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </Panel>
-            </div>
-
-            <div className="md:col-start-1 md:row-start-6 mb-3 md:mb-0">
               <Leaderboard title="Top 5 Anomali per Orang — Timestamp (dengan Role)" data={timestampResult.topOffenders} tone="teal"
                 onItemClick={(d) => openDetail(`Timestamp — ${d.name}`, filterTs((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
                 exportFilename="timestamp-leaderboard" />
             </div>
 
-            <div className="md:col-start-1 md:row-start-7 mb-3 md:mb-0">
+            <div className="md:col-start-1 md:row-start-6 mb-3 md:mb-0">
               <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Timestamp ({timestampResult.flagged.length}/{timestampResult.total})</div>
               <FlaggedTable rows={timestampResult.flagged} columns={TIMESTAMP_COLUMNS} exportFilename="timestamp-detail-anomali" />
             </div>
@@ -1645,7 +1626,7 @@ function DashboardPage(props) {
                     <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
                     <Bar dataKey="anomali" fill="#818cf8" radius={[0, 4, 4, 0]} cursor="pointer"
                       onClick={(d) => openDetail(`Absensi — ${d.type}`, filterAb((s) => s.promotorType === d.type), ABSENSI_COLUMNS)}>
-                      <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
+                      <LabelList dataKey="anomali" position="insideLeft" fill="#ffffff" fontSize={11} fontWeight={700} formatter={(v) => v.toLocaleString("id-ID")} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -1653,29 +1634,12 @@ function DashboardPage(props) {
             </div>
 
             <div className="md:col-start-2 md:row-start-5 mb-3 md:mb-0">
-              <Panel title="Anomali per Role (Absensi)" height={roleChartHeight} exportData={absensiResult.byRole} exportFilename="absensi-per-role">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={absensiResult.byRole} layout="vertical" margin={{ left: 10, right: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
-                    <YAxis type="category" dataKey="role" stroke="#6b7280" fontSize={9} width={100} />
-                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                    <Bar dataKey="anomali" fill="#f59e0b" radius={[0, 4, 4, 0]} cursor="pointer"
-                      onClick={(d) => openDetail(`Absensi — ${d.role}`, filterAb((s) => s.position === d.role), ABSENSI_COLUMNS)}>
-                      <LabelList dataKey="anomali" position="right" fill="#e2e8f0" fontSize={11} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </Panel>
-            </div>
-
-            <div className="md:col-start-2 md:row-start-6 mb-3 md:mb-0">
               <Leaderboard title="Top 5 Anomali per Orang — Absensi (dengan Role)" data={absensiResult.topOffenders} tone="indigo"
                 onItemClick={(d) => openDetail(`Absensi — ${d.name}`, filterAb((s) => s.employee_name === d.name), ABSENSI_COLUMNS)}
                 exportFilename="absensi-leaderboard" />
             </div>
 
-            <div className="md:col-start-2 md:row-start-7">
+            <div className="md:col-start-2 md:row-start-6">
               <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Absensi ({absensiResult.flagged.length}/{absensiResult.total})</div>
               <FlaggedTable rows={absensiResult.flagged} columns={ABSENSI_COLUMNS} exportFilename="absensi-detail-anomali" />
             </div>
@@ -1870,7 +1834,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v63</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v65</div>
       </div>
     </div>
   );
