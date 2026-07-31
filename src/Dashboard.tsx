@@ -1,4 +1,4 @@
-// Dashboard.tsx — v46
+// Dashboard.tsx — v47
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1291,16 +1291,12 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
               ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
             </div>
             <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Perbandingan Cakupan: Timestamp vs Absensi</div>
+              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp vs Absensi</div>
               {timestampResult && absensiResult ? (
-                <div className="text-sm text-gray-800">
-                  <div className="text-[11px] text-gray-500 mb-1.5">Dari karyawan yang sama, mana yang tercatat di sumber data mana:</div>
-                  <span className="font-bold text-gray-900">{onlyInTimestamp.size} karyawan</span> HANYA ada di Timestamp (tidak ada di Absensi),{" "}
-                  <span className="font-bold text-gray-900">{onlyInAbsensi.size} karyawan</span> HANYA ada di Absensi (tidak ada di Timestamp),{" "}
-                  <span className="font-bold text-gray-900">{new Set([...tsIds].filter((id) => abIds.has(id))).size} karyawan</span> ADA DI KEDUANYA (irisan)
-                  {" "}— total {totalPromotorAll.toLocaleString("id-ID")} karyawan unik.
-                  <div className="text-[10px] text-gray-500 mt-1">Catatan: angka "Promotor di Timestamp"/"Promotor di Absensi" di atas TIDAK bisa dijumlahkan langsung untuk dapat total — keduanya beririsan (orang yang sama bisa masuk dua-duanya).</div>
-                </div>
+                <ul className="text-sm text-gray-800 list-disc list-inside space-y-1">
+                  <li>Selisih total Timestamp: <span className="font-bold text-gray-900">{onlyInAbsensi.size.toLocaleString("id-ID")} karyawan</span></li>
+                  <li>Selisih total Absensi: <span className="font-bold text-gray-900">{onlyInTimestamp.size.toLocaleString("id-ID")} karyawan</span></li>
+                </ul>
               ) : <div className="text-sm text-gray-400">Perlu kedua dataset untuk dibandingkan</div>}
             </div>
           </div>
@@ -1730,7 +1726,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v46</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v47</div>
       </div>
     </div>
   );
