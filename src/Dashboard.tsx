@@ -1,4 +1,4 @@
-// Dashboard.tsx — v48
+// Dashboard.tsx — v49
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -779,36 +779,32 @@ function computeInsights(timestampResult, absensiResult) {
   const insights = [];
 
   if (timestampResult && timestampResult.total > 0) {
-    const rate = ((timestampResult.flagged.length / timestampResult.total) * 100).toFixed(1);
-    insights.push(`Timestamp: ${rate}% dari ${timestampResult.total.toLocaleString("id-ID")} hari-kerja terindikasi anomali (unit: karyawan × tanggal).`);
+    const rate = ((timestampResult.flagged.length / timestampResult.total) * 100).toFixed(1).replace(".", ",");
+    insights.push(`Anomali Timestamp: ${rate}%`);
     if (timestampResult.worstRolePeople) {
-      insights.push(`Role Timestamp dengan anomali tertinggi: ${timestampResult.worstRolePeople.role} (${timestampResult.worstRolePeople.anomaliPeople}/${timestampResult.worstRolePeople.totalPeople} promotor).`);
+      insights.push(`Anomali Role Timestamp (${timestampResult.worstRolePeople.role}): ${timestampResult.worstRolePeople.anomaliPeople.toLocaleString("id-ID")} promotor`);
     }
   }
 
   if (absensiResult && absensiResult.total > 0) {
-    const rate = ((absensiResult.flagged.length / absensiResult.total) * 100).toFixed(1);
-    insights.push(`Absensi: ${rate}% dari ${absensiResult.total.toLocaleString("id-ID")} shift terindikasi anomali.`);
+    const rate = ((absensiResult.flagged.length / absensiResult.total) * 100).toFixed(1).replace(".", ",");
+    insights.push(`Anomali Absensi: ${rate}%`);
     if (absensiResult.worstRolePeople) {
-      insights.push(`Role Absensi dengan anomali tertinggi: ${absensiResult.worstRolePeople.role} (${absensiResult.worstRolePeople.anomaliPeople}/${absensiResult.worstRolePeople.totalPeople} promotor).`);
+      insights.push(`Anomali Role Absensi (${absensiResult.worstRolePeople.role}): ${absensiResult.worstRolePeople.anomaliPeople.toLocaleString("id-ID")} promotor`);
     }
   }
 
   if (timestampResult && absensiResult && timestampResult.total > 0 && absensiResult.total > 0) {
     const tRate = timestampResult.flagged.length / timestampResult.total;
     const aRate = absensiResult.flagged.length / absensiResult.total;
-    if (tRate > aRate * 1.2) insights.push("Tingkat anomali Timestamp lebih tinggi dibanding Absensi.");
-    else if (aRate > tRate * 1.2) insights.push("Tingkat anomali Absensi lebih tinggi dibanding Timestamp.");
+    if (tRate > aRate * 1.2) insights.push("Anomali Lebih Tinggi: Timestamp");
+    else if (aRate > tRate * 1.2) insights.push("Anomali Lebih Tinggi: Absensi");
   }
 
-  // Bridge to the "jumlah orang/toko" framing used on the stat cards below,
-  // so the row-based percentages above and the people/store counts don't
-  // read as two disconnected numbers.
   const gpsFarPeople = (timestampResult?.anomalyCounts.farFromStore ?? 0) + (absensiResult?.anomalyCounts.gpsFar ?? 0);
   const gpsNoOutletToko = Math.max(timestampResult?.anomalyCounts.noOutletData ?? 0, absensiResult?.anomalyCounts.gpsNoOutlet ?? 0);
-  if (gpsFarPeople > 0 || gpsNoOutletToko > 0) {
-    insights.push(`Berdasarkan jumlah unik: ${gpsFarPeople} promotor ter-flag GPS jauh dari toko; ${gpsNoOutletToko} toko belum memiliki data lengkap untuk verifikasi.`);
-  }
+  if (gpsFarPeople > 0) insights.push(`GPS Jauh dari Toko: ${gpsFarPeople.toLocaleString("id-ID")} promotor`);
+  if (gpsNoOutletToko > 0) insights.push(`Toko Data GPS Belum Lengkap: ${gpsNoOutletToko.toLocaleString("id-ID")} toko`);
 
   const combinedTop = new Map();
   [timestampResult, absensiResult].forEach((res) => {
@@ -818,7 +814,7 @@ function computeInsights(timestampResult, absensiResult) {
     });
   });
   const topPerson = [...combinedTop.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (topPerson) insights.push(`Promotor dengan anomali gabungan tertinggi: ${topPerson[0]} (${topPerson[1]} kejadian).`);
+  if (topPerson) insights.push(`Anomali Tertinggi (Gabungan): ${topPerson[0]} (${topPerson[1].toLocaleString("id-ID")} kejadian)`);
 
   return insights;
 }
@@ -1726,7 +1722,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v48</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v49</div>
       </div>
     </div>
   );
