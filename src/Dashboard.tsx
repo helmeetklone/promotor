@@ -1,4 +1,4 @@
-// Dashboard.tsx — v65
+// Dashboard.tsx — v70
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -205,15 +205,15 @@ const classifyPromotorType = (roleStr) => {
   return "Lainnya";
 };
 
-const topNWithRole = (rows, keyFn, roleFn, n) => {
+const topNWithRole = (rows, keyFn, roleFn, n, regionFn, clusterFn) => {
   const map = new Map();
   rows.forEach((r) => {
     const k = keyFn(r);
-    if (!map.has(k)) map.set(k, { count: 0, role: roleFn(r) });
+    if (!map.has(k)) map.set(k, { count: 0, role: roleFn(r), region: regionFn ? regionFn(r) : undefined, cluster: clusterFn ? clusterFn(r) : undefined });
     map.get(k).count++;
   });
   return [...map.entries()]
-    .map(([name, v]) => ({ name, role: v.role, count: v.count }))
+    .map(([name, v]) => ({ name, role: v.role, region: v.region, cluster: v.cluster, count: v.count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, n);
 };
@@ -388,6 +388,8 @@ const describeFlagsAbsensi = (s) =>
 const TIMESTAMP_COLUMNS = [
   { key: "date", label: "Tgl" },
   { key: "employee_name", label: "Nama" },
+  { key: "region", label: "Region" },
+  { key: "cluster", label: "Cluster" },
   { key: "position", label: "Role" },
   { key: "status", label: "Status" },
   { key: "endDate", label: "End Date (Resign)", render: (v) => v.endDate ? formatDateShort(v.endDate) : "-" },
@@ -402,6 +404,8 @@ const TIMESTAMP_COLUMNS = [
 const ABSENSI_COLUMNS = [
   { key: "date", label: "Tgl" },
   { key: "employee_name", label: "Nama" },
+  { key: "region", label: "Region" },
+  { key: "cluster", label: "Cluster" },
   { key: "position", label: "Role" },
   { key: "status", label: "Status" },
   { key: "endDate", label: "End Date (Resign)", render: (r) => r.endDate ? formatDateShort(r.endDate) : "-" },
@@ -478,6 +482,8 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
       date: r["Date_ABSENSI"] || "-",
       employee_id: r["Employee ID"] || "-",
       employee_name: r["Employee Name_ABSENSI"] || r["Employee ID"] || "-",
+      region: r["Region_DOP"] || "-",
+      cluster: r["Cluster_DOP"] || "-",
       position,
       status,
       promotorType: classifyPromotorType(position),
@@ -681,6 +687,8 @@ function processTimestamp(rows, storeThresholdM) {
       date: first["Date_TIMESTAMP"] || "-",
       employee_id: first["Employee ID"] || "-",
       employee_name: first["Employee Name_TIMESTAMP"] || first["Employee ID"] || "-",
+      region: first["Region_DOP"] || "-",
+      cluster: first["Cluster_DOP"] || "-",
       position,
       status,
       promotorType: classifyPromotorType(position),
@@ -983,6 +991,9 @@ function Leaderboard({ title, data, tone, onItemClick, exportFilename }) {
               <span className="text-gray-700 truncate pr-2 min-w-0">
                 {i + 1}. {d.name}
                 {d.role && <span className="text-gray-500"> — {d.role}</span>}
+                {(d.region || d.cluster) && (
+                  <span className="text-gray-400"> ({[d.region, d.cluster].filter(Boolean).join(" / ")})</span>
+                )}
               </span>
               <span className={`font-semibold ${tones[tone]} flex-shrink-0`}>{d.count}</span>
             </button>
@@ -1134,42 +1145,6 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
   const absensiRate = absensiResult ? ((absensiTotal / absensiResult.total) * 100).toFixed(1) : "-";
   const timestampRate = timestampResult ? ((timestampTotal / timestampResult.total) * 100).toFixed(1) : "-";
 
-  // TRUE total promotor headcount — everyone seen in the data, regardless of
-  // anomaly status. NOT an anomaly count.
-  const tsIds = timestampResult?.coverage.employeeIds || new Set();
-  const abIds = absensiResult?.coverage.employeeIds || new Set();
-  const totalPromotorAll = new Set([...tsIds, ...abIds]).size;
-  const timestampPromotorAll = tsIds.size;
-  const absensiPromotorAll = abIds.size;
-
-  const combinedFlagged = () => {
-    const t = (timestampResult?.flagged || []).map((r) => ({ ...r, _source: "Timestamp" }));
-    const a = (absensiResult?.flagged || []).map((r) => ({ ...r, _source: "Absensi" }));
-    return [...t, ...a];
-  };
-
-  // Unique PROMOTOR by type, counting EVERYONE (not just flagged) — this is
-  // guaranteed to sum exactly to totalPromotorAll, since both processors
-  // already restrict their data to In Store / Out Store promotors only.
-  const allRecords = () => {
-    const t = (timestampResult?.all || []).map((r) => ({ ...r, _source: "Timestamp" }));
-    const a = (absensiResult?.all || []).map((r) => ({ ...r, _source: "Absensi" }));
-    return [...t, ...a];
-  };
-  const inStore = new Set(allRecords().filter((r) => r.promotorType === "In Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
-  const outStore = new Set(allRecords().filter((r) => r.promotorType === "Out Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
-
-  const onlyInTimestamp = new Set([...tsIds].filter((id) => !abIds.has(id)));
-  const onlyInAbsensi = new Set([...abIds].filter((id) => !tsIds.has(id)));
-
-  const mixedColumns = [
-    { key: "_source", label: "Sumber" },
-    { key: "date", label: "Tgl" },
-    { key: "employee_name", label: "Nama" },
-    { key: "position", label: "Role" },
-    { key: "flags", label: "Flag", render: (r) => (r._source === "Timestamp" ? describeFlagsTimestamp(r) : describeFlagsAbsensi(r)) },
-  ];
-
   const Num = ({ value, className, onClick, children }) => (
     <button type="button" onClick={onClick} disabled={!onClick} className={`text-left ${onClick ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}>
       <div className={className}>{value}</div>
@@ -1177,127 +1152,154 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     </button>
   );
 
-  // ── Total Anomali (Terindikasi): promotor dengan MINIMAL 3 kejadian anomali
-  // (gabungan dari 6 kategori & kedua sumber data) — bukan 1 kejadian tunggal,
-  // biar nggak nangkep orang yang cuma kesenggol sekali doang.
-  const ANOMALI_MIN_COUNT = 3;
-  const flaggedCountByEmployee = new Map();
-  combinedFlagged().forEach((r) => {
-    if (!r.employee_id) return;
-    flaggedCountByEmployee.set(r.employee_id, (flaggedCountByEmployee.get(r.employee_id) || 0) + 1);
-  });
-  const anomaliQualifiedIds = new Set(
-    [...flaggedCountByEmployee.entries()].filter(([, count]) => count >= ANOMALI_MIN_COUNT).map(([id]) => id)
-  );
-  const anomaliInStoreCount = new Set(combinedFlagged().filter((r) => r.promotorType === "In Store Promotor" && anomaliQualifiedIds.has(r.employee_id)).map((r) => r.employee_id)).size;
-  const anomaliOutStoreCount = new Set(combinedFlagged().filter((r) => r.promotorType === "Out Store Promotor" && anomaliQualifiedIds.has(r.employee_id)).map((r) => r.employee_id)).size;
-  const pctIn = inStore ? ((anomaliInStoreCount / inStore) * 100).toFixed(1).replace(".", ",") : "0,0";
-  const pctOut = outStore ? ((anomaliOutStoreCount / outStore) * 100).toFixed(1).replace(".", ",") : "0,0";
+  // Semua perhitungan berat di bawah ini di-bungkus 1 useMemo — dihitung SEKALI
+  // tiap kali timestampResult/absensiResult berubah, BUKAN diulang tiap render.
+  // Ini krusial buat dataset besar (ratusan ribu baris) — sebelumnya beberapa
+  // fungsi (combinedFlagged/allRecords) di-panggil ulang belasan kali per
+  // render, masing-masing O(n), yang bikin browser berat/macet.
+  const computed = useMemo(() => {
+    const tsIds = timestampResult?.coverage.employeeIds || new Set();
+    const abIds = absensiResult?.coverage.employeeIds || new Set();
+    const totalPromotorAll = new Set([...tsIds, ...abIds]).size;
+    const timestampPromotorAll = tsIds.size;
+    const absensiPromotorAll = abIds.size;
 
-  // Per-promotor breakdown, dipakai saat klik angka Total Anomali — label
-  // kolomnya SAMA PERSIS dengan "Rincian per Kategori Anomali" di bawah,
-  // biar konsisten.
-  const buildAnomaliDetail = (promotorType) => {
-    const map = new Map();
-    combinedFlagged().forEach((r) => {
-      if (!r.employee_id || !anomaliQualifiedIds.has(r.employee_id) || r.promotorType !== promotorType) return;
-      const entry = map.get(r.employee_id) || {
-        employee_name: r.employee_name, position: r.position,
-        total: 0, zona: 0, gpsIdentik: 0, gpsJauh: 0, gpsNA: 0, status: 0, durasi: 0,
-      };
-      entry.total++;
-      if (r.zoneNotCompliant) entry.zona++;
-      if (r.gpsIdentical) entry.gpsIdentik++;
-      if (r.farFromStore) entry.gpsJauh++;
-      if (r.noOutletData) entry.gpsNA++;
-      if (r.statusAnomaly) entry.status++;
-      if (r.durationIssue) entry.durasi++;
-      map.set(r.employee_id, entry);
+    const combinedFlagged = [
+      ...(timestampResult?.flagged || []).map((r) => ({ ...r, _source: "Timestamp" })),
+      ...(absensiResult?.flagged || []).map((r) => ({ ...r, _source: "Absensi" })),
+    ];
+    const allRecords = [
+      ...(timestampResult?.all || []).map((r) => ({ ...r, _source: "Timestamp" })),
+      ...(absensiResult?.all || []).map((r) => ({ ...r, _source: "Absensi" })),
+    ];
+
+    const inStore = new Set(allRecords.filter((r) => r.promotorType === "In Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
+    const outStore = new Set(allRecords.filter((r) => r.promotorType === "Out Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
+
+    const onlyInTimestamp = new Set([...tsIds].filter((id) => !abIds.has(id)));
+    const onlyInAbsensi = new Set([...abIds].filter((id) => !tsIds.has(id)));
+
+    const ANOMALI_MIN_COUNT = 3;
+    const flaggedCountByEmployee = new Map();
+    combinedFlagged.forEach((r) => {
+      if (!r.employee_id) return;
+      flaggedCountByEmployee.set(r.employee_id, (flaggedCountByEmployee.get(r.employee_id) || 0) + 1);
     });
-    return [...map.values()].sort((a, b) => b.total - a.total);
-  };
-  const anomaliDetailColumns = [
+    const anomaliQualifiedIds = new Set(
+      [...flaggedCountByEmployee.entries()].filter(([, count]) => count >= ANOMALI_MIN_COUNT).map(([id]) => id)
+    );
+    const anomaliInStoreCount = new Set(combinedFlagged.filter((r) => r.promotorType === "In Store Promotor" && anomaliQualifiedIds.has(r.employee_id)).map((r) => r.employee_id)).size;
+    const anomaliOutStoreCount = new Set(combinedFlagged.filter((r) => r.promotorType === "Out Store Promotor" && anomaliQualifiedIds.has(r.employee_id)).map((r) => r.employee_id)).size;
+    const pctIn = inStore ? ((anomaliInStoreCount / inStore) * 100).toFixed(1).replace(".", ",") : "0,0";
+    const pctOut = outStore ? ((anomaliOutStoreCount / outStore) * 100).toFixed(1).replace(".", ",") : "0,0";
+
+    // Per-promotor breakdown, dipakai saat klik angka Total Anomali.
+    const buildAnomaliDetail = (promotorType) => {
+      const map = new Map();
+      combinedFlagged.forEach((r) => {
+        if (!r.employee_id || !anomaliQualifiedIds.has(r.employee_id) || r.promotorType !== promotorType) return;
+        const entry = map.get(r.employee_id) || {
+          employee_name: r.employee_name, position: r.position,
+          total: 0, zona: 0, gpsIdentik: 0, gpsJauh: 0, gpsNA: 0, status: 0, durasi: 0,
+        };
+        entry.total++;
+        if (r.zoneNotCompliant) entry.zona++;
+        if (r.gpsIdentical) entry.gpsIdentik++;
+        if (r.farFromStore) entry.gpsJauh++;
+        if (r.noOutletData) entry.gpsNA++;
+        if (r.statusAnomaly) entry.status++;
+        if (r.durationIssue) entry.durasi++;
+        map.set(r.employee_id, entry);
+      });
+      return [...map.values()].sort((a, b) => b.total - a.total);
+    };
+
+    const CATEGORY_DEFS = [
+      { key: "zona", label: "Zona Waktu (hari tidak comply)" },
+      { key: "gpsIdentik", label: "GPS Identik" },
+      { key: "gpsJauh", label: "GPS Jauh dari Toko" },
+      { key: "gpsNA", label: "GPS Toko N/A" },
+      { key: "status", label: "Status Non-Active" },
+      { key: "durasi", label: "Durasi Bermasalah" },
+    ];
+    const buildCategorySummary = (promotorType) => {
+      const perPerson = buildAnomaliDetail(promotorType);
+      const totalPeople = perPerson.length;
+      return CATEGORY_DEFS.map((c) => {
+        const affected = perPerson.filter((p) => p[c.key] > 0).length;
+        const totalKejadian = perPerson.reduce((sum, p) => sum + p[c.key], 0);
+        const persen = totalPeople ? ((affected / totalPeople) * 100).toFixed(1).replace(".", ",") : "0,0";
+        return { kategori: c.label, jumlahPromotor: affected, persen: `${persen}%`, totalKejadian };
+      }).sort((a, b) => b.jumlahPromotor - a.jumlahPromotor);
+    };
+
+    // Zona Waktu — klasifikasi promotor Timestamp
+    const zonePattern = new Map();
+    (timestampResult?.all || []).forEach((v) => {
+      if (!v.employee_id) return;
+      const e = zonePattern.get(v.employee_id) || { comply: false, notComply: false };
+      if (v.zoneNotCompliant) e.notComply = true; else e.comply = true;
+      zonePattern.set(v.employee_id, e);
+    });
+    let alwaysComplyIds = [], alwaysNotComplyIds = [], mixedIds = [];
+    zonePattern.forEach((e, id) => {
+      if (e.comply && e.notComply) mixedIds.push(id);
+      else if (e.comply) alwaysComplyIds.push(id);
+      else alwaysNotComplyIds.push(id);
+    });
+    const zoneAffectedCount = alwaysNotComplyIds.length;
+    const byZoneIds = (ids) => { const s = new Set(ids); return (timestampResult?.all || []).filter((v) => s.has(v.employee_id)); };
+
+    const gpsIdenticalCount = timestampResult?.gpsIdenticalPeople ?? 0;
+
+    const tsFarIds = new Set((timestampResult?.flagged || []).filter((v) => v.farFromStore).map((v) => v.employee_id).filter(Boolean));
+    const abFarIds = new Set((absensiResult?.flagged || []).filter((s) => s.farFromStore).map((s) => s.employee_id).filter(Boolean));
+    const gpsFarCombinedCount = new Set([...tsFarIds, ...abFarIds]).size;
+
+    const tsTokoNA = new Set((timestampResult?.flagged || []).filter((v) => v.noOutletData).map((v) => v.rawOutletCode).filter(Boolean));
+    const abTokoNA = new Set((absensiResult?.flagged || []).filter((s) => s.noOutletData).map((s) => s.rawOutletCode).filter(Boolean));
+    const tokoNACount = new Set([...tsTokoNA, ...abTokoNA]).size;
+    const totalTokoCount = new Set([
+      ...(timestampResult?.all || []).map((v) => v.rawOutletCode),
+      ...(absensiResult?.all || []).map((s) => s.rawOutletCode),
+    ].filter(Boolean)).size;
+
+    const tsStatusIds = new Set((timestampResult?.flagged || []).filter((v) => v.statusAnomaly).map((v) => v.employee_id).filter(Boolean));
+    const abStatusIds = new Set((absensiResult?.flagged || []).filter((s) => s.statusAnomaly).map((s) => s.employee_id).filter(Boolean));
+    const statusCombinedCount = new Set([...tsStatusIds, ...abStatusIds]).size;
+
+    const durasiCount = new Set((absensiResult?.flagged || []).filter((s) => s.durationIssue).map((s) => s.employee_id).filter(Boolean)).size;
+
+    return {
+      totalPromotorAll, timestampPromotorAll, absensiPromotorAll,
+      combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
+      anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
+      buildCategorySummary,
+      alwaysComplyIds, alwaysNotComplyIds, mixedIds, zoneAffectedCount, byZoneIds,
+      gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
+      statusCombinedCount, durasiCount,
+    };
+  }, [timestampResult, absensiResult]);
+
+  const {
+    totalPromotorAll, timestampPromotorAll, absensiPromotorAll,
+    combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
+    anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
+    buildCategorySummary,
+    alwaysComplyIds, alwaysNotComplyIds, mixedIds, zoneAffectedCount, byZoneIds,
+    gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
+    statusCombinedCount, durasiCount,
+  } = computed;
+
+  const mixedColumns = [
+    { key: "_source", label: "Sumber" },
+    { key: "date", label: "Tgl" },
     { key: "employee_name", label: "Nama" },
+    { key: "region", label: "Region" },
+    { key: "cluster", label: "Cluster" },
     { key: "position", label: "Role" },
-    { key: "total", label: "Total Kejadian" },
-    { key: "zona", label: "Zona Waktu (hari tidak comply)" },
-    { key: "gpsIdentik", label: "GPS Identik" },
-    { key: "gpsJauh", label: "GPS Jauh dari Toko" },
-    { key: "gpsNA", label: "GPS Toko N/A" },
-    { key: "status", label: "Status Non-Active" },
-    { key: "durasi", label: "Durasi Bermasalah" },
+    { key: "flags", label: "Flag", render: (r) => (r._source === "Timestamp" ? describeFlagsTimestamp(r) : describeFlagsAbsensi(r)) },
   ];
-
-  // Ringkasan per kategori (bukan per orang) — ini yang muncul pas klik angka
-  // Total Anomali, biar langsung keliatan kategori mana yang tertinggi/terendah.
-  const CATEGORY_DEFS = [
-    { key: "zona", label: "Zona Waktu (hari tidak comply)" },
-    { key: "gpsIdentik", label: "GPS Identik" },
-    { key: "gpsJauh", label: "GPS Jauh dari Toko" },
-    { key: "gpsNA", label: "GPS Toko N/A" },
-    { key: "status", label: "Status Non-Active" },
-    { key: "durasi", label: "Durasi Bermasalah" },
-  ];
-  const buildCategorySummary = (promotorType) => {
-    const perPerson = buildAnomaliDetail(promotorType);
-    const totalPeople = perPerson.length;
-    return CATEGORY_DEFS.map((c) => {
-      const affected = perPerson.filter((p) => p[c.key] > 0).length;
-      const totalKejadian = perPerson.reduce((sum, p) => sum + p[c.key], 0);
-      const persen = totalPeople ? ((affected / totalPeople) * 100).toFixed(1).replace(".", ",") : "0,0";
-      return { kategori: c.label, jumlahPromotor: affected, persen: `${persen}%`, totalKejadian };
-    }).sort((a, b) => b.jumlahPromotor - a.jumlahPromotor);
-  };
-  const categorySummaryColumns = [
-    { key: "kategori", label: "Kategori" },
-    { key: "jumlahPromotor", label: "Jumlah Promotor", render: (r) => r.jumlahPromotor.toLocaleString("id-ID") },
-    { key: "persen", label: "Persentase" },
-    { key: "totalKejadian", label: "Total Kejadian", render: (r) => r.totalKejadian.toLocaleString("id-ID") },
-  ];
-
-  // ── Rincian 6 kategori (masing-masing independen; unit & cakupan beda-beda,
-  // dinyatakan eksplisit per baris).
-  // 1. Zona Waktu — Timestamp saja.
-  const zonePattern = new Map();
-  (timestampResult?.all || []).forEach((v) => {
-    if (!v.employee_id) return;
-    const e = zonePattern.get(v.employee_id) || { comply: false, notComply: false };
-    if (v.zoneNotCompliant) e.notComply = true; else e.comply = true;
-    zonePattern.set(v.employee_id, e);
-  });
-  let alwaysComplyIds = [], alwaysNotComplyIds = [], mixedIds = [];
-  zonePattern.forEach((e, id) => {
-    if (e.comply && e.notComply) mixedIds.push(id);
-    else if (e.comply) alwaysComplyIds.push(id);
-    else alwaysNotComplyIds.push(id);
-  });
-  const zoneAffectedCount = alwaysNotComplyIds.length; // konsisten TIDAK PERNAH comply (bukan "pernah gagal 1 hari")
-  const byZoneIds = (ids) => { const s = new Set(ids); return (timestampResult?.all || []).filter((v) => s.has(v.employee_id)); };
-
-  // 2. GPS Identik — Timestamp saja.
-  const gpsIdenticalCount = timestampResult?.gpsIdenticalPeople ?? 0;
-
-  // 3. GPS Jauh dari Toko — Timestamp & Absensi, promotor unik gabungan.
-  const tsFarIds = new Set((timestampResult?.flagged || []).filter((v) => v.farFromStore).map((v) => v.employee_id).filter(Boolean));
-  const abFarIds = new Set((absensiResult?.flagged || []).filter((s) => s.farFromStore).map((s) => s.employee_id).filter(Boolean));
-  const gpsFarCombinedCount = new Set([...tsFarIds, ...abFarIds]).size;
-
-  // 4. GPS Toko N/A — Timestamp & Absensi, TOKO unik gabungan (bukan promotor).
-  const tsTokoNA = new Set((timestampResult?.flagged || []).filter((v) => v.noOutletData).map((v) => v.rawOutletCode).filter(Boolean));
-  const abTokoNA = new Set((absensiResult?.flagged || []).filter((s) => s.noOutletData).map((s) => s.rawOutletCode).filter(Boolean));
-  const tokoNACount = new Set([...tsTokoNA, ...abTokoNA]).size;
-  const totalTokoCount = new Set([
-    ...(timestampResult?.all || []).map((v) => v.rawOutletCode),
-    ...(absensiResult?.all || []).map((s) => s.rawOutletCode),
-  ].filter(Boolean)).size;
-
-  // 5. Status Non-Active — Timestamp & Absensi, promotor unik gabungan.
-  const tsStatusIds = new Set((timestampResult?.flagged || []).filter((v) => v.statusAnomaly).map((v) => v.employee_id).filter(Boolean));
-  const abStatusIds = new Set((absensiResult?.flagged || []).filter((s) => s.statusAnomaly).map((s) => s.employee_id).filter(Boolean));
-  const statusCombinedCount = new Set([...tsStatusIds, ...abStatusIds]).size;
-
-  // 6. Durasi Bermasalah — Absensi saja, promotor unik.
-  const durasiCount = new Set((absensiResult?.flagged || []).filter((s) => s.durationIssue).map((s) => s.employee_id).filter(Boolean)).size;
 
   return (
     <div className="bg-gradient-to-r from-emerald-50 to-white border border-emerald-200 rounded-xl p-5 mb-4">
@@ -1447,6 +1449,55 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
 // ───────────────────────── Dashboard Page ─────────────────────────
 
+// Bangun ulang semua agregat (total, byDate, topOffenders, anomalyCounts)
+// dari sebuah result (Timestamp/Absensi) tapi DIBATASI ke 1 tipe promotor
+// aja. `flagged` di result asli dan `all` itu row yang SAMA (reference sama
+// persis), jadi cukup pakai Set buat cek "row ini termasuk flagged apa
+// nggak" tanpa perlu re-derive logic isFlagged dari awal.
+function computeTypeView(result, promotorType, isTimestamp) {
+  if (!result) return null;
+  const all = (result.all || []).filter((r) => r.promotorType === promotorType);
+  const flaggedSet = new Set(result.flagged);
+  const flagged = all.filter((r) => flaggedSet.has(r));
+  const total = all.length;
+
+  const byDateMap = {};
+  all.forEach((r) => {
+    byDateMap[r.date] = byDateMap[r.date] || { date: r.date, anomali: 0, total: 0 };
+    byDateMap[r.date].total++;
+    if (flaggedSet.has(r)) byDateMap[r.date].anomali++;
+  });
+  const byDate = Object.values(byDateMap).sort((a, b) => (a.date > b.date ? 1 : -1));
+  const topOffenders = topNWithRole(flagged, (r) => r.employee_name, (r) => r.position, 5, (r) => r.region, (r) => r.cluster);
+
+  const uniquePeople = (pred) => new Set(flagged.filter(pred).map((r) => r.employee_id).filter(Boolean)).size;
+  const uniqueOutlets = (pred) => new Set(flagged.filter(pred).map((r) => r.rawOutletCode).filter(Boolean)).size;
+  const uniqueCoverage = new Set(all.map((r) => r.employee_id).filter(Boolean)).size;
+
+  if (isTimestamp) {
+    return {
+      total, all, flagged, byDate, topOffenders, uniqueCoverage,
+      anomalyCounts: {
+        zone: flagged.filter((v) => v.zoneNotCompliant).length,
+        gpsIdentical: flagged.filter((v) => v.gpsIdentical).length,
+        gpsIdenticalPeople: new Set(flagged.filter((v) => v.gpsIdentical).map((v) => v.employee_id)).size,
+        status: uniquePeople((v) => v.statusAnomaly),
+        farFromStore: uniquePeople((v) => v.farFromStore),
+        noOutletData: uniqueOutlets((v) => v.noOutletData),
+      },
+    };
+  }
+  return {
+    total, all, flagged, byDate, topOffenders, uniqueCoverage,
+    anomalyCounts: {
+      gpsFar: uniquePeople((s) => s.farFromStore),
+      gpsNoOutlet: uniqueOutlets((s) => s.noOutletData),
+      status: uniquePeople((s) => s.statusAnomaly),
+      duration: flagged.filter((s) => s.durationIssue).length,
+    },
+  };
+}
+
 function DashboardPage(props) {
   const {
     timestampData,
@@ -1461,193 +1512,250 @@ function DashboardPage(props) {
   const absensiResult = useMemo(() => absensiData ? processAbsensi(absensiData, moveThresholdM, shortHr, longHr) : null, [absensiData, moveThresholdM, shortHr, longHr]);
   const insights = useMemo(() => computeInsights(timestampResult, absensiResult), [timestampResult, absensiResult]);
 
-  const filterTs = (pred) => (timestampResult ? timestampResult.flagged.filter(pred) : []);
-  const filterAb = (pred) => (absensiResult ? absensiResult.flagged.filter(pred) : []);
+  // Views baru: dipecah per TIPE PROMOTOR (bukan per sumber data lagi).
+  // Masing-masing tetap punya sub-bagian Timestamp & Absensi di dalamnya,
+  // karena kategori anomalinya emang beda per sumber — cuma level
+  // pengelompokan PALING LUAR yang sekarang Tipe, bukan Sumber.
+  const inStoreTs = useMemo(() => computeTypeView(timestampResult, "In Store Promotor", true), [timestampResult]);
+  const inStoreAb = useMemo(() => computeTypeView(absensiResult, "In Store Promotor", false), [absensiResult]);
+  const outStoreTs = useMemo(() => computeTypeView(timestampResult, "Out Store Promotor", true), [timestampResult]);
+  const outStoreAb = useMemo(() => computeTypeView(absensiResult, "Out Store Promotor", false), [absensiResult]);
 
   return (
     <div>
       <OverviewBanner absensiResult={absensiResult} timestampResult={timestampResult} onDetail={openDetail} />
       <InsightsCard insights={insights} />
 
-      {/*
-        Layout note: every block below has "md:col-start-N md:row-start-N".
-        On desktop (md+) that pins Timestamp/Absensi into the same grid row
-        so they stay aligned side-by-side, REGARDLESS of DOM order. On mobile
-        there's no column/row override, so items stack in plain DOM order —
-        which is why every Timestamp block is written before any Absensi
-        block below: mobile shows one fully-grouped section at a time
-        instead of alternating row-by-row.
-      */}
+      {/* Threshold GPS/Durasi — kontrol GLOBAL (dipakai kedua tipe promotor),
+          jadi cuma 1 instance di sini, bukan diulang per kolom. */}
+      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex flex-wrap gap-3 items-center text-[11px] text-gray-500">
+        <span className="font-semibold text-gray-700">Threshold:</span>
+        <label className="flex items-center gap-1.5">Pendek &lt; (jam):
+          <input type="number" value={shortHr} onChange={(e) => setShortHr(parseFloat(e.target.value) || 0)}
+            className="w-12 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
+        </label>
+        <label className="flex items-center gap-1.5">Panjang &gt; (jam):
+          <input type="number" value={longHr} onChange={(e) => setLongHr(parseFloat(e.target.value) || 0)}
+            className="w-12 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
+        </label>
+        <label className="flex items-center gap-1.5">GPS (m):
+          <input type="number" step="10" value={moveThresholdM} onChange={(e) => setMoveThresholdM(parseFloat(e.target.value) || 0)}
+            className="w-16 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
+        </label>
+        <span className="text-gray-400 italic">Berlaku buat kedua tipe promotor (In Store &amp; Out Store), Timestamp &amp; Absensi.</span>
+      </div>
+
+      {/* ═══════ GRID A: bagian Timestamp (Journey) tiap tipe ═══════ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 mb-5">
+
+        {/* ── IN STORE PROMOTOR — Timestamp ── */}
+        <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0">
+          <div className="text-base font-bold text-amber-700 mb-1">In Store Promotor</div>
+          <div className="text-[11px] text-gray-500 mb-2">Timestamp (Journey) — {inStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreTs?.total.toLocaleString("id-ID") ?? 0} hari-kerja</div>
+          {inStoreTs ? (
+            <div className="grid grid-cols-2 gap-2.5">
+              <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={inStoreTs.anomalyCounts.zone} tone="indigo"
+                onClick={() => openDetail("In Store — Timestamp — Absensi <3x/hari", inStoreTs.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+                exportRows={inStoreTs.flagged.filter((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-absensi-kurang-3x" />
+              <StatCard icon={MapPin} label="GPS Identik" unit="Hits" value={inStoreTs.anomalyCounts.gpsIdentical} tone="pink"
+                subtitle={`${inStoreTs.anomalyCounts.gpsIdenticalPeople} Promotor`}
+                onClick={() => openDetail("In Store — Timestamp — GPS Identik", inStoreTs.flagged.filter((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
+                exportRows={inStoreTs.flagged.filter((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-gps-identik" />
+              <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={inStoreTs.anomalyCounts.status} tone="amber"
+                onClick={() => openDetail("In Store — Timestamp — Non-Active", inStoreTs.flagged.filter((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
+                exportRows={inStoreTs.flagged.filter((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-status-non-active" />
+              <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={inStoreTs.anomalyCounts.farFromStore} tone="red"
+                onClick={() => openDetail("In Store — Timestamp — GPS Jauh dari Toko", inStoreTs.flagged.filter((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
+                exportRows={inStoreTs.flagged.filter((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-gps-jauh-dari-toko" />
+              <StatCard icon={MapPin} label="#Toko GPS N/A" value={inStoreTs.anomalyCounts.noOutletData} tone="pink"
+                onClick={() => openDetail("In Store — Timestamp — GPS Toko N/A", inStoreTs.flagged.filter((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
+                exportRows={inStoreTs.flagged.filter((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-gps-toko-na" />
+            </div>
+          ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
+        </div>
+
+        {/* ── OUT STORE PROMOTOR — Timestamp ── */}
+        <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0">
+          <div className="text-base font-bold text-fuchsia-700 mb-1">Out Store Promotor</div>
+          <div className="text-[11px] text-gray-500 mb-2">Timestamp (Journey) — {outStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreTs?.total.toLocaleString("id-ID") ?? 0} hari-kerja</div>
+          {outStoreTs ? (
+            <div className="grid grid-cols-2 gap-2.5">
+              <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={outStoreTs.anomalyCounts.zone} tone="indigo"
+                onClick={() => openDetail("Out Store — Timestamp — Absensi <3x/hari", outStoreTs.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
+                exportRows={outStoreTs.flagged.filter((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-absensi-kurang-3x" />
+              <StatCard icon={MapPin} label="GPS Identik" unit="Hits" value={outStoreTs.anomalyCounts.gpsIdentical} tone="pink"
+                subtitle={`${outStoreTs.anomalyCounts.gpsIdenticalPeople} Promotor`}
+                onClick={() => openDetail("Out Store — Timestamp — GPS Identik", outStoreTs.flagged.filter((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
+                exportRows={outStoreTs.flagged.filter((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-gps-identik" />
+              <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={outStoreTs.anomalyCounts.status} tone="amber"
+                onClick={() => openDetail("Out Store — Timestamp — Non-Active", outStoreTs.flagged.filter((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
+                exportRows={outStoreTs.flagged.filter((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-status-non-active" />
+              <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={outStoreTs.anomalyCounts.farFromStore} tone="red"
+                onClick={() => openDetail("Out Store — Timestamp — GPS Jauh dari Toko", outStoreTs.flagged.filter((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
+                exportRows={outStoreTs.flagged.filter((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-gps-jauh-dari-toko" />
+              <StatCard icon={MapPin} label="#Toko GPS N/A" value={outStoreTs.anomalyCounts.noOutletData} tone="pink"
+                onClick={() => openDetail("Out Store — Timestamp — GPS Toko N/A", outStoreTs.flagged.filter((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
+                exportRows={outStoreTs.flagged.filter((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-gps-toko-na" />
+            </div>
+          ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
+        </div>
+
+        <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0">
+          <Panel title="Tren Anomali per Tanggal — In Store (Timestamp, by Activity ID)" height={160} exportData={inStoreTs?.byDate} exportFilename="instore-timestamp-tren-tanggal">
+            {inStoreTs && (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={inStoreTs.byDate}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
+                  <YAxis stroke="#6b7280" fontSize={10} />
+                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                  <Line type="monotone" dataKey="anomali" stroke="#f59e0b" strokeWidth={2}
+                    dot={{ r: 3, cursor: "pointer" }}
+                    activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`In Store — Timestamp — ${p.payload.date}`, inStoreTs.flagged.filter((v) => v.date === p.payload.date), TIMESTAMP_COLUMNS) }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </Panel>
+        </div>
+        <div className="md:col-start-2 md:row-start-2 mb-3 md:mb-0">
+          <Panel title="Tren Anomali per Tanggal — Out Store (Timestamp, by Activity ID)" height={160} exportData={outStoreTs?.byDate} exportFilename="outstore-timestamp-tren-tanggal">
+            {outStoreTs && (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={outStoreTs.byDate}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
+                  <YAxis stroke="#6b7280" fontSize={10} />
+                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                  <Line type="monotone" dataKey="anomali" stroke="#d946ef" strokeWidth={2}
+                    dot={{ r: 3, cursor: "pointer" }}
+                    activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Out Store — Timestamp — ${p.payload.date}`, outStoreTs.flagged.filter((v) => v.date === p.payload.date), TIMESTAMP_COLUMNS) }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </Panel>
+        </div>
+
+        <div className="md:col-start-1 md:row-start-3 mb-3 md:mb-0">
+          <Leaderboard title="Top 5 Anomali — In Store (Timestamp)" data={inStoreTs?.topOffenders || []} tone="teal"
+            onItemClick={(d) => openDetail(`In Store — Timestamp — ${d.name}`, (inStoreTs?.flagged || []).filter((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
+            exportFilename="instore-timestamp-leaderboard" />
+        </div>
+        <div className="md:col-start-2 md:row-start-3 mb-3 md:mb-0">
+          <Leaderboard title="Top 5 Anomali — Out Store (Timestamp)" data={outStoreTs?.topOffenders || []} tone="indigo"
+            onItemClick={(d) => openDetail(`Out Store — Timestamp — ${d.name}`, (outStoreTs?.flagged || []).filter((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
+            exportFilename="outstore-timestamp-leaderboard" />
+        </div>
+
+        <div className="md:col-start-1 md:row-start-4">
+          <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag In Store — Timestamp ({inStoreTs?.flagged.length ?? 0}/{inStoreTs?.total ?? 0})</div>
+          <FlaggedTable rows={inStoreTs?.flagged || []} columns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-detail-anomali" />
+        </div>
+        <div className="md:col-start-2 md:row-start-4">
+          <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Out Store — Timestamp ({outStoreTs?.flagged.length ?? 0}/{outStoreTs?.total ?? 0})</div>
+          <FlaggedTable rows={outStoreTs?.flagged || []} columns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-detail-anomali" />
+        </div>
+      </div>
+
+      {/* ═══════ GRID B: bagian Absensi (Attendance) tiap tipe ═══════ */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0">
 
-        {/* ───────── TIMESTAMP (all blocks, in order) ───────── */}
-
         <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0">
-          <div className="text-sm font-bold text-teal-700 mb-2">Data Timestamp (Journey)</div>
-          <div className="text-[11px] text-gray-400 italic">Pakai threshold GPS (m) yang sama dengan Absensi, buat cek jarak ke toko.</div>
+          <div className="text-[11px] text-gray-500 mb-2">Absensi (Attendance) — {inStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
+          {inStoreAb ? (
+            <div className="grid grid-cols-2 gap-2.5">
+              <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={inStoreAb.anomalyCounts.gpsFar} tone="red"
+                onClick={() => openDetail("In Store — Absensi — GPS Jauh dari Toko", inStoreAb.flagged.filter((s) => s.farFromStore), ABSENSI_COLUMNS)}
+                exportRows={inStoreAb.flagged.filter((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="instore-absensi-gps-jauh-dari-toko" />
+              <StatCard icon={MapPin} label="#Toko GPS N/A" value={inStoreAb.anomalyCounts.gpsNoOutlet} tone="pink"
+                onClick={() => openDetail("In Store — Absensi — GPS Toko N/A", inStoreAb.flagged.filter((s) => s.noOutletData), ABSENSI_COLUMNS)}
+                exportRows={inStoreAb.flagged.filter((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="instore-absensi-gps-toko-na" />
+              <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={inStoreAb.anomalyCounts.status} tone="amber"
+                onClick={() => openDetail("In Store — Absensi — Non-Active", inStoreAb.flagged.filter((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
+                exportRows={inStoreAb.flagged.filter((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="instore-absensi-status-non-active" />
+              <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={inStoreAb.anomalyCounts.duration} tone="indigo"
+                onClick={() => openDetail("In Store — Absensi — Durasi Bermasalah", inStoreAb.flagged.filter((s) => s.durationIssue), ABSENSI_COLUMNS)}
+                exportRows={inStoreAb.flagged.filter((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="instore-absensi-durasi-bermasalah" />
+            </div>
+          ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
         </div>
-
-        {timestampResult && (
-          <>
-            <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0">
-              <div className="grid grid-cols-2 gap-2.5">
-                <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={timestampResult.anomalyCounts.zone} tone="indigo"
-                  onClick={() => openDetail("Timestamp — Absensi <3x/hari", filterTs((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
-                  exportRows={filterTs((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-absensi-kurang-3x" />
-                <StatCard icon={MapPin} label="GPS Identik" unit="Hits" value={timestampResult.anomalyCounts.gpsIdentical} tone="pink"
-                  subtitle={`${timestampResult.gpsIdenticalPeople} Promotor`}
-                  onClick={() => openDetail("Timestamp — GPS Identik", filterTs((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
-                  exportRows={filterTs((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-identik" />
-                <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={timestampResult.anomalyCounts.status} tone="amber"
-                  onClick={() => openDetail("Timestamp — Promotor Non-Active", filterTs((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
-                  exportRows={filterTs((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-status-non-active" />
-                <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={timestampResult.anomalyCounts.farFromStore} tone="red"
-                  onClick={() => openDetail("Timestamp — GPS Jauh dari Toko", filterTs((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
-                  exportRows={filterTs((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-jauh-dari-toko" />
-                <StatCard icon={MapPin} label="#Toko GPS N/A" value={timestampResult.anomalyCounts.noOutletData} tone="pink"
-                  onClick={() => openDetail("Timestamp — GPS Toko N/A", filterTs((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
-                  exportRows={filterTs((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="timestamp-gps-toko-na" />
-              </div>
-            </div>
-
-            <div className="md:col-start-1 md:row-start-3 mb-3 md:mb-0">
-              <Panel title="Tren Anomali per Tanggal (Timestamp)" height={160} exportData={timestampResult.byDate} exportFilename="timestamp-tren-tanggal">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={timestampResult.byDate}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
-                    <YAxis stroke="#6b7280" fontSize={10} />
-                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                    <Line type="monotone" dataKey="anomali" stroke="#2dd4bf" strokeWidth={2}
-                      dot={{ r: 3, cursor: "pointer" }}
-                      activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Timestamp — ${p.payload.date}`, filterTs((v) => v.date === p.payload.date), TIMESTAMP_COLUMNS) }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Panel>
-            </div>
-
-            <div className="md:col-start-1 md:row-start-4 mb-3 md:mb-0">
-              <Panel title="Anomali per Tipe Promotor (Timestamp)" height={140} exportData={timestampResult.byPromotorTypeChart} exportFilename="timestamp-per-tipe-promotor">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={timestampResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
-                    <YAxis type="category" dataKey="type" stroke="#6b7280" fontSize={9} width={100} />
-                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                    <Bar dataKey="anomali" fill="#f472b6" radius={[0, 4, 4, 0]} cursor="pointer"
-                      onClick={(d) => openDetail(`Timestamp — ${d.type}`, filterTs((v) => v.promotorType === d.type), TIMESTAMP_COLUMNS)}>
-                      <LabelList dataKey="anomali" position="insideLeft" fill="#ffffff" fontSize={11} fontWeight={700} formatter={(v) => v.toLocaleString("id-ID")} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </Panel>
-            </div>
-
-            <div className="md:col-start-1 md:row-start-5 mb-3 md:mb-0">
-              <Leaderboard title="Top 5 Anomali per Orang — Timestamp (dengan Role)" data={timestampResult.topOffenders} tone="teal"
-                onItemClick={(d) => openDetail(`Timestamp — ${d.name}`, filterTs((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
-                exportFilename="timestamp-leaderboard" />
-            </div>
-
-            <div className="md:col-start-1 md:row-start-6 mb-3 md:mb-0">
-              <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Timestamp ({timestampResult.flagged.length}/{timestampResult.total})</div>
-              <FlaggedTable rows={timestampResult.flagged} columns={TIMESTAMP_COLUMNS} exportFilename="timestamp-detail-anomali" />
-            </div>
-          </>
-        )}
-        {!timestampResult && (
-          <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Timestamp</div>
-        )}
-
-        {/* ───────── ABSENSI (all blocks, in order) ───────── */}
-
         <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0">
-          <div className="text-sm font-bold text-indigo-700 mb-2">Data Absensi (Attendance)</div>
-          <div className="flex flex-wrap gap-3 items-center text-[11px] text-gray-500">
-            <label className="flex items-center gap-1.5">Pendek &lt; (jam):
-              <input type="number" value={shortHr} onChange={(e) => setShortHr(parseFloat(e.target.value) || 0)}
-                className="w-12 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
-            </label>
-            <label className="flex items-center gap-1.5">Panjang &gt; (jam):
-              <input type="number" value={longHr} onChange={(e) => setLongHr(parseFloat(e.target.value) || 0)}
-                className="w-12 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
-            </label>
-            <label className="flex items-center gap-1.5">GPS (m):
-              <input type="number" step="10" value={moveThresholdM} onChange={(e) => setMoveThresholdM(parseFloat(e.target.value) || 0)}
-                className="w-16 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
-            </label>
-          </div>
+          <div className="text-[11px] text-gray-500 mb-2">Absensi (Attendance) — {outStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
+          {outStoreAb ? (
+            <div className="grid grid-cols-2 gap-2.5">
+              <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={outStoreAb.anomalyCounts.gpsFar} tone="red"
+                onClick={() => openDetail("Out Store — Absensi — GPS Jauh dari Toko", outStoreAb.flagged.filter((s) => s.farFromStore), ABSENSI_COLUMNS)}
+                exportRows={outStoreAb.flagged.filter((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-gps-jauh-dari-toko" />
+              <StatCard icon={MapPin} label="#Toko GPS N/A" value={outStoreAb.anomalyCounts.gpsNoOutlet} tone="pink"
+                onClick={() => openDetail("Out Store — Absensi — GPS Toko N/A", outStoreAb.flagged.filter((s) => s.noOutletData), ABSENSI_COLUMNS)}
+                exportRows={outStoreAb.flagged.filter((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-gps-toko-na" />
+              <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={outStoreAb.anomalyCounts.status} tone="amber"
+                onClick={() => openDetail("Out Store — Absensi — Non-Active", outStoreAb.flagged.filter((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
+                exportRows={outStoreAb.flagged.filter((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-status-non-active" />
+              <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={outStoreAb.anomalyCounts.duration} tone="indigo"
+                onClick={() => openDetail("Out Store — Absensi — Durasi Bermasalah", outStoreAb.flagged.filter((s) => s.durationIssue), ABSENSI_COLUMNS)}
+                exportRows={outStoreAb.flagged.filter((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-durasi-bermasalah" />
+            </div>
+          ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
         </div>
 
-        {absensiResult && (
-          <>
-            <div className="md:col-start-2 md:row-start-2 mb-3 md:mb-0">
-              <div className="grid grid-cols-2 gap-2.5">
-                <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={absensiResult.anomalyCounts.gpsFar} tone="red"
-                  onClick={() => openDetail("Absensi — GPS Jauh dari Toko", filterAb((s) => s.farFromStore), ABSENSI_COLUMNS)}
-                  exportRows={filterAb((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-jauh-dari-toko" />
-                <StatCard icon={MapPin} label="#Toko GPS N/A" value={absensiResult.anomalyCounts.gpsNoOutlet} tone="pink"
-                  onClick={() => openDetail("Absensi — GPS Toko N/A", filterAb((s) => s.noOutletData), ABSENSI_COLUMNS)}
-                  exportRows={filterAb((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-gps-toko-na" />
-                <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={absensiResult.anomalyCounts.status} tone="amber"
-                  onClick={() => openDetail("Absensi — Promotor Non-Active", filterAb((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
-                  exportRows={filterAb((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-status-non-active" />
-                <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={absensiResult.anomalyCounts.duration} tone="indigo"
-                  onClick={() => openDetail("Absensi — Durasi Bermasalah", filterAb((s) => s.durationIssue), ABSENSI_COLUMNS)}
-                  exportRows={filterAb((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="absensi-durasi-bermasalah" />
-              </div>
-            </div>
+        <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0">
+          <Panel title="Tren Anomali per Tanggal — In Store (Absensi, by Activity ID)" height={160} exportData={inStoreAb?.byDate} exportFilename="instore-absensi-tren-tanggal">
+            {inStoreAb && (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={inStoreAb.byDate}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
+                  <YAxis stroke="#6b7280" fontSize={10} />
+                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                  <Line type="monotone" dataKey="anomali" stroke="#f59e0b" strokeWidth={2}
+                    dot={{ r: 3, cursor: "pointer" }}
+                    activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`In Store — Absensi — ${p.payload.date}`, inStoreAb.flagged.filter((s) => s.date === p.payload.date), ABSENSI_COLUMNS) }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </Panel>
+        </div>
+        <div className="md:col-start-2 md:row-start-2 mb-3 md:mb-0">
+          <Panel title="Tren Anomali per Tanggal — Out Store (Absensi, by Activity ID)" height={160} exportData={outStoreAb?.byDate} exportFilename="outstore-absensi-tren-tanggal">
+            {outStoreAb && (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={outStoreAb.byDate}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
+                  <YAxis stroke="#6b7280" fontSize={10} />
+                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
+                  <Line type="monotone" dataKey="anomali" stroke="#d946ef" strokeWidth={2}
+                    dot={{ r: 3, cursor: "pointer" }}
+                    activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Out Store — Absensi — ${p.payload.date}`, outStoreAb.flagged.filter((s) => s.date === p.payload.date), ABSENSI_COLUMNS) }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </Panel>
+        </div>
 
-            <div className="md:col-start-2 md:row-start-3 mb-3 md:mb-0">
-              <Panel title="Tren Anomali per Tanggal (Absensi)" height={160} exportData={absensiResult.byDate} exportFilename="absensi-tren-tanggal">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={absensiResult.byDate}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="date" stroke="#6b7280" fontSize={9} />
-                    <YAxis stroke="#6b7280" fontSize={10} />
-                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                    <Line type="monotone" dataKey="anomali" stroke="#f59e0b" strokeWidth={2}
-                      dot={{ r: 3, cursor: "pointer" }}
-                      activeDot={{ r: 6, cursor: "pointer", onClick: (_, p) => openDetail(`Absensi — ${p.payload.date}`, filterAb((s) => s.date === p.payload.date), ABSENSI_COLUMNS) }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Panel>
-            </div>
+        <div className="md:col-start-1 md:row-start-3 mb-3 md:mb-0">
+          <Leaderboard title="Top 5 Anomali — In Store (Absensi)" data={inStoreAb?.topOffenders || []} tone="teal"
+            onItemClick={(d) => openDetail(`In Store — Absensi — ${d.name}`, (inStoreAb?.flagged || []).filter((s) => s.employee_name === d.name), ABSENSI_COLUMNS)}
+            exportFilename="instore-absensi-leaderboard" />
+        </div>
+        <div className="md:col-start-2 md:row-start-3 mb-3 md:mb-0">
+          <Leaderboard title="Top 5 Anomali — Out Store (Absensi)" data={outStoreAb?.topOffenders || []} tone="indigo"
+            onItemClick={(d) => openDetail(`Out Store — Absensi — ${d.name}`, (outStoreAb?.flagged || []).filter((s) => s.employee_name === d.name), ABSENSI_COLUMNS)}
+            exportFilename="outstore-absensi-leaderboard" />
+        </div>
 
-            <div className="md:col-start-2 md:row-start-4 mb-3 md:mb-0">
-              <Panel title="Anomali per Tipe Promotor (Absensi)" height={140} exportData={absensiResult.byPromotorTypeChart} exportFilename="absensi-per-tipe-promotor">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={absensiResult.byPromotorTypeChart} layout="vertical" margin={{ left: 10, right: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                    <XAxis type="number" stroke="#6b7280" fontSize={10} />
-                    <YAxis type="category" dataKey="type" stroke="#6b7280" fontSize={9} width={100} />
-                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #d1d5db", fontSize: 11 }} />
-                    <Bar dataKey="anomali" fill="#818cf8" radius={[0, 4, 4, 0]} cursor="pointer"
-                      onClick={(d) => openDetail(`Absensi — ${d.type}`, filterAb((s) => s.promotorType === d.type), ABSENSI_COLUMNS)}>
-                      <LabelList dataKey="anomali" position="insideLeft" fill="#ffffff" fontSize={11} fontWeight={700} formatter={(v) => v.toLocaleString("id-ID")} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </Panel>
-            </div>
-
-            <div className="md:col-start-2 md:row-start-5 mb-3 md:mb-0">
-              <Leaderboard title="Top 5 Anomali per Orang — Absensi (dengan Role)" data={absensiResult.topOffenders} tone="indigo"
-                onItemClick={(d) => openDetail(`Absensi — ${d.name}`, filterAb((s) => s.employee_name === d.name), ABSENSI_COLUMNS)}
-                exportFilename="absensi-leaderboard" />
-            </div>
-
-            <div className="md:col-start-2 md:row-start-6">
-              <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Absensi ({absensiResult.flagged.length}/{absensiResult.total})</div>
-              <FlaggedTable rows={absensiResult.flagged} columns={ABSENSI_COLUMNS} exportFilename="absensi-detail-anomali" />
-            </div>
-          </>
-        )}
-        {!absensiResult && (
-          <div className="md:col-start-2 md:row-start-2 mb-3 md:mb-0 text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data Absensi</div>
-        )}
+        <div className="md:col-start-1 md:row-start-4">
+          <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag In Store — Absensi ({inStoreAb?.flagged.length ?? 0}/{inStoreAb?.total ?? 0})</div>
+          <FlaggedTable rows={inStoreAb?.flagged || []} columns={ABSENSI_COLUMNS} exportFilename="instore-absensi-detail-anomali" />
+        </div>
+        <div className="md:col-start-2 md:row-start-4">
+          <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Out Store — Absensi ({outStoreAb?.flagged.length ?? 0}/{outStoreAb?.total ?? 0})</div>
+          <FlaggedTable rows={outStoreAb?.flagged || []} columns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-detail-anomali" />
+        </div>
       </div>
 
       <DetailModal detail={detail} onClose={closeDetail} />
@@ -1834,7 +1942,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v65</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v70</div>
       </div>
     </div>
   );
