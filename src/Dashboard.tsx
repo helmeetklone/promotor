@@ -1,4 +1,4 @@
-// Dashboard.tsx — v70
+// Dashboard.tsx — v74
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1004,6 +1004,101 @@ function Leaderboard({ title, data, tone, onItemClick, exportFilename }) {
   );
 }
 
+// ───────────────────────── Glossary ─────────────────────────
+
+function GlossaryModal({ open, onClose }) {
+  if (!open) return null;
+  const Section = ({ title, children }) => (
+    <div className="mb-5">
+      <div className="text-sm font-bold text-gray-900 mb-1.5">{title}</div>
+      <div className="text-[13px] text-gray-700 leading-relaxed space-y-2">{children}</div>
+    </div>
+  );
+  const Term = ({ name, children }) => (
+    <div>
+      <span className="font-semibold text-gray-900">{name}</span> — {children}
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white border border-gray-300 rounded-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div className="text-sm font-semibold text-gray-900">📖 Kamus Istilah Dashboard</div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto px-4 py-4">
+
+          <Section title="Sumber Data">
+            <Term name="Timestamp (Journey)">data check-in lapangan, bisa beberapa kali per hari — dipakai buat ngukur pola kunjungan/zona waktu.</Term>
+            <Term name="Absensi (Attendance)">data 1x Check-in + 1x Check-out per shift — dipakai buat ngukur durasi kerja & lokasi awal/akhir shift.</Term>
+          </Section>
+
+          <Section title="Tipe Promotor">
+            <Term name="In Store Promotor">promotor yang kerja di dalam toko/outlet.</Term>
+            <Term name="Out Store Promotor">promotor yang kerja di luar toko (lapangan/kanvasing).</Term>
+          </Section>
+
+          <Section title="6 Kategori Anomali">
+            <Term name="1. Zona Waktu (< 3)">
+              Tiap check-in Timestamp dikelompokkan ke 1 dari 5 zona jam (Pagi 07–10, Siang 11–14, Sore 15–18, Malam 1 19–22, Malam 2 23–00).
+              <b> Comply</b> per hari = tercapai minimal 3 zona berbeda. Kategori ini murni soal JUMLAH ZONA — jarak GPS tidak jadi parameter.
+              Per orang diklasifikasi: <i>Selalu Comply</i> / <i>Selalu Not Comply</i> / <i>Campuran</i> (lintas semua hari kerjanya).
+            </Term>
+            <Term name="2. GPS Identik">
+              2+ check-in Timestamp di hari yang sama dengan koordinat lat/lon PERSIS SAMA (exact match, tanpa pembulatan).
+            </Term>
+            <Term name="3. GPS Jauh dari Toko">
+              Jarak Haversine dari check-in (Timestamp) atau check-in/check-out (Absensi) ke koordinat Outlet, dibanding threshold GPS (m) yang bisa diatur.
+              Koordinat Outlet didapat dari rantai Employee → Sales Code → OM → Outlet Code → Outlet Master.
+              <b> Khusus Out Store Promotor: kategori ini tidak ditampilkan di breakdown Total Anomali.</b>
+            </Term>
+            <Term name="4. GPS Toko N/A">
+              Rantai pencarian koordinat toko (lihat #3) GAGAL — bukan berarti GPS-nya jauh, datanya memang belum lengkap.
+              Dihitung sebagai jumlah TOKO unik, bukan jumlah promotor.
+            </Term>
+            <Term name="5. Status Non-Active">
+              HANYA di-flag kalau tanggal aktivitas &gt; End Date (resign) — dibuktikan lewat data. Kalau End Date tidak tersedia, TIDAK di-flag.
+            </Term>
+            <Term name="6. Durasi Bermasalah">
+              Durasi = jam Check-out − jam Check-in (Absensi). Di-flag kalau salah satu dari 3 kondisi ini kena:
+              <ul className="list-disc list-inside ml-2 mt-1">
+                <li><b>Pendek</b>: durasi &lt; threshold "Pendek (jam)" — default 4 jam</li>
+                <li><b>Panjang</b>: durasi &gt; threshold "Panjang (jam)" — default 14 jam</li>
+                <li><b>No-Checkout</b>: jam Check-out kosong</li>
+              </ul>
+            </Term>
+          </Section>
+
+          <Section title="Total Anomali (Terindikasi)">
+            <div>Promotor dengan <b>minimal 3 kejadian anomali</b>, gabungan dari ke-6 kategori di atas &amp; kedua sumber data.</div>
+            <div>Kenapa 3, bukan 1: kalau cuma butuh 1 kejadian, hampir semua orang bakal kena di periode data yang panjang (1x kesenggol itu wajar). Threshold 3 lebih tajam — cuma nangkep pola berulang.</div>
+          </Section>
+
+          <Section title="Selisih Cakupan: Timestamp vs Absensi">
+            <Term name="Selisih total Timestamp">jumlah karyawan yang HANYA ada di Absensi (tidak tercatat di Timestamp).</Term>
+            <Term name="Selisih total Absensi">jumlah karyawan yang HANYA ada di Timestamp (tidak tercatat di Absensi).</Term>
+          </Section>
+
+          <Section title="Struktur Wilayah">
+            <Term name="Region">wilayah besar (contoh: BALI NUSRA). Dropdown filter cuma nampilin nilai HURUF BESAR SEMUA — varian typo/tidak konsisten otomatis disaring.</Term>
+            <Term name="Cluster">sub-wilayah di dalam 1 Region.</Term>
+          </Section>
+
+          <Section title="Catatan">
+            <div>Semua anomali di dashboard ini adalah titik awal investigasi, bukan vonis final. Perlu verifikasi manual sebelum jadi dasar keputusan.</div>
+          </Section>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PAGE_SIZE = 10;
 
 function DetailModal({ detail, onClose }) {
@@ -1215,7 +1310,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     };
 
     const CATEGORY_DEFS = [
-      { key: "zona", label: "Zona Waktu (hari tidak comply)" },
+      { key: "zona", label: "Zona Waktu (< 3)" },
       { key: "gpsIdentik", label: "GPS Identik" },
       { key: "gpsJauh", label: "GPS Jauh dari Toko" },
       { key: "gpsNA", label: "GPS Toko N/A" },
@@ -1225,13 +1320,21 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     const buildCategorySummary = (promotorType) => {
       const perPerson = buildAnomaliDetail(promotorType);
       const totalPeople = perPerson.length;
-      return CATEGORY_DEFS.map((c) => {
+      // Out Store: GPS Jauh dari Toko dihilangkan dari breakdown-nya.
+      const defs = promotorType === "Out Store Promotor" ? CATEGORY_DEFS.filter((c) => c.key !== "gpsJauh") : CATEGORY_DEFS;
+      return defs.map((c) => {
         const affected = perPerson.filter((p) => p[c.key] > 0).length;
         const totalKejadian = perPerson.reduce((sum, p) => sum + p[c.key], 0);
         const persen = totalPeople ? ((affected / totalPeople) * 100).toFixed(1).replace(".", ",") : "0,0";
         return { kategori: c.label, jumlahPromotor: affected, persen: `${persen}%`, totalKejadian };
       }).sort((a, b) => b.jumlahPromotor - a.jumlahPromotor);
     };
+    const categorySummaryColumns = [
+      { key: "kategori", label: "Kategori" },
+      { key: "jumlahPromotor", label: "Jumlah Promotor", render: (r) => r.jumlahPromotor.toLocaleString("id-ID") },
+      { key: "persen", label: "Persentase" },
+      { key: "totalKejadian", label: "Total Kejadian", render: (r) => r.totalKejadian.toLocaleString("id-ID") },
+    ];
 
     // Zona Waktu — klasifikasi promotor Timestamp
     const zonePattern = new Map();
@@ -1274,7 +1377,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       totalPromotorAll, timestampPromotorAll, absensiPromotorAll,
       combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
       anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
-      buildCategorySummary,
+      buildCategorySummary, categorySummaryColumns,
       alwaysComplyIds, alwaysNotComplyIds, mixedIds, zoneAffectedCount, byZoneIds,
       gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
       statusCombinedCount, durasiCount,
@@ -1285,7 +1388,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     totalPromotorAll, timestampPromotorAll, absensiPromotorAll,
     combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
     anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
-    buildCategorySummary,
+    buildCategorySummary, categorySummaryColumns,
     alwaysComplyIds, alwaysNotComplyIds, mixedIds, zoneAffectedCount, byZoneIds,
     gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
     statusCombinedCount, durasiCount,
@@ -1767,6 +1870,7 @@ function DashboardPage(props) {
 
 export default function Dashboard() {
   const [page, setPage] = useState("upload");
+  const [showGlossary, setShowGlossary] = useState(false);
 
   const [rawRows, setRawRows] = useState(null);
   const [fileNames, setFileNames] = useState([]);
@@ -1862,11 +1966,18 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto px-4 py-6 w-full min-w-0">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-bold">Dashboard Anomali Lapangan</h1>
-          {page === "dashboard" && (
-            <button onClick={() => setPage("upload")} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800">
-              <ArrowLeft className="w-3.5 h-3.5" /> Upload
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {page === "dashboard" && (
+              <button onClick={() => setShowGlossary(true)} className="flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-900 font-medium">
+                📖 Kamus Istilah
+              </button>
+            )}
+            {page === "dashboard" && (
+              <button onClick={() => setPage("upload")} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800">
+                <ArrowLeft className="w-3.5 h-3.5" /> Upload
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-sm text-gray-500 mb-6">
           {page === "upload"
@@ -1942,8 +2053,9 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v70</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v74</div>
       </div>
+      <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
   );
 }
