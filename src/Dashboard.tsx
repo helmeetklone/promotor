@@ -1,4 +1,4 @@
-// Dashboard.tsx — v80
+// Dashboard.tsx — v81
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1660,7 +1660,7 @@ function DashboardPage(props) {
         {/* ── IN STORE PROMOTOR — Timestamp ── */}
         <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0">
           <div className="text-base font-bold text-amber-700 mb-1">In Store Promotor</div>
-          <div className="text-[11px] text-gray-500 mb-2">Timestamp (Journey) — {inStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreTs?.total.toLocaleString("id-ID") ?? 0} hari-kerja</div>
+          <div className="text-[11px] text-gray-500 mb-2"><b className="text-gray-800">Timestamp (Journey)</b> — {inStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreTs?.total.toLocaleString("id-ID") ?? 0} hari-kerja</div>
           {inStoreTs ? (
             <div className="grid grid-cols-2 gap-2.5">
               <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={inStoreTs.anomalyCounts.zone} tone="indigo"
@@ -1676,7 +1676,7 @@ function DashboardPage(props) {
         {/* ── OUT STORE PROMOTOR — Timestamp ── */}
         <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0">
           <div className="text-base font-bold text-fuchsia-700 mb-1">Out Store Promotor</div>
-          <div className="text-[11px] text-gray-500 mb-2">Timestamp (Journey) — {outStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreTs?.total.toLocaleString("id-ID") ?? 0} hari-kerja</div>
+          <div className="text-[11px] text-gray-500 mb-2"><b className="text-gray-800">Timestamp (Journey)</b> — {outStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreTs?.total.toLocaleString("id-ID") ?? 0} hari-kerja</div>
           {outStoreTs ? (
             <div className="grid grid-cols-2 gap-2.5">
               <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={outStoreTs.anomalyCounts.zone} tone="indigo"
@@ -1748,10 +1748,10 @@ function DashboardPage(props) {
       </div>
 
       {/* ═══════ GRID B: bagian Absensi (Attendance) tiap tipe ═══════ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 mt-10 pt-6 border-t-2 border-gray-200">
 
         <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0">
-          <div className="text-[11px] text-gray-500 mb-2">Absensi (Attendance) — {inStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
+          <div className="text-[11px] text-gray-500 mb-2"><b className="text-gray-800">Absensi (Attendance)</b> — {inStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {inStoreAb ? (
             <div className="grid grid-cols-2 gap-2.5">
               <StatCard icon={MapPin} label="#Toko GPS N/A" value={inStoreAb.anomalyCounts.gpsNoOutlet} tone="pink"
@@ -1764,7 +1764,7 @@ function DashboardPage(props) {
           ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
         </div>
         <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0">
-          <div className="text-[11px] text-gray-500 mb-2">Absensi (Attendance) — {outStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
+          <div className="text-[11px] text-gray-500 mb-2"><b className="text-gray-800">Absensi (Attendance)</b> — {outStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {outStoreAb ? (
             <div className="grid grid-cols-2 gap-2.5">
               <StatCard icon={MapPin} label="#Toko GPS N/A" value={outStoreAb.anomalyCounts.gpsNoOutlet} tone="pink"
@@ -2027,7 +2027,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v80</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v81</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
