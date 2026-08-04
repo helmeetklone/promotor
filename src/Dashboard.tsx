@@ -1,4 +1,4 @@
-// Dashboard.tsx — v83
+// Dashboard.tsx — v85
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -340,6 +340,19 @@ function formatDateShort(v) {
   return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+// Masa kerja (dalam bulan penuh) dari Join Date sampai tanggal referensi
+// (biasanya tanggal record itu sendiri). Dipakai buat nyiapin fondasi fitur
+// target/tiering promotor — logic target-nya sendiri belum final, jadi cuma
+// nampilin angka masa kerja dulu.
+function monthsBetween(joinDateVal, refDateVal) {
+  const from = parseAnyDate(joinDateVal);
+  const to = parseAnyDate(refDateVal);
+  if (!from || !to) return null;
+  let months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+  if (to.getDate() < from.getDate()) months -= 1;
+  return Math.max(0, months);
+}
+
 function parseAnyDate(v) {
   if (v == null || v === "" || v === "-") return null;
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
@@ -393,6 +406,8 @@ const TIMESTAMP_COLUMNS = [
   { key: "position", label: "Role" },
   { key: "status", label: "Status" },
   { key: "endDate", label: "End Date (Resign)", render: (v) => v.endDate ? formatDateShort(v.endDate) : "-" },
+  { key: "joinDate", label: "Join Date", render: (v) => v.joinDate ? formatDateShort(v.joinDate) : "-" },
+  { key: "tenureMonths", label: "Masa Kerja (Bulan)", render: (v) => v.tenureMonths != null ? v.tenureMonths.toLocaleString("id-ID") : "-" },
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
   { key: "coordsList", label: "Koordinat Check-in (lat, lon)" },
@@ -409,6 +424,8 @@ const ABSENSI_COLUMNS = [
   { key: "position", label: "Role" },
   { key: "status", label: "Status" },
   { key: "endDate", label: "End Date (Resign)", render: (r) => r.endDate ? formatDateShort(r.endDate) : "-" },
+  { key: "joinDate", label: "Join Date", render: (r) => r.joinDate ? formatDateShort(r.joinDate) : "-" },
+  { key: "tenureMonths", label: "Masa Kerja (Bulan)", render: (r) => r.tenureMonths != null ? r.tenureMonths.toLocaleString("id-ID") : "-" },
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
   { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
   { key: "coordOut", label: "Koordinat Check-out (lat, lon)" },
@@ -472,6 +489,8 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     const position = getPosition(r);
     const status = getStatus(r);
     const endDate = r["End Date_HR"] ?? r["End Date_DOP"] ?? null;
+    const joinDate = r["Join Date_DOP"] ?? null;
+    const tenureMonths = monthsBetween(joinDate, r["Date_ABSENSI"]);
     const statusCheck = checkStatusAnomaly(status, r["Date_ABSENSI"], endDate);
     const noCoord = !hasIn;
     const noClockOut = !String(r["Time Out_ABSENSI"] || "").trim();
@@ -486,6 +505,8 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
       cluster: r["Cluster_DOP"] || "-",
       position,
       status,
+      joinDate,
+      tenureMonths,
       promotorType: classifyPromotorType(position),
       durHr,
       noClockOut,
@@ -656,6 +677,8 @@ function processTimestamp(rows, storeThresholdM) {
     const position = getPosition(first);
     const status = getStatus(first);
     const endDate = first["End Date_HR"] ?? first["End Date_DOP"] ?? null;
+    const joinDate = first["Join Date_DOP"] ?? null;
+    const tenureMonths = monthsBetween(joinDate, first["Date_TIMESTAMP"]);
     const statusCheck = checkStatusAnomaly(status, first["Date_TIMESTAMP"], endDate);
 
     const outlet = getOutletCoord(first);
@@ -709,6 +732,8 @@ function processTimestamp(rows, storeThresholdM) {
       cluster: first["Cluster_DOP"] || "-",
       position,
       status,
+      joinDate,
+      tenureMonths,
       promotorType: classifyPromotorType(position),
       checkinCount,
       distinctZoneCount: distinctZones.size,
@@ -1117,6 +1142,85 @@ function GlossaryModal({ open, onClose }) {
   );
 }
 
+// ───────────────────────── Region -> Cluster drill-down ─────────────────────────
+
+function RegionDrillModal({ open, title, rows, onClose, onDrillToCluster }) {
+  const [expandedRegion, setExpandedRegion] = useState(null);
+
+  const grouped = useMemo(() => {
+    if (!rows) return [];
+    const byRegion = new Map();
+    rows.forEach((r) => {
+      const region = r.region || "-";
+      const cluster = r.cluster || "-";
+      if (!byRegion.has(region)) byRegion.set(region, { people: new Set(), clusters: new Map() });
+      const entry = byRegion.get(region);
+      entry.people.add(r.employee_id);
+      if (!entry.clusters.has(cluster)) entry.clusters.set(cluster, new Set());
+      entry.clusters.get(cluster).add(r.employee_id);
+    });
+    return [...byRegion.entries()]
+      .map(([region, data]) => ({
+        region,
+        count: data.people.size,
+        clusters: [...data.clusters.entries()]
+          .map(([cluster, ids]) => ({ cluster, count: ids.size }))
+          .sort((a, b) => b.count - a.count),
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  React.useEffect(() => { setExpandedRegion(null); }, [open, rows]);
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white border border-gray-300 rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div className="text-sm font-semibold text-gray-900">{title}</div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto px-2 py-2">
+          {grouped.length === 0 && <div className="text-sm text-gray-400 text-center py-8">Tidak ada data</div>}
+          {grouped.map((g) => (
+            <div key={g.region} className="mb-1">
+              <button
+                onClick={() => setExpandedRegion(expandedRegion === g.region ? null : g.region)}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-50 text-left"
+              >
+                <span className="text-sm font-medium text-gray-800">{g.region}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-teal-700">{g.count.toLocaleString("id-ID")} promotor</span>
+                  {expandedRegion === g.region ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                </span>
+              </button>
+              {expandedRegion === g.region && (
+                <div className="pl-4 pb-1">
+                  {g.clusters.map((c) => (
+                    <button
+                      key={c.cluster}
+                      onClick={() => onDrillToCluster(g.region, c.cluster)}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-teal-50 text-left"
+                    >
+                      <span className="text-[13px] text-gray-600">{c.cluster}</span>
+                      <span className="text-[13px] font-medium text-gray-700">{c.count.toLocaleString("id-ID")} promotor</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PAGE_SIZE = 10;
 
 function DetailModal({ detail, onClose }) {
@@ -1265,6 +1369,8 @@ function UploadPage({ fileNames, onFiles, onGoDashboard, canGo }) {
 // ───────────────────────── Overview banner ─────────────────────────
 
 function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
+  const [regionDrill, setRegionDrill] = useState(null); // { title, rows } | null
+
   const absensiTotal = absensiResult?.flagged.length ?? 0;
   const timestampTotal = timestampResult?.flagged.length ?? 0;
   const absensiRate = absensiResult ? ((absensiTotal / absensiResult.total) * 100).toFixed(1) : "-";
@@ -1530,14 +1636,14 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
                 <Num
                   value={zoneComplyIds.length.toLocaleString("id-ID")}
                   className="text-lg font-bold text-emerald-700 leading-none"
-                  onClick={() => onDetail("Comply (≥50% hari kerja)", byZoneIds(zoneComplyIds), TIMESTAMP_COLUMNS)}
+                  onClick={() => setRegionDrill({ title: "Comply (≥50% hari kerja) — per Region", rows: byZoneIds(zoneComplyIds) })}
                 >
                   <div className="text-[10px] text-gray-700 mt-1">Comply (≥50% hari)</div>
                 </Num>
                 <Num
                   value={zoneNotComplyIds.length.toLocaleString("id-ID")}
                   className="text-lg font-bold text-red-700 leading-none"
-                  onClick={() => onDetail("Not Comply (<50% hari kerja)", byZoneIds(zoneNotComplyIds), TIMESTAMP_COLUMNS)}
+                  onClick={() => setRegionDrill({ title: "Not Comply (<50% hari kerja) — per Region", rows: byZoneIds(zoneNotComplyIds) })}
                 >
                   <div className="text-[10px] text-gray-700 mt-1">Not Comply (&lt;50% hari)</div>
                 </Num>
@@ -1552,6 +1658,19 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
         </div>
       </div>
 
+      <RegionDrillModal
+        open={!!regionDrill}
+        title={regionDrill?.title}
+        rows={regionDrill?.rows}
+        onClose={() => setRegionDrill(null)}
+        onDrillToCluster={(region, cluster) => {
+          if (!regionDrill) return;
+          const filtered = (regionDrill.rows || []).filter((r) => (r.region || "-") === region && (r.cluster || "-") === cluster);
+          const baseTitle = regionDrill.title.split(" — ")[0];
+          setRegionDrill(null);
+          onDetail(`${baseTitle} — ${region} / ${cluster}`, filtered, TIMESTAMP_COLUMNS);
+        }}
+      />
     </div>
   );
 }
@@ -2031,7 +2150,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v83</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v85</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
