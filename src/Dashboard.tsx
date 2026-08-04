@@ -1,4 +1,4 @@
-// Dashboard.tsx — v77
+// Dashboard.tsx — v78
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1112,11 +1112,23 @@ function DetailModal({ detail, onClose }) {
 
   const filteredRows = useMemo(() => {
     if (!detail) return [];
-    if (!q.trim()) return detail.rows;
-    const needle = q.trim().toLowerCase();
-    return detail.rows.filter((r) =>
-      detail.columns.some((c) => String(c.render ? c.render(r) : (r[c.key] ?? "")).toLowerCase().includes(needle))
-    );
+    let rows = detail.rows;
+    if (q.trim()) {
+      const needle = q.trim().toLowerCase();
+      rows = rows.filter((r) =>
+        detail.columns.some((c) => String(c.render ? c.render(r) : (r[c.key] ?? "")).toLowerCase().includes(needle))
+      );
+    }
+    // Default: urut by Nama (A-Z), lalu Tanggal — biar konsisten & gampang dicari,
+    // bukan sekadar urutan mentah sesuai file sumber.
+    return [...rows].sort((a, b) => {
+      const nameA = String(a.employee_name ?? "").toLowerCase();
+      const nameB = String(b.employee_name ?? "").toLowerCase();
+      if (nameA !== nameB) return nameA < nameB ? -1 : 1;
+      const dateA = String(a.date ?? "");
+      const dateB = String(b.date ?? "");
+      return dateA < dateB ? -1 : dateA > dateB ? 1 : 0;
+    });
   }, [detail, q]);
 
   if (!detail) return null;
@@ -1997,7 +2009,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v77</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v78</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
