@@ -1,4 +1,4 @@
-// Dashboard.tsx — v74
+// Dashboard.tsx — v76
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1047,7 +1047,7 @@ function GlossaryModal({ open, onClose }) {
             <Term name="1. Zona Waktu (< 3)">
               Tiap check-in Timestamp dikelompokkan ke 1 dari 5 zona jam (Pagi 07–10, Siang 11–14, Sore 15–18, Malam 1 19–22, Malam 2 23–00).
               <b> Comply</b> per hari = tercapai minimal 3 zona berbeda. Kategori ini murni soal JUMLAH ZONA — jarak GPS tidak jadi parameter.
-              Per orang diklasifikasi: <i>Selalu Comply</i> / <i>Selalu Not Comply</i> / <i>Campuran</i> (lintas semua hari kerjanya).
+              Per orang diklasifikasi berdasarkan persentase hari comply: <i>Comply</i> (≥50% hari kerjanya comply) / <i>Not Comply</i> (&lt;50%).
             </Term>
             <Term name="2. GPS Identik">
               2+ check-in Timestamp di hari yang sama dengan koordinat lat/lon PERSIS SAMA (exact match, tanpa pembulatan).
@@ -1311,18 +1311,13 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
     const CATEGORY_DEFS = [
       { key: "zona", label: "Zona Waktu (< 3)" },
-      { key: "gpsIdentik", label: "GPS Identik" },
-      { key: "gpsJauh", label: "GPS Jauh dari Toko" },
       { key: "gpsNA", label: "GPS Toko N/A" },
-      { key: "status", label: "Status Non-Active" },
       { key: "durasi", label: "Durasi Bermasalah" },
     ];
     const buildCategorySummary = (promotorType) => {
       const perPerson = buildAnomaliDetail(promotorType);
       const totalPeople = perPerson.length;
-      // Out Store: GPS Jauh dari Toko dihilangkan dari breakdown-nya.
-      const defs = promotorType === "Out Store Promotor" ? CATEGORY_DEFS.filter((c) => c.key !== "gpsJauh") : CATEGORY_DEFS;
-      return defs.map((c) => {
+      return CATEGORY_DEFS.map((c) => {
         const affected = perPerson.filter((p) => p[c.key] > 0).length;
         const totalKejadian = perPerson.reduce((sum, p) => sum + p[c.key], 0);
         const persen = totalPeople ? ((affected / totalPeople) * 100).toFixed(1).replace(".", ",") : "0,0";
@@ -1336,21 +1331,23 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       { key: "totalKejadian", label: "Total Kejadian", render: (r) => r.totalKejadian.toLocaleString("id-ID") },
     ];
 
-    // Zona Waktu — klasifikasi promotor Timestamp
+    // Zona Waktu — klasifikasi promotor Timestamp berdasarkan MAYORITAS hari
+    // (bukan lagi "selalu comply setiap hari tanpa kecuali"): >=50% hari-nya
+    // comply -> Comply; <50% -> Not Comply.
     const zonePattern = new Map();
     (timestampResult?.all || []).forEach((v) => {
       if (!v.employee_id) return;
-      const e = zonePattern.get(v.employee_id) || { comply: false, notComply: false };
-      if (v.zoneNotCompliant) e.notComply = true; else e.comply = true;
+      const e = zonePattern.get(v.employee_id) || { totalDays: 0, complyDays: 0 };
+      e.totalDays++;
+      if (!v.zoneNotCompliant) e.complyDays++;
       zonePattern.set(v.employee_id, e);
     });
-    let alwaysComplyIds = [], alwaysNotComplyIds = [], mixedIds = [];
+    let zoneComplyIds = [], zoneNotComplyIds = [];
     zonePattern.forEach((e, id) => {
-      if (e.comply && e.notComply) mixedIds.push(id);
-      else if (e.comply) alwaysComplyIds.push(id);
-      else alwaysNotComplyIds.push(id);
+      const pct = e.totalDays ? e.complyDays / e.totalDays : 0;
+      if (pct >= 0.5) zoneComplyIds.push(id); else zoneNotComplyIds.push(id);
     });
-    const zoneAffectedCount = alwaysNotComplyIds.length;
+    const zoneAffectedCount = zoneNotComplyIds.length;
     const byZoneIds = (ids) => { const s = new Set(ids); return (timestampResult?.all || []).filter((v) => s.has(v.employee_id)); };
 
     const gpsIdenticalCount = timestampResult?.gpsIdenticalPeople ?? 0;
@@ -1378,7 +1375,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
       anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
       buildCategorySummary, categorySummaryColumns,
-      alwaysComplyIds, alwaysNotComplyIds, mixedIds, zoneAffectedCount, byZoneIds,
+      zoneComplyIds, zoneNotComplyIds, zoneAffectedCount, byZoneIds,
       gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
       statusCombinedCount, durasiCount,
     };
@@ -1389,7 +1386,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
     anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
     buildCategorySummary, categorySummaryColumns,
-    alwaysComplyIds, alwaysNotComplyIds, mixedIds, zoneAffectedCount, byZoneIds,
+    zoneComplyIds, zoneNotComplyIds, zoneAffectedCount, byZoneIds,
     gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
     statusCombinedCount, durasiCount,
   } = computed;
@@ -1445,29 +1442,14 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
           <div className="text-base font-bold text-gray-900 mb-2">Rincian per Kategori Anomali</div>
           <ol className="text-sm text-gray-800 space-y-1.5 list-decimal list-inside">
             <li>
-              <span className="font-semibold">Zona Waktu — Selalu Not Comply</span>{" "}
+              <span className="font-semibold">Zona Waktu — Not Comply (&lt;50% hari)</span>{" "}
               <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
               <b>{zoneAffectedCount.toLocaleString("id-ID")}</b> dari {timestampPromotorAll.toLocaleString("id-ID")} promotor
-            </li>
-            <li>
-              <span className="font-semibold">GPS Identik</span>{" "}
-              <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
-              <b>{gpsIdenticalCount.toLocaleString("id-ID")}</b> dari {timestampPromotorAll.toLocaleString("id-ID")} promotor
-            </li>
-            <li>
-              <span className="font-semibold">GPS Jauh dari Toko</span>{" "}
-              <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
-              <b>{gpsFarCombinedCount.toLocaleString("id-ID")}</b> dari {totalPromotorAll.toLocaleString("id-ID")} promotor
             </li>
             <li>
               <span className="font-semibold">GPS Toko N/A</span>{" "}
               <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
               <b>{tokoNACount.toLocaleString("id-ID")}</b> dari {totalTokoCount.toLocaleString("id-ID")} toko
-            </li>
-            <li>
-              <span className="font-semibold">Status Non-Active</span>{" "}
-              <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
-              <b>{statusCombinedCount.toLocaleString("id-ID")}</b> dari {totalPromotorAll.toLocaleString("id-ID")} promotor
             </li>
             <li>
               <span className="font-semibold">Durasi Bermasalah</span>{" "}
@@ -1514,32 +1496,26 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
             <>
               <div className="text-sm font-bold text-gray-900 mb-1">Detail Zona Waktu (Timestamp)</div>
               <div className="text-[11px] text-gray-500 mb-2">Klik angka untuk melihat daftar promotor.</div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <Num
-                  value={alwaysComplyIds.length.toLocaleString("id-ID")}
+                  value={zoneComplyIds.length.toLocaleString("id-ID")}
                   className="text-lg font-bold text-emerald-700 leading-none"
-                  onClick={() => onDetail("Selalu Comply (≥3x tiap hari)", byZoneIds(alwaysComplyIds), TIMESTAMP_COLUMNS)}
+                  onClick={() => onDetail("Comply (≥50% hari kerja)", byZoneIds(zoneComplyIds), TIMESTAMP_COLUMNS)}
                 >
-                  <div className="text-[10px] text-gray-700 mt-1">Selalu Comply</div>
+                  <div className="text-[10px] text-gray-700 mt-1">Comply (≥50% hari)</div>
                 </Num>
                 <Num
-                  value={alwaysNotComplyIds.length.toLocaleString("id-ID")}
+                  value={zoneNotComplyIds.length.toLocaleString("id-ID")}
                   className="text-lg font-bold text-red-700 leading-none"
-                  onClick={() => onDetail("Selalu Not Comply (<3x tiap hari)", byZoneIds(alwaysNotComplyIds), TIMESTAMP_COLUMNS)}
+                  onClick={() => onDetail("Not Comply (<50% hari kerja)", byZoneIds(zoneNotComplyIds), TIMESTAMP_COLUMNS)}
                 >
-                  <div className="text-[10px] text-gray-700 mt-1">Selalu Not Comply</div>
-                </Num>
-                <Num
-                  value={mixedIds.length.toLocaleString("id-ID")}
-                  className="text-lg font-bold text-amber-700 leading-none"
-                  onClick={() => onDetail("Campuran (irisan Comply & Not Comply)", byZoneIds(mixedIds), TIMESTAMP_COLUMNS)}
-                >
-                  <div className="text-[10px] text-gray-700 mt-1">Campuran (irisan)</div>
+                  <div className="text-[10px] text-gray-700 mt-1">Not Comply (&lt;50% hari)</div>
                 </Num>
               </div>
               <ul className="text-[11px] text-gray-600 mt-2 list-disc list-inside">
                 <li>Comply/Not Comply hanya melihat 3 zona waktu</li>
                 <li>Jarak GPS tidak menjadi parameter perhitungan</li>
+                <li>Per orang: dilihat dari persentase hari comply — ≥50% hari comply → Comply, &lt;50% → Not Comply</li>
               </ul>
             </>
           )}
@@ -1660,16 +1636,6 @@ function DashboardPage(props) {
               <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={inStoreTs.anomalyCounts.zone} tone="indigo"
                 onClick={() => openDetail("In Store — Timestamp — Absensi <3x/hari", inStoreTs.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
                 exportRows={inStoreTs.flagged.filter((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-absensi-kurang-3x" />
-              <StatCard icon={MapPin} label="GPS Identik" unit="Hits" value={inStoreTs.anomalyCounts.gpsIdentical} tone="pink"
-                subtitle={`${inStoreTs.anomalyCounts.gpsIdenticalPeople} Promotor`}
-                onClick={() => openDetail("In Store — Timestamp — GPS Identik", inStoreTs.flagged.filter((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
-                exportRows={inStoreTs.flagged.filter((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-gps-identik" />
-              <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={inStoreTs.anomalyCounts.status} tone="amber"
-                onClick={() => openDetail("In Store — Timestamp — Non-Active", inStoreTs.flagged.filter((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
-                exportRows={inStoreTs.flagged.filter((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-status-non-active" />
-              <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={inStoreTs.anomalyCounts.farFromStore} tone="red"
-                onClick={() => openDetail("In Store — Timestamp — GPS Jauh dari Toko", inStoreTs.flagged.filter((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
-                exportRows={inStoreTs.flagged.filter((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-gps-jauh-dari-toko" />
               <StatCard icon={MapPin} label="#Toko GPS N/A" value={inStoreTs.anomalyCounts.noOutletData} tone="pink"
                 onClick={() => openDetail("In Store — Timestamp — GPS Toko N/A", inStoreTs.flagged.filter((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
                 exportRows={inStoreTs.flagged.filter((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-gps-toko-na" />
@@ -1686,16 +1652,6 @@ function DashboardPage(props) {
               <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={outStoreTs.anomalyCounts.zone} tone="indigo"
                 onClick={() => openDetail("Out Store — Timestamp — Absensi <3x/hari", outStoreTs.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
                 exportRows={outStoreTs.flagged.filter((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-absensi-kurang-3x" />
-              <StatCard icon={MapPin} label="GPS Identik" unit="Hits" value={outStoreTs.anomalyCounts.gpsIdentical} tone="pink"
-                subtitle={`${outStoreTs.anomalyCounts.gpsIdenticalPeople} Promotor`}
-                onClick={() => openDetail("Out Store — Timestamp — GPS Identik", outStoreTs.flagged.filter((v) => v.gpsIdentical), TIMESTAMP_COLUMNS)}
-                exportRows={outStoreTs.flagged.filter((v) => v.gpsIdentical)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-gps-identik" />
-              <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={outStoreTs.anomalyCounts.status} tone="amber"
-                onClick={() => openDetail("Out Store — Timestamp — Non-Active", outStoreTs.flagged.filter((v) => v.statusAnomaly), TIMESTAMP_COLUMNS)}
-                exportRows={outStoreTs.flagged.filter((v) => v.statusAnomaly)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-status-non-active" />
-              <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={outStoreTs.anomalyCounts.farFromStore} tone="red"
-                onClick={() => openDetail("Out Store — Timestamp — GPS Jauh dari Toko", outStoreTs.flagged.filter((v) => v.farFromStore), TIMESTAMP_COLUMNS)}
-                exportRows={outStoreTs.flagged.filter((v) => v.farFromStore)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-gps-jauh-dari-toko" />
               <StatCard icon={MapPin} label="#Toko GPS N/A" value={outStoreTs.anomalyCounts.noOutletData} tone="pink"
                 onClick={() => openDetail("Out Store — Timestamp — GPS Toko N/A", outStoreTs.flagged.filter((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
                 exportRows={outStoreTs.flagged.filter((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-gps-toko-na" />
@@ -1768,15 +1724,9 @@ function DashboardPage(props) {
           <div className="text-[11px] text-gray-500 mb-2">Absensi (Attendance) — {inStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {inStoreAb ? (
             <div className="grid grid-cols-2 gap-2.5">
-              <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={inStoreAb.anomalyCounts.gpsFar} tone="red"
-                onClick={() => openDetail("In Store — Absensi — GPS Jauh dari Toko", inStoreAb.flagged.filter((s) => s.farFromStore), ABSENSI_COLUMNS)}
-                exportRows={inStoreAb.flagged.filter((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="instore-absensi-gps-jauh-dari-toko" />
               <StatCard icon={MapPin} label="#Toko GPS N/A" value={inStoreAb.anomalyCounts.gpsNoOutlet} tone="pink"
                 onClick={() => openDetail("In Store — Absensi — GPS Toko N/A", inStoreAb.flagged.filter((s) => s.noOutletData), ABSENSI_COLUMNS)}
                 exportRows={inStoreAb.flagged.filter((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="instore-absensi-gps-toko-na" />
-              <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={inStoreAb.anomalyCounts.status} tone="amber"
-                onClick={() => openDetail("In Store — Absensi — Non-Active", inStoreAb.flagged.filter((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
-                exportRows={inStoreAb.flagged.filter((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="instore-absensi-status-non-active" />
               <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={inStoreAb.anomalyCounts.duration} tone="indigo"
                 onClick={() => openDetail("In Store — Absensi — Durasi Bermasalah", inStoreAb.flagged.filter((s) => s.durationIssue), ABSENSI_COLUMNS)}
                 exportRows={inStoreAb.flagged.filter((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="instore-absensi-durasi-bermasalah" />
@@ -1787,15 +1737,9 @@ function DashboardPage(props) {
           <div className="text-[11px] text-gray-500 mb-2">Absensi (Attendance) — {outStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {outStoreAb ? (
             <div className="grid grid-cols-2 gap-2.5">
-              <StatCard icon={MapPin} label="#Promotor GPS Jauh dari Toko" value={outStoreAb.anomalyCounts.gpsFar} tone="red"
-                onClick={() => openDetail("Out Store — Absensi — GPS Jauh dari Toko", outStoreAb.flagged.filter((s) => s.farFromStore), ABSENSI_COLUMNS)}
-                exportRows={outStoreAb.flagged.filter((s) => s.farFromStore)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-gps-jauh-dari-toko" />
               <StatCard icon={MapPin} label="#Toko GPS N/A" value={outStoreAb.anomalyCounts.gpsNoOutlet} tone="pink"
                 onClick={() => openDetail("Out Store — Absensi — GPS Toko N/A", outStoreAb.flagged.filter((s) => s.noOutletData), ABSENSI_COLUMNS)}
                 exportRows={outStoreAb.flagged.filter((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-gps-toko-na" />
-              <StatCard icon={AlertTriangle} label="#Promotor Non-Active" value={outStoreAb.anomalyCounts.status} tone="amber"
-                onClick={() => openDetail("Out Store — Absensi — Non-Active", outStoreAb.flagged.filter((s) => s.statusAnomaly), ABSENSI_COLUMNS)}
-                exportRows={outStoreAb.flagged.filter((s) => s.statusAnomaly)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-status-non-active" />
               <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={outStoreAb.anomalyCounts.duration} tone="indigo"
                 onClick={() => openDetail("Out Store — Absensi — Durasi Bermasalah", outStoreAb.flagged.filter((s) => s.durationIssue), ABSENSI_COLUMNS)}
                 exportRows={outStoreAb.flagged.filter((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-durasi-bermasalah" />
@@ -2053,7 +1997,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v74</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v76</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
