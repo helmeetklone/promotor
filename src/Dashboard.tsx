@@ -1,4 +1,4 @@
-// Dashboard.tsx — v76
+// Dashboard.tsx — v77
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -396,7 +396,7 @@ const TIMESTAMP_COLUMNS = [
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
   { key: "coordsList", label: "Koordinat Check-in (lat, lon)" },
-  { key: "outletName", label: "Outlet", render: (v) => v.outletName || "-" },
+  { key: "outletName", label: "Outlet", render: (v) => v.outletName || (v.rawOutletCode ? `(${v.rawOutletCode}) — nama tidak ditemukan` : "-") },
   { key: "distToStoreList", label: "Jarak ke Toko per Check-in (m)", render: (v) => v.distToStoreList || "-" },
   { key: "flags", label: "Flag", render: describeFlagsTimestamp },
 ];
@@ -412,7 +412,7 @@ const ABSENSI_COLUMNS = [
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
   { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
   { key: "coordOut", label: "Koordinat Check-out (lat, lon)" },
-  { key: "outletName", label: "Outlet", render: (r) => r.outletName || "-" },
+  { key: "outletName", label: "Outlet", render: (r) => r.outletName || (r.rawOutletCode ? `(${r.rawOutletCode}) — nama tidak ditemukan` : "-") },
   { key: "distToStoreIn", label: "Jarak Check-in ke Toko (m)", render: (r) => r.distToStoreIn !== null && r.distToStoreIn !== undefined ? r.distToStoreIn.toFixed(0) : "-" },
   { key: "distToStoreOut", label: "Jarak Check-out ke Toko (m)", render: (r) => r.distToStoreOut !== null && r.distToStoreOut !== undefined ? r.distToStoreOut.toFixed(0) : "-" },
   { key: "moveM", label: "Jarak In-Out (m)", render: (r) => r.moveM !== null ? r.moveM.toFixed(0) : "-" },
@@ -1997,7 +1997,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v76</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v77</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
