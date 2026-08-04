@@ -1,4 +1,4 @@
-// Dashboard.tsx — v85
+// Dashboard.tsx — v86
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -322,6 +322,9 @@ const getPosition = (r) =>
   r["Position_HR"] || r["Position_ABSENSI"] || r["Position_TIMESTAMP"] || r["Position_DOP"] || "-";
 
 const getStatus = (r) => r["Employment Status_HR"] || r["Status_DOP"] || "-";
+// Status kosong/nggak jelas TETAP diikutin (bukan otomatis dianggap terminate) —
+// cuma yang eksplisit nunjukin resign/terminate/non-active yang di-exclude.
+const isTerminatedStatus = (s) => /terminat|resign|non-?active|inactive/i.test(String(s || ""));
 
 // Outlet reference coordinate, present only when the merger was run with
 // OM + Outlet Master uploaded (see mergertool.html). Falls back to null
@@ -451,10 +454,13 @@ function summarizeCoverage(items, idFn, dateFn) {
 
 function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
   // Cuma In Store Promotor & Out Store Promotor yang masuk hitungan anomali —
-  // role lain (SPV, Canvasser, dll) di-exclude dari analisis ini.
+  // role lain (SPV, Canvasser, dll) di-exclude dari analisis ini. Karyawan
+  // yang statusnya Terminate/resign/non-active juga di-exclude total dari
+  // sini — statusnya nggak jelas/kosong tetap DIIKUTIN (bukan Terminate).
   const scopedRows = rows.filter((r) => {
     const t = classifyPromotorType(getPosition(r));
-    return t === "In Store Promotor" || t === "Out Store Promotor";
+    if (t !== "In Store Promotor" && t !== "Out Store Promotor") return false;
+    return !isTerminatedStatus(getStatus(r));
   });
   const shifts = scopedRows.map((r) => {
     let latIn = toNum(r["Latitude In_ABSENSI"]);
@@ -658,9 +664,11 @@ const coordKey = (lat, lon) => (lat == null || lon == null ? null : lat + "," + 
 
 function processTimestamp(rows, storeThresholdM) {
   // Cuma In Store Promotor & Out Store Promotor yang masuk hitungan anomali.
+  // Karyawan Terminate/resign/non-active di-exclude total.
   const scopedRows = rows.filter((r) => {
     const t = classifyPromotorType(getPosition(r));
-    return t === "In Store Promotor" || t === "Out Store Promotor";
+    if (t !== "In Store Promotor" && t !== "Out Store Promotor") return false;
+    return !isTerminatedStatus(getStatus(r));
   });
 
   // Compliance HARPA dinilai PER HARI per karyawan (butuh minimal 3 check-in
@@ -2150,7 +2158,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v85</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v86</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
