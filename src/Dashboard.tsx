@@ -1,4 +1,4 @@
-// Dashboard.tsx — v79
+// Dashboard.tsx — v80
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -2027,7 +2027,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v79</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v80</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
