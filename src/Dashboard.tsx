@@ -1,4 +1,4 @@
-// Dashboard.tsx — v82
+// Dashboard.tsx — v83
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1097,7 +1097,7 @@ function GlossaryModal({ open, onClose }) {
             <div>Kenapa 3, bukan 1: kalau cuma butuh 1 kejadian, hampir semua orang bakal kena di periode data yang panjang (1x kesenggol itu wajar). Threshold 3 lebih tajam — cuma nangkep pola berulang.</div>
           </Section>
 
-          <Section title="Selisih Cakupan: Timestamp vs Absensi">
+          <Section title="Selisih Cakupan: Timestamp & Absensi vs Total Promotor">
             <Term name="Selisih total Timestamp">jumlah karyawan yang HANYA ada di Absensi (tidak tercatat di Timestamp).</Term>
             <Term name="Selisih total Absensi">jumlah karyawan yang HANYA ada di Timestamp (tidak tercatat di Absensi).</Term>
           </Section>
@@ -1511,7 +1511,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
             ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
           </div>
           <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-            <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp vs Absensi</div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp & Absensi vs Total Promotor</div>
             {timestampResult && absensiResult ? (
               <ul className="text-sm text-gray-800 list-disc list-inside space-y-1">
                 <li>Selisih total Timestamp: <span className="font-bold text-gray-900">{onlyInAbsensi.size.toLocaleString("id-ID")} karyawan</span></li>
@@ -2031,7 +2031,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v82</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v83</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
