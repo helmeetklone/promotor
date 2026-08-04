@@ -1,4 +1,4 @@
-// Dashboard.tsx — v78
+// Dashboard.tsx — v79
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -251,7 +251,7 @@ const METHODOLOGY_LINES = [
   ["   Pagi (07-10), Siang (11-14), Sore (15-18), Malam 1 (19-22), Malam 2 (23-00)."],
   ["   Comply jika jumlah ZONA BERBEDA yang tercapai dalam 1 hari >= 3."],
   ["   Check-in berulang di zona yang sama TIDAK menambah hitungan zona."],
-  ["   Comply/Not Comply hanya melihat 3 zona waktu."],
+  ["   Comply/Not Comply butuh 3 zona BERTURUT-TURUT tanpa lompat (bukan sekadar 3 zona beda)."],
   ["   Jarak GPS tidak menjadi parameter perhitungan."],
   [""],
   ["2. GPS IDENTIK (Timestamp)"],
@@ -613,6 +613,24 @@ function deriveZone(v) {
   return null;
 }
 
+// Urutan zona resmi sepanjang hari — dipakai buat ngecek "berturut-turut tanpa
+// lompat", bukan cuma "jumlah zona berbeda >= 3". Contoh: Pagi+Siang+Sore lolos
+// (3 beruntun), tapi Pagi+Sore+Malam 1 GAGAL (lompat Siang) walau sama-sama 3
+// zona berbeda.
+const ZONE_ORDER = ["Pagi", "Siang", "Sore", "Malam 1", "Malam 2"];
+function hasConsecutiveZones(zoneSet) {
+  let run = 0;
+  for (const z of ZONE_ORDER) {
+    if (zoneSet.has(z)) {
+      run++;
+      if (run >= 3) return true;
+    } else {
+      run = 0;
+    }
+  }
+  return false;
+}
+
 // Deliberately EXACT match — no rounding. "GPS identik" means the raw
 // latitude/longitude values are precisely the same, not just close.
 const coordKey = (lat, lon) => (lat == null || lon == null ? null : lat + "," + lon);
@@ -653,10 +671,10 @@ function processTimestamp(rows, storeThresholdM) {
 
     const distinctZones = new Set(checks.map((c) => c.zone).filter(Boolean));
     const checkinCount = groupRows.length;
-    // Rule 1 & 2: kurang dari 3 check-in ATAU 3+ check-in tapi ada yang nyangkut
-    // di zona yang sama (bukan zona baru) — dua-duanya berujung ke satu test:
-    // jumlah zona BERBEDA yang tercapai < 3.
-    const zoneNotCompliant = distinctZones.size < 3;
+    // Comply = ada MINIMAL 3 zona BERTURUT-TURUT (nggak boleh lompat) dari urutan
+    // Pagi -> Siang -> Sore -> Malam 1 -> Malam 2. Contoh: Pagi+Siang+Sore = comply;
+    // Pagi+Sore+Malam 1 = TIDAK comply (lompat Siang), walau sama-sama 3 zona beda.
+    const zoneNotCompliant = !hasConsecutiveZones(distinctZones);
 
     // Rule 3: GPS identik antar check-in di hari yang sama.
     const seen = new Set();
@@ -1046,7 +1064,7 @@ function GlossaryModal({ open, onClose }) {
           <Section title="6 Kategori Anomali">
             <Term name="1. Zona Waktu (< 3)">
               Tiap check-in Timestamp dikelompokkan ke 1 dari 5 zona jam (Pagi 07–10, Siang 11–14, Sore 15–18, Malam 1 19–22, Malam 2 23–00).
-              <b> Comply</b> per hari = tercapai minimal 3 zona berbeda. Kategori ini murni soal JUMLAH ZONA — jarak GPS tidak jadi parameter.
+              <b> Comply</b> per hari = tercapai minimal 3 zona BERTURUT-TURUT tanpa lompat (boleh mulai dari zona mana saja). Contoh: Pagi+Siang+Sore lolos, tapi Pagi+Sore+Malam 1 GAGAL (lompat Siang) walau sama-sama 3 zona berbeda. Kategori ini murni soal pola waktu — jarak GPS tidak jadi parameter.
               Per orang diklasifikasi berdasarkan persentase hari comply: <i>Comply</i> (≥50% hari kerjanya comply) / <i>Not Comply</i> (&lt;50%).
             </Term>
             <Term name="2. GPS Identik">
@@ -1160,7 +1178,7 @@ function DetailModal({ detail, onClose }) {
         {/(Comply|Campuran)/.test(detail.title) && (
           <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-800">
             <ul className="list-disc list-inside space-y-0.5">
-              <li>Comply/Not Comply hanya melihat 3 zona waktu</li>
+              <li>Comply/Not Comply butuh 3 zona berturut-turut tanpa lompat (bukan sekadar 3 zona beda)</li>
               <li>Jarak GPS tidak menjadi parameter perhitungan</li>
             </ul>
           </div>
@@ -1525,7 +1543,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
                 </Num>
               </div>
               <ul className="text-[11px] text-gray-600 mt-2 list-disc list-inside">
-                <li>Comply/Not Comply hanya melihat 3 zona waktu</li>
+                <li>Comply/Not Comply butuh 3 zona berturut-turut tanpa lompat (bukan sekadar 3 zona beda)</li>
                 <li>Jarak GPS tidak menjadi parameter perhitungan</li>
                 <li>Per orang: dilihat dari persentase hari comply — ≥50% hari comply → Comply, &lt;50% → Not Comply</li>
               </ul>
@@ -2009,7 +2027,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v78</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v79</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
