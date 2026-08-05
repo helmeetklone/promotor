@@ -1,4 +1,4 @@
-// Dashboard.tsx — v87
+// Dashboard.tsx — v88
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -356,6 +356,14 @@ function monthsBetween(joinDateVal, refDateVal) {
   return Math.max(0, months);
 }
 
+// Target pencapaian per bulan berdasarkan masa kerja — formula PASTI buat
+// yang <3 bulan belum final, jadi sementara cuma ditandain "<150" (bukan
+// angka pasti). >3 bulan = 150/bulan (udah fix).
+function getTargetLabel(tenureMonths) {
+  if (tenureMonths == null) return "-";
+  return tenureMonths > 3 ? "150" : "<150";
+}
+
 function parseAnyDate(v) {
   if (v == null || v === "" || v === "-") return null;
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
@@ -411,6 +419,8 @@ const TIMESTAMP_COLUMNS = [
   { key: "endDate", label: "End Date (Resign)", render: (v) => v.endDate ? formatDateShort(v.endDate) : "-" },
   { key: "joinDate", label: "Join Date", render: (v) => v.joinDate ? formatDateShort(v.joinDate) : "-" },
   { key: "tenureMonths", label: "Masa Kerja (Bulan)", render: (v) => v.tenureMonths != null ? v.tenureMonths.toLocaleString("id-ID") : "-" },
+  { key: "target", label: "Target/Bulan", render: (v) => getTargetLabel(v.tenureMonths) },
+  { key: "targetLabel", label: "Target (Pencapaian/Bulan)", render: (v) => v.tenureMonths == null ? "-" : (v.tenureMonths > 3 ? ">150" : "<150") },
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
   { key: "coordsList", label: "Koordinat Check-in (lat, lon)" },
@@ -429,6 +439,8 @@ const ABSENSI_COLUMNS = [
   { key: "endDate", label: "End Date (Resign)", render: (r) => r.endDate ? formatDateShort(r.endDate) : "-" },
   { key: "joinDate", label: "Join Date", render: (r) => r.joinDate ? formatDateShort(r.joinDate) : "-" },
   { key: "tenureMonths", label: "Masa Kerja (Bulan)", render: (r) => r.tenureMonths != null ? r.tenureMonths.toLocaleString("id-ID") : "-" },
+  { key: "target", label: "Target/Bulan", render: (r) => getTargetLabel(r.tenureMonths) },
+  { key: "targetLabel", label: "Target (Pencapaian/Bulan)", render: (r) => r.tenureMonths == null ? "-" : (r.tenureMonths > 3 ? ">150" : "<150") },
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
   { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
   { key: "coordOut", label: "Koordinat Check-out (lat, lon)" },
@@ -2158,7 +2170,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v87</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v88</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
