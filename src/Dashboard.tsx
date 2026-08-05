@@ -1,4 +1,4 @@
-// Dashboard.tsx — v88
+// Dashboard.tsx — v89
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -361,7 +361,7 @@ function monthsBetween(joinDateVal, refDateVal) {
 // angka pasti). >3 bulan = 150/bulan (udah fix).
 function getTargetLabel(tenureMonths) {
   if (tenureMonths == null) return "-";
-  return tenureMonths > 3 ? "150" : "<150";
+  return tenureMonths >= 3 ? "150" : "<150";
 }
 
 function parseAnyDate(v) {
@@ -2170,7 +2170,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v88</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v89</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
