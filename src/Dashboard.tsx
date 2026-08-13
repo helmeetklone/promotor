@@ -1,4 +1,4 @@
-// Dashboard.tsx — v92
+// Dashboard.tsx — v93
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1654,14 +1654,14 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
                 <Num
                   value={zoneComplyIds.length.toLocaleString("id-ID")}
                   className="text-lg font-bold text-emerald-700 leading-none"
-                  onClick={() => setRegionDrill({ title: "Comply (≥50% hari kerja) — per Region", rows: byZoneIds(zoneComplyIds) })}
+                  onClick={() => setRegionDrill({ title: "Comply (≥50% hari kerja) — per Region", rows: byZoneIds(zoneComplyIds).filter((v) => !v.zoneNotCompliant) })}
                 >
                   <div className="text-[10px] text-gray-700 mt-1">Comply (≥50% hari)</div>
                 </Num>
                 <Num
                   value={zoneNotComplyIds.length.toLocaleString("id-ID")}
                   className="text-lg font-bold text-red-700 leading-none"
-                  onClick={() => setRegionDrill({ title: "Not Comply (<50% hari kerja) — per Region", rows: byZoneIds(zoneNotComplyIds) })}
+                  onClick={() => setRegionDrill({ title: "Not Comply (<50% hari kerja) — per Region", rows: byZoneIds(zoneNotComplyIds).filter((v) => v.zoneNotCompliant) })}
                 >
                   <div className="text-[10px] text-gray-700 mt-1">Not Comply (&lt;50% hari)</div>
                 </Num>
@@ -2168,7 +2168,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v92</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v93</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
