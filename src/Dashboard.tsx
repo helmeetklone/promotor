@@ -1,4 +1,4 @@
-// Dashboard.tsx — v93
+// Dashboard.tsx — v94
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -354,6 +354,16 @@ function monthsBetween(joinDateVal, refDateVal) {
   let months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
   if (to.getDate() < from.getDate()) months -= 1;
   return Math.max(0, months);
+}
+
+// Selisih hari (inklusif) antara 2 tanggal — dipakai buat hitung panjang
+// periode data, fondasi metrik "Tingkat Kehadiran" (proxy efektivitas).
+function daysBetween(dateA, dateB) {
+  const a = parseAnyDate(dateA);
+  const b = parseAnyDate(dateB);
+  if (!a || !b) return null;
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.round(Math.abs(b - a) / msPerDay) + 1;
 }
 
 // Target pencapaian per bulan berdasarkan masa kerja — formula PASTI buat
@@ -1720,9 +1730,23 @@ function computeTypeView(result, promotorType, isTimestamp) {
   const uniqueOutlets = (pred) => new Set(flagged.filter(pred).map((r) => r.rawOutletCode).filter(Boolean)).size;
   const uniqueCoverage = new Set(all.map((r) => r.employee_id).filter(Boolean)).size;
 
+  // ── Proxy Efisiensi & Efektivitas Lapangan ──────────────────────────────
+  // PENTING: ini BUKAN efektivitas penjualan/pencapaian (belum ada datanya).
+  // Ini cuma indikator kedisiplinan dari data Timestamp/Absensi yang ada:
+  //   - Tingkat Kehadiran (proxy Efektivitas): rasio hari-kerja tercatat vs
+  //     total hari periode data — makin dekat 100%, makin konsisten hadir.
+  //   - Tingkat Kepatuhan Pola Kerja (proxy Efisiensi): % hari/shift yang
+  //     sesuai standar (zona waktu buat Timestamp, durasi wajar buat Absensi).
+  const sortedDates = all.map((r) => r.date).filter(Boolean).sort();
+  const periodDays = sortedDates.length ? daysBetween(sortedDates[0], sortedDates[sortedDates.length - 1]) : null;
+  const attendanceRate = (uniqueCoverage && periodDays) ? (total / (uniqueCoverage * periodDays)) * 100 : null;
+
   if (isTimestamp) {
+    const zoneNotCompliantCount = all.filter((r) => r.zoneNotCompliant).length;
+    const complianceRate = total ? ((total - zoneNotCompliantCount) / total) * 100 : null;
     return {
       total, all, flagged, byDate, topOffenders, uniqueCoverage,
+      attendanceRate, complianceRate,
       anomalyCounts: {
         zone: flagged.filter((v) => v.zoneNotCompliant).length,
         gpsIdentical: flagged.filter((v) => v.gpsIdentical).length,
@@ -1733,8 +1757,11 @@ function computeTypeView(result, promotorType, isTimestamp) {
       },
     };
   }
+  const durationIssueCount = all.filter((r) => r.durationIssue).length;
+  const complianceRate = total ? ((total - durationIssueCount) / total) * 100 : null;
   return {
     total, all, flagged, byDate, topOffenders, uniqueCoverage,
+    attendanceRate, complianceRate,
     anomalyCounts: {
       gpsFar: uniquePeople((s) => s.farFromStore),
       gpsNoOutlet: uniqueOutlets((s) => s.noOutletData),
@@ -1789,6 +1816,37 @@ function DashboardPage(props) {
             className="w-16 bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 text-gray-800" />
         </label>
         <span className="text-gray-400 italic">Berlaku buat kedua tipe promotor (In Store &amp; Out Store), Timestamp &amp; Absensi.</span>
+      </div>
+
+      {/* ═══════ Proxy Efisiensi & Efektivitas Lapangan ═══════ */}
+      <div className="bg-gradient-to-r from-indigo-50 to-white border border-indigo-200 rounded-xl p-5 mb-5">
+        <div className="text-[11px] uppercase tracking-wide text-indigo-700 font-semibold mb-1">Proxy Efisiensi &amp; Efektivitas Lapangan</div>
+        <div className="text-[11px] text-gray-500 mb-4">
+          Ini BUKAN efektivitas penjualan/pencapaian (data pencapaian belum tersedia) — ini indikator kedisiplinan dari pola kerja yang tercatat.
+          <b> Efektivitas</b> = konsistensi hadir; <b>Efisiensi</b> = kepatuhan pola kerja (zona waktu utk Timestamp, durasi wajar utk Absensi).
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-indigo-200/50">
+          {[
+            { type: "In Store Promotor", label: "In Store Promotor", accent: "amber", ts: inStoreTs, ab: inStoreAb, pad: "md:pr-6" },
+            { type: "Out Store Promotor", label: "Out Store Promotor", accent: "fuchsia", ts: outStoreTs, ab: outStoreAb, pad: "md:pl-6" },
+          ].map(({ label, ts, ab, pad }) => (
+            <div key={label} className={pad}>
+              <div className="text-base font-bold text-gray-900 mb-3">{label}</div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Efektivitas (Tingkat Kehadiran)</div>
+                  <div className="text-xs text-gray-600">Timestamp: <b className="text-gray-900">{ts?.attendanceRate != null ? ts.attendanceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+                  <div className="text-xs text-gray-600">Absensi: <b className="text-gray-900">{ab?.attendanceRate != null ? ab.attendanceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Efisiensi (Kepatuhan Pola Kerja)</div>
+                  <div className="text-xs text-gray-600">Timestamp (zona): <b className="text-gray-900">{ts?.complianceRate != null ? ts.complianceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+                  <div className="text-xs text-gray-600">Absensi (durasi): <b className="text-gray-900">{ab?.complianceRate != null ? ab.complianceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ═══════ GRID A: bagian Timestamp (Journey) tiap tipe ═══════ */}
@@ -2168,7 +2226,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v93</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v94</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
