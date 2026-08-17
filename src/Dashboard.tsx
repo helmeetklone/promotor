@@ -1,4 +1,4 @@
-// Dashboard.tsx — v94
+// Dashboard.tsx — v95
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -100,6 +100,7 @@
 //        user — labelnya tetap sama, tapi angka yang ditampilkan ditukar posisinya.
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import Papa from "papaparse";
+import pptxgen from "pptxgenjs";
 import * as XLSX from "xlsx";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -898,6 +899,73 @@ function computeInsights(timestampResult, absensiResult) {
   if (topPerson) insights.push(`Anomali Tertinggi (Gabungan): ${topPerson[0]} (${topPerson[1].toLocaleString("id-ID")} kejadian)`);
 
   return insights;
+}
+
+// Ringkasan angka-angka Overview, dihitung ULANG di sini (independen dari
+// OverviewBanner) — dipakai khusus buat fitur "Export ke PPT", biar nggak
+// perlu prop-drilling nilai internal OverviewBanner ke DashboardPage.
+function computeExportSummary(timestampResult, absensiResult) {
+  const tsIds = timestampResult?.coverage.employeeIds || new Set();
+  const abIds = absensiResult?.coverage.employeeIds || new Set();
+  const totalPromotorAll = new Set([...tsIds, ...abIds]).size;
+  const timestampPromotorAll = tsIds.size;
+  const absensiPromotorAll = abIds.size;
+
+  const combinedFlagged = [
+    ...(timestampResult?.flagged || []).map((r) => ({ ...r, _source: "Timestamp" })),
+    ...(absensiResult?.flagged || []).map((r) => ({ ...r, _source: "Absensi" })),
+  ];
+  const allRecords = [
+    ...(timestampResult?.all || []).map((r) => ({ ...r, _source: "Timestamp" })),
+    ...(absensiResult?.all || []).map((r) => ({ ...r, _source: "Absensi" })),
+  ];
+  const inStore = new Set(allRecords.filter((r) => r.promotorType === "In Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
+  const outStore = new Set(allRecords.filter((r) => r.promotorType === "Out Store Promotor").map((r) => r.employee_id).filter(Boolean)).size;
+
+  const ANOMALI_MIN_COUNT = 3;
+  const flaggedCountByEmployee = new Map();
+  combinedFlagged.forEach((r) => {
+    if (!r.employee_id) return;
+    flaggedCountByEmployee.set(r.employee_id, (flaggedCountByEmployee.get(r.employee_id) || 0) + 1);
+  });
+  const anomaliQualifiedIds = new Set(
+    [...flaggedCountByEmployee.entries()].filter(([, count]) => count >= ANOMALI_MIN_COUNT).map(([id]) => id)
+  );
+  const anomaliInStoreCount = new Set(combinedFlagged.filter((r) => r.promotorType === "In Store Promotor" && anomaliQualifiedIds.has(r.employee_id)).map((r) => r.employee_id)).size;
+  const anomaliOutStoreCount = new Set(combinedFlagged.filter((r) => r.promotorType === "Out Store Promotor" && anomaliQualifiedIds.has(r.employee_id)).map((r) => r.employee_id)).size;
+  const pctIn = inStore ? (anomaliInStoreCount / inStore) * 100 : 0;
+  const pctOut = outStore ? (anomaliOutStoreCount / outStore) * 100 : 0;
+
+  // Zona Waktu — Selalu Not Comply (sama persis logic-nya kayak OverviewBanner)
+  const zonePattern = new Map();
+  (timestampResult?.all || []).forEach((v) => {
+    if (!v.employee_id) return;
+    const e = zonePattern.get(v.employee_id) || { totalDays: 0, complyDays: 0 };
+    e.totalDays++;
+    if (!v.zoneNotCompliant) e.complyDays++;
+    zonePattern.set(v.employee_id, e);
+  });
+  let zoneNotComplyCount = 0;
+  zonePattern.forEach((e) => {
+    const pct = e.totalDays ? e.complyDays / e.totalDays : 0;
+    if (pct < 0.5) zoneNotComplyCount++;
+  });
+
+  const tsTokoNA = new Set((timestampResult?.flagged || []).filter((v) => v.noOutletData).map((v) => v.rawOutletCode).filter(Boolean));
+  const abTokoNA = new Set((absensiResult?.flagged || []).filter((s) => s.noOutletData).map((s) => s.rawOutletCode).filter(Boolean));
+  const tokoNACount = new Set([...tsTokoNA, ...abTokoNA]).size;
+  const totalTokoCount = new Set([
+    ...(timestampResult?.all || []).map((v) => v.rawOutletCode),
+    ...(absensiResult?.all || []).map((s) => s.rawOutletCode),
+  ].filter(Boolean)).size;
+
+  const durasiCount = new Set((absensiResult?.flagged || []).filter((s) => s.durationIssue).map((s) => s.employee_id).filter(Boolean)).size;
+
+  return {
+    totalPromotorAll, timestampPromotorAll, absensiPromotorAll, inStore, outStore,
+    anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
+    zoneNotComplyCount, tokoNACount, totalTokoCount, durasiCount,
+  };
 }
 
 function InsightsCard({ insights }) {
@@ -1794,8 +1862,197 @@ function DashboardPage(props) {
   const outStoreTs = useMemo(() => computeTypeView(timestampResult, "Out Store Promotor", true), [timestampResult]);
   const outStoreAb = useMemo(() => computeTypeView(absensiResult, "Out Store Promotor", false), [absensiResult]);
 
+  const [pptStatus, setPptStatus] = useState(""); // "" | "generating" | "done" | "error"
+
+  const generatePPT = useCallback(async () => {
+    setPptStatus("generating");
+    try {
+      const sum = computeExportSummary(timestampResult, absensiResult);
+      const pctIn = sum.pctIn.toFixed(1).replace(".", ",");
+      const pctOut = sum.pctOut.toFixed(1).replace(".", ",");
+      const fmt = (n) => (n == null ? "-" : n.toFixed(1).replace(".", ","));
+      const today = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+
+      // ── palet & helper (samain gaya sama deck demo yang udah dibuat) ──
+      const NAVY = "1E2761", ICE = "CADCFC", WHITE = "FFFFFF", INK = "1F2937", MUTED = "6B7280";
+      const TEAL = "0D9488", RED = "DC2626", AMBER = "D97706", FUCHSIA = "A21CAF";
+      const CARD_BG = "F7F9FC", LINE = "E2E8F0";
+      const FONT_HEAD = "Cambria", FONT_BODY = "Calibri";
+      const W = 13.33, H = 7.5;
+
+      const pres = new pptxgen();
+      pres.layout = "LAYOUT_WIDE";
+
+      const bgSlide = (dark) => {
+        const s = pres.addSlide();
+        s.background = { color: dark ? NAVY : WHITE };
+        return s;
+      };
+      const kicker = (s, text, dark) => s.addText(text.toUpperCase(), {
+        x: 0.7, y: 0.55, w: 9, h: 0.35, fontFace: FONT_BODY, fontSize: 12, bold: true,
+        color: dark ? ICE : TEAL, charSpacing: 2, margin: 0,
+      });
+      const title = (s, text, dark) => s.addText(text, {
+        x: 0.7, y: 0.9, w: 11.9, h: 1.0, fontFace: FONT_HEAD, fontSize: 30, bold: true,
+        color: dark ? WHITE : INK, margin: 0,
+      });
+      const pageNum = (s, n, dark) => s.addText(String(n).padStart(2, "0"), {
+        x: W - 0.9, y: H - 0.55, w: 0.6, h: 0.35, fontFace: FONT_BODY, fontSize: 10,
+        color: dark ? "8892C4" : "9CA3AF", align: "right", margin: 0,
+      });
+
+      // ── Slide 1: Judul ──
+      {
+        const s = bgSlide(true);
+        s.addShape("ellipse", { x: 9.6, y: -2.2, w: 6.5, h: 6.5, fill: { color: "263180" }, line: { type: "none" } });
+        s.addText("DASHBOARD ANOMALI LAPANGAN", { x: 0.9, y: 2.5, w: 10, h: 0.4, fontFace: FONT_BODY, fontSize: 13, bold: true, color: ICE, charSpacing: 3, margin: 0 });
+        s.addText("Ringkasan Kedisiplinan & Integritas Data Promotor", { x: 0.9, y: 2.95, w: 11, h: 1.3, fontFace: FONT_HEAD, fontSize: 34, bold: true, color: WHITE, margin: 0, lineSpacingMultiple: 1.05 });
+        s.addText(`Dihasilkan otomatis dari dashboard  •  ${today}`, { x: 0.9, y: 4.1, w: 10.5, h: 0.5, fontFace: FONT_BODY, fontSize: 14, italic: true, color: ICE, margin: 0 });
+      }
+
+      // ── Slide 2: Overview ──
+      {
+        const s = bgSlide(false);
+        kicker(s, "Overview", false);
+        title(s, "Total Promotor & Total Anomali", false);
+        const stats = [
+          { v: sum.totalPromotorAll.toLocaleString("id-ID"), l: "Total Promotor", c: NAVY },
+          { v: `${sum.anomaliInStoreCount.toLocaleString("id-ID")}/${sum.inStore.toLocaleString("id-ID")}`, l: `In Store — Total Anomali (${pctIn}%)`, c: AMBER },
+          { v: `${sum.anomaliOutStoreCount.toLocaleString("id-ID")}/${sum.outStore.toLocaleString("id-ID")}`, l: `Out Store — Total Anomali (${pctOut}%)`, c: FUCHSIA },
+        ];
+        const cw = 3.75, gap = 0.35, x0 = 0.7, y0 = 2.4;
+        stats.forEach((st, i) => {
+          const x = x0 + i * (cw + gap);
+          s.addShape("roundRect", { x, y: y0, w: cw, h: 2.1, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+          s.addText(st.v, { x: x + 0.25, y: y0 + 0.25, w: cw - 0.5, h: 0.95, fontFace: FONT_HEAD, fontSize: 30, bold: true, color: st.c, margin: 0 });
+          s.addText(st.l, { x: x + 0.25, y: y0 + 1.25, w: cw - 0.5, h: 0.7, fontFace: FONT_BODY, fontSize: 11.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.15 });
+        });
+        s.addText("Total Anomali = promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp & Absensi) — bukan 1 kejadian tunggal.", {
+          x: 0.7, y: 4.9, w: 11.9, h: 0.6, fontFace: FONT_BODY, fontSize: 12.5, italic: true, color: MUTED, margin: 0,
+        });
+
+        const cats = [
+          { l: `Zona Waktu — Not Comply (Timestamp): ${sum.zoneNotComplyCount.toLocaleString("id-ID")} dari ${sum.timestampPromotorAll.toLocaleString("id-ID")} promotor` },
+          { l: `GPS Toko N/A (Timestamp & Absensi): ${sum.tokoNACount.toLocaleString("id-ID")} dari ${sum.totalTokoCount.toLocaleString("id-ID")} toko` },
+          { l: `Durasi Bermasalah (Absensi): ${sum.durasiCount.toLocaleString("id-ID")} dari ${sum.absensiPromotorAll.toLocaleString("id-ID")} promotor` },
+        ];
+        s.addShape("roundRect", { x: 0.7, y: 5.55, w: 11.9, h: 1.55, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+        cats.forEach((c, i) => {
+          s.addText(`•  ${c.l}`, { x: 1.0, y: 5.7 + i * 0.42, w: 11.3, h: 0.4, fontFace: FONT_BODY, fontSize: 12, color: INK, margin: 0 });
+        });
+        pageNum(s, 2, false);
+      }
+
+      // ── Slide 3: Proxy Efisiensi & Efektivitas ──
+      {
+        const s = bgSlide(false);
+        kicker(s, "Proxy Efisiensi & Efektivitas", false);
+        title(s, "Kedisiplinan Pola Kerja Lapangan", false);
+        s.addShape("roundRect", { x: 0.7, y: 1.85, w: 11.9, h: 0.65, rectRadius: 0.06, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
+        s.addText([
+          { text: "⚠ Catatan:  ", options: { bold: true, color: AMBER } },
+          { text: "ini proxy kedisiplinan, BUKAN efektivitas penjualan/pencapaian (data pencapaian belum tersedia).", options: { color: INK } },
+        ], { x: 1.0, y: 1.85, w: 11.3, h: 0.65, fontFace: FONT_BODY, fontSize: 12, valign: "middle", margin: 0 });
+
+        const rows = [
+          { t: "In Store Promotor", c: AMBER, ts: inStoreTs, ab: inStoreAb },
+          { t: "Out Store Promotor", c: FUCHSIA, ts: outStoreTs, ab: outStoreAb },
+        ];
+        rows.forEach((r, i) => {
+          const x = 0.7 + i * 6.0;
+          s.addShape("roundRect", { x, y: 2.75, w: 5.7, h: 3.9, rectRadius: 0.1, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+          s.addText(r.t, { x: x + 0.35, y: 2.95, w: 5.0, h: 0.5, fontFace: FONT_HEAD, fontSize: 17, bold: true, color: r.c, margin: 0 });
+          const lines = [
+            { l: "Efektivitas — Kehadiran (Timestamp)", v: fmt(r.ts?.attendanceRate) + "%" },
+            { l: "Efektivitas — Kehadiran (Absensi)", v: fmt(r.ab?.attendanceRate) + "%" },
+            { l: "Efisiensi — Kepatuhan Zona (Timestamp)", v: fmt(r.ts?.complianceRate) + "%" },
+            { l: "Efisiensi — Durasi Wajar (Absensi)", v: fmt(r.ab?.complianceRate) + "%" },
+          ];
+          lines.forEach((ln, j) => {
+            const ly = 3.55 + j * 0.78;
+            s.addText(ln.l, { x: x + 0.35, y: ly, w: 3.5, h: 0.5, fontFace: FONT_BODY, fontSize: 11.5, color: MUTED, valign: "middle", margin: 0 });
+            s.addText(ln.v, { x: x + 3.85, y: ly, w: 1.5, h: 0.5, fontFace: FONT_HEAD, fontSize: 16, bold: true, color: INK, align: "right", valign: "middle", margin: 0 });
+          });
+        });
+        pageNum(s, 3, false);
+      }
+
+      // ── Slide 4: Insight otomatis ──
+      {
+        const s = bgSlide(true);
+        s.addShape("ellipse", { x: 10.3, y: -1.8, w: 5, h: 5, fill: { color: "263180" }, line: { type: "none" } });
+        kicker(s, "Insight Otomatis", true);
+        title(s, "Temuan dari Data Saat Ini", true);
+
+        // Bandingin gap terbesar antara Kepatuhan Zona (Timestamp) vs Durasi Wajar (Absensi) per tipe
+        const gapIn = (inStoreAb?.complianceRate ?? 0) - (inStoreTs?.complianceRate ?? 0);
+        const gapOut = (outStoreAb?.complianceRate ?? 0) - (outStoreTs?.complianceRate ?? 0);
+        const worst = gapIn >= gapOut ? { label: "In Store", ts: inStoreTs, ab: inStoreAb } : { label: "Out Store", ts: outStoreTs, ab: outStoreAb };
+        const gapVal = Math.max(gapIn, gapOut);
+
+        s.addShape("roundRect", { x: 0.7, y: 2.15, w: 11.9, h: 2.1, rectRadius: 0.1, fill: { color: "263180" }, line: { type: "none" } });
+        s.addText(`${worst.label} Promotor: Durasi Kerja Wajar, Pola Kunjungan Perlu Diperbaiki`, {
+          x: 1.1, y: 2.4, w: 11.1, h: 0.6, fontFace: FONT_HEAD, fontSize: 18, bold: true, color: WHITE, margin: 0,
+        });
+        s.addText(
+          gapVal > 15
+            ? `Kepatuhan durasi kerja (${fmt(worst.ab?.complianceRate)}%) jauh lebih tinggi dari kepatuhan zona waktu (${fmt(worst.ts?.complianceRate)}%). Jam kerja sudah tertib, namun pola kunjungan sepanjang hari (3 zona waktu berturut-turut) belum konsisten — titik perbaikan yang konkret dan berbeda dari sekadar "kurang disiplin".`
+            : `Kepatuhan durasi kerja (${fmt(worst.ab?.complianceRate)}%) dan kepatuhan zona waktu (${fmt(worst.ts?.complianceRate)}%) relatif berimbang — tidak ada kesenjangan besar antara keduanya pada data saat ini.`,
+          { x: 1.1, y: 3.05, w: 11.1, h: 1.1, fontFace: FONT_BODY, fontSize: 13, color: ICE, margin: 0, lineSpacingMultiple: 1.3 }
+        );
+
+        const extra = insights.slice(0, 3);
+        extra.forEach((txt, i) => {
+          const y = 4.55 + i * 0.75;
+          s.addShape("ellipse", { x: 0.7, y: y + 0.07, w: 0.13, h: 0.13, fill: { color: ICE }, line: { type: "none" } });
+          s.addText(txt, { x: 1.05, y: y - 0.1, w: 11.4, h: 0.6, fontFace: FONT_BODY, fontSize: 13, color: WHITE, margin: 0 });
+        });
+        pageNum(s, 4, true);
+      }
+
+      // ── Slide 5: Kesimpulan & Rekomendasi ──
+      {
+        const s = bgSlide(false);
+        kicker(s, "Kesimpulan", false);
+        title(s, "Rekomendasi Tindak Lanjut", false);
+        const recs = [
+          "Anomali dengan minimal 3 kejadian adalah titik awal investigasi — verifikasi manual tetap diperlukan sebelum menjadi dasar keputusan HR.",
+          `Prioritaskan region/cluster dengan tingkat Not Comply tertinggi (drill-down tersedia di dashboard) untuk pembinaan lapangan.`,
+          "Lengkapi data pencapaian (target vs realisasi) agar efektivitas penjualan yang sesungguhnya dapat diukur, melengkapi proxy kedisiplinan ini.",
+          "Pertimbangkan otomatisasi tarik data dari OneDrive begitu akses Azure tersedia, agar dashboard selalu menampilkan data terbaru.",
+        ];
+        recs.forEach((r, i) => {
+          const y = 2.3 + i * 1.15;
+          s.addShape("roundRect", { x: 0.7, y, w: 11.9, h: 0.95, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+          s.addShape("roundRect", { x: 0.95, y: y + 0.22, w: 0.5, h: 0.5, rectRadius: 0.08, fill: { color: TEAL }, line: { type: "none" } });
+          s.addText(String(i + 1), { x: 0.95, y: y + 0.22, w: 0.5, h: 0.5, fontFace: FONT_HEAD, fontSize: 16, bold: true, color: WHITE, align: "center", valign: "middle", margin: 0 });
+          s.addText(r, { x: 1.65, y, w: 10.7, h: 0.95, fontFace: FONT_BODY, fontSize: 12.5, color: INK, valign: "middle", margin: 0, lineSpacingMultiple: 1.2 });
+        });
+        pageNum(s, 5, false);
+      }
+
+      await pres.writeFile({ fileName: `Dashboard-Promotor-Ringkasan-${new Date().toISOString().slice(0, 10)}.pptx` });
+      setPptStatus("done");
+      setTimeout(() => setPptStatus(""), 4000);
+    } catch (err) {
+      console.error("Gagal generate PPT:", err);
+      setPptStatus("error");
+    }
+  }, [timestampResult, absensiResult, insights, inStoreTs, inStoreAb, outStoreTs, outStoreAb]);
+
   return (
     <div>
+      <div className="flex items-center justify-end gap-3 mb-2">
+        {pptStatus === "done" && <span className="text-xs text-emerald-600">✅ PPT ke-download</span>}
+        {pptStatus === "error" && <span className="text-xs text-red-600">❌ Gagal generate PPT</span>}
+        <button
+          onClick={generatePPT}
+          disabled={pptStatus === "generating"}
+          className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium px-3 py-1.5 rounded-lg"
+        >
+          {pptStatus === "generating" ? "⏳ Membuat PPT..." : "📊 Export ke PPT"}
+        </button>
+      </div>
       <OverviewBanner absensiResult={absensiResult} timestampResult={timestampResult} onDetail={openDetail} />
       <InsightsCard insights={insights} />
 
@@ -2226,7 +2483,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v94</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v95</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
