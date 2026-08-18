@@ -1,4 +1,4 @@
-// Dashboard.tsx — v96
+// Dashboard.tsx — v98
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1910,66 +1910,67 @@ function DashboardPage(props) {
         s.addText(`Dihasilkan otomatis dari dashboard  •  ${today}`, { x: 0.9, y: 4.1, w: 10.5, h: 0.5, fontFace: FONT_BODY, fontSize: 14, italic: true, color: ICE, margin: 0 });
       }
 
-      // ── Slide 2: Metodologi — Cara Baca Dashboard Ini ──
+      // ── Slide 2: Apa yang Ditandai Sebagai Anomali? ──
       {
         const s = bgSlide(false);
         kicker(s, "Sebelum Membaca Data", false);
-        title(s, "Metodologi: Cara Baca Dashboard Ini", false);
+        title(s, "Apa yang Ditandai Sebagai Anomali?", false);
 
         const cats = [
-          { t: "Zona Waktu", d: "Comply = minimal 3 zona jam berturut-turut (Pagi→Siang→Sore→Malam), tanpa lompat. (Timestamp)" },
-          { t: "GPS Identik", d: "2+ check-in di hari sama dengan koordinat persis sama. (Timestamp)" },
-          { t: "GPS Jauh dari Toko", d: "Jarak ke koordinat outlet melebihi threshold jarak. (Timestamp & Absensi)" },
-          { t: "GPS Toko N/A", d: "Referensi koordinat toko gagal ditemukan — dihitung per TOKO, bukan per orang. (Timestamp & Absensi)" },
-          { t: "Status Non-Active", d: "Aktivitas tercatat SETELAH tanggal resign (End Date) — bukan sekadar status berbeda hari ini. (Timestamp & Absensi)" },
-          { t: "Durasi Bermasalah", d: "Shift terlalu pendek, terlalu panjang, atau tanpa check-out. (Absensi)" },
+          { t: "Kunjungan Hanya Satu Waktu", d: "Promotor seharusnya melakukan check-in pada beberapa waktu berbeda sepanjang hari (pagi, siang, sore) — bukan hanya satu kali lalu selesai." },
+          { t: "Lokasi GPS Selalu Sama", d: "Beberapa kali check-in dalam satu hari, namun titik GPS-nya persis sama — mengindikasikan tidak ada perpindahan lokasi sama sekali." },
+          { t: "Lokasi Jauh dari Toko", d: "Lokasi perangkat saat check-in ternyata jauh dari toko yang seharusnya dikunjungi pada hari tersebut." },
+          { t: "Data Toko Belum Lengkap", d: "Lokasi toko belum tercatat di sistem, sehingga jarak belum dapat diperiksa. Ini bukan kesalahan promotor, melainkan data yang belum lengkap." },
+          { t: "Aktivitas Setelah Resign", d: "Terdapat rekam aktivitas SETELAH tanggal resign promotor tersebut — seharusnya sudah tidak ada aktivitas kerja." },
+          { t: "Durasi Kerja Tidak Wajar", d: "Durasi kerja terlalu singkat, terlalu panjang, atau tidak tercatat waktu selesainya (lupa check-out)." },
         ];
         const gridX = 0.7, gridY = 1.9, cw = 3.85, ch = 1.5, gx = 0.2, gy = 0.18;
         cats.forEach((cat, i) => {
           const col = i % 3, row = Math.floor(i / 3);
           const x = gridX + col * (cw + gx), y = gridY + row * (ch + gy);
           s.addShape("roundRect", { x, y, w: cw, h: ch, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
-          s.addText(cat.t, { x: x + 0.2, y: y + 0.14, w: cw - 0.4, h: 0.35, fontFace: FONT_HEAD, fontSize: 13, bold: true, color: NAVY, margin: 0 });
-          s.addText(cat.d, { x: x + 0.2, y: y + 0.5, w: cw - 0.4, h: 0.95, fontFace: FONT_BODY, fontSize: 10, color: MUTED, margin: 0, lineSpacingMultiple: 1.15 });
+          s.addText(cat.t, { x: x + 0.2, y: y + 0.14, w: cw - 0.4, h: 0.5, fontFace: FONT_HEAD, fontSize: 13, bold: true, color: NAVY, margin: 0, lineSpacingMultiple: 1.05 });
+          s.addText(cat.d, { x: x + 0.2, y: y + 0.62, w: cw - 0.4, h: 0.85, fontFace: FONT_BODY, fontSize: 10, color: MUTED, margin: 0, lineSpacingMultiple: 1.15 });
         });
 
         s.addShape("roundRect", { x: 0.7, y: 5.45, w: 11.9, h: 1.3, rectRadius: 0.08, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
         s.addText([
-          { text: "Ambang \"Total Anomali\":  ", options: { bold: true, color: AMBER } },
-          { text: "promotor ditandai hanya bila punya MINIMAL 3 kejadian anomali gabungan (bukan 1 kejadian tunggal) — 1x insiden ringan itu wajar & manusiawi, ambang ini menyaring pola yang berulang.", options: { color: INK } },
-        ], { x: 1.0, y: 5.6, w: 11.3, h: 1.0, fontFace: FONT_BODY, fontSize: 12, valign: "middle", margin: 0, lineSpacingMultiple: 1.25 });
+          { text: "Satu kali kejadian adalah hal yang wajar.  ", options: { bold: true, color: AMBER } },
+          { text: "Setiap orang dapat sesekali mengalami kendala GPS atau lupa. Yang perlu diperhatikan adalah promotor dengan kejadian berulang — minimal 3 kali — bukan kejadian tunggal.", options: { color: INK } },
+        ], { x: 1.0, y: 5.6, w: 11.3, h: 1.0, fontFace: FONT_BODY, fontSize: 12.5, valign: "middle", margin: 0, lineSpacingMultiple: 1.3 });
         pageNum(s, 2, false);
       }
 
-      // ── Slide 3: Metodologi — Proxy Efisiensi & Efektivitas + Prinsip Fairness ──
+      // ── Slide 3: Soal Angka Efisiensi & Efektivitas + Prinsip Fairness ──
       {
         const s = bgSlide(true);
         s.addShape("ellipse", { x: 10.3, y: -1.8, w: 5, h: 5, fill: { color: "263180" }, line: { type: "none" } });
         kicker(s, "Sebelum Membaca Data", true);
-        title(s, "Cara Hitung Proxy & Hal yang Perlu Diketahui", true);
+        title(s, "Dua Hal Penting Sebelum Melanjutkan", true);
 
-        s.addShape("roundRect", { x: 0.7, y: 1.9, w: 11.9, h: 2.1, rectRadius: 0.1, fill: { color: "263180" }, line: { type: "none" } });
-        s.addText("⚠ Ini BUKAN efektivitas penjualan/pencapaian", { x: 1.1, y: 2.1, w: 11.1, h: 0.45, fontFace: FONT_HEAD, fontSize: 15, bold: true, color: WHITE, margin: 0 });
-        s.addText("Data pencapaian (target vs realisasi) belum tersedia. \"Proxy\" = pendekatan sementara dari data yang SUDAH ada, bukan pengukuran langsung.", {
-          x: 1.1, y: 2.55, w: 11.1, h: 0.5, fontFace: FONT_BODY, fontSize: 12.5, color: ICE, margin: 0, lineSpacingMultiple: 1.2,
+        s.addShape("roundRect", { x: 0.7, y: 1.9, w: 11.9, h: 2.3, rectRadius: 0.1, fill: { color: "263180" }, line: { type: "none" } });
+        s.addText("1. Angka Efisiensi dan Efektivitas di Sini Bukan Angka Penjualan", { x: 1.1, y: 2.1, w: 11.1, h: 0.5, fontFace: FONT_HEAD, fontSize: 15, bold: true, color: WHITE, margin: 0 });
+        s.addText("Data pencapaian penjualan belum tersedia. Sebagai gantinya, dua hal berikut diukur dari data yang sudah ada:", {
+          x: 1.1, y: 2.6, w: 11.1, h: 0.55, fontFace: FONT_BODY, fontSize: 12.5, color: ICE, margin: 0, lineSpacingMultiple: 1.25,
         });
         s.addText([
-          { text: "Efektivitas (Tingkat Kehadiran) = ", options: { bold: true, color: WHITE } },
-          { text: "hari-kerja tercatat ÷ (jumlah orang × panjang periode data)", options: { color: ICE } },
-        ], { x: 1.1, y: 3.15, w: 11.1, h: 0.4, fontFace: FONT_BODY, fontSize: 12, margin: 0 });
+          { text: "•  Efektivitas — ", options: { bold: true, color: WHITE } },
+          { text: "seberapa konsisten promotor menunjukkan aktivitas, dibandingkan jumlah hari kerja yang seharusnya", options: { color: ICE } },
+        ], { x: 1.1, y: 3.2, w: 11.1, h: 0.4, fontFace: FONT_BODY, fontSize: 12.5, margin: 0 });
         s.addText([
-          { text: "Efisiensi (Kepatuhan Pola Kerja) = ", options: { bold: true, color: WHITE } },
-          { text: "% hari/shift yang sesuai standar (zona waktu untuk Timestamp, durasi wajar untuk Absensi)", options: { color: ICE } },
-        ], { x: 1.1, y: 3.55, w: 11.1, h: 0.4, fontFace: FONT_BODY, fontSize: 12, margin: 0 });
+          { text: "•  Efisiensi — ", options: { bold: true, color: WHITE } },
+          { text: "dari hari kerja yang tercatat, berapa persen yang polanya sesuai standar (jam kerja dan jadwal kunjungan)", options: { color: ICE } },
+        ], { x: 1.1, y: 3.6, w: 11.1, h: 0.4, fontFace: FONT_BODY, fontSize: 12.5, margin: 0 });
 
+        s.addText("2. Anomali Bukan Berarti Kesalahan Individu", { x: 0.7, y: 4.55, w: 11.4, h: 0.45, fontFace: FONT_HEAD, fontSize: 15, bold: true, color: ICE, margin: 0 });
         const principles = [
-          "Semua angka anomali adalah titik awal investigasi, bukan vonis final — perlu verifikasi manual sebelum jadi dasar keputusan.",
-          "Anomali serentak di tanggal/perangkat yang sama biasanya isu teknis sistem, bukan kesalahan individu.",
+          "Anomali adalah titik awal untuk pemeriksaan lebih lanjut, bukan keputusan atau sanksi langsung. Verifikasi tetap diperlukan sebelum diambil tindakan.",
+          "Anomali yang terjadi serentak pada tanggal atau perangkat yang sama umumnya menunjukkan kendala sistem, bukan kesalahan masing-masing individu.",
         ];
         principles.forEach((p, i) => {
-          const y = 4.35 + i * 0.85;
+          const y = 5.05 + i * 0.85;
           s.addShape("ellipse", { x: 0.7, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: ICE }, line: { type: "none" } });
-          s.addText(p, { x: 1.05, y: y - 0.12, w: 11.4, h: 0.7, fontFace: FONT_BODY, fontSize: 13, color: WHITE, margin: 0, lineSpacingMultiple: 1.25 });
+          s.addText(p, { x: 1.05, y: y - 0.12, w: 11.4, h: 0.7, fontFace: FONT_BODY, fontSize: 12.5, color: WHITE, margin: 0, lineSpacingMultiple: 1.25 });
         });
         pageNum(s, 3, true);
       }
@@ -1977,12 +1978,12 @@ function DashboardPage(props) {
       // ── Slide 4: Overview ──
       {
         const s = bgSlide(false);
-        kicker(s, "Overview", false);
-        title(s, "Total Promotor & Total Anomali", false);
+        kicker(s, "Ringkasan Data", false);
+        title(s, "Berapa Banyak yang Perlu Diperiksa Lebih Lanjut?", false);
         const stats = [
           { v: sum.totalPromotorAll.toLocaleString("id-ID"), l: "Total Promotor", c: NAVY },
-          { v: `${sum.anomaliInStoreCount.toLocaleString("id-ID")}/${sum.inStore.toLocaleString("id-ID")}`, l: `In Store — Total Anomali (${pctIn}%)`, c: AMBER },
-          { v: `${sum.anomaliOutStoreCount.toLocaleString("id-ID")}/${sum.outStore.toLocaleString("id-ID")}`, l: `Out Store — Total Anomali (${pctOut}%)`, c: FUCHSIA },
+          { v: `${sum.anomaliInStoreCount.toLocaleString("id-ID")}/${sum.inStore.toLocaleString("id-ID")}`, l: `In Store — Perlu Diperiksa Lebih Lanjut (${pctIn}%)`, c: AMBER },
+          { v: `${sum.anomaliOutStoreCount.toLocaleString("id-ID")}/${sum.outStore.toLocaleString("id-ID")}`, l: `Out Store — Perlu Diperiksa Lebih Lanjut (${pctOut}%)`, c: FUCHSIA },
         ];
         const cw = 3.75, gap = 0.35, x0 = 0.7, y0 = 2.4;
         stats.forEach((st, i) => {
@@ -1991,14 +1992,14 @@ function DashboardPage(props) {
           s.addText(st.v, { x: x + 0.25, y: y0 + 0.25, w: cw - 0.5, h: 0.95, fontFace: FONT_HEAD, fontSize: 30, bold: true, color: st.c, margin: 0 });
           s.addText(st.l, { x: x + 0.25, y: y0 + 1.25, w: cw - 0.5, h: 0.7, fontFace: FONT_BODY, fontSize: 11.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.15 });
         });
-        s.addText("Total Anomali = promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp & Absensi) — bukan 1 kejadian tunggal.", {
+        s.addText("Angka di atas hanya mencakup promotor dengan kejadian berulang (minimal 3 kali) — bukan kejadian tunggal.", {
           x: 0.7, y: 4.9, w: 11.9, h: 0.6, fontFace: FONT_BODY, fontSize: 12.5, italic: true, color: MUTED, margin: 0,
         });
 
         const cats = [
-          { l: `Zona Waktu — Not Comply (Timestamp): ${sum.zoneNotComplyCount.toLocaleString("id-ID")} dari ${sum.timestampPromotorAll.toLocaleString("id-ID")} promotor` },
-          { l: `GPS Toko N/A (Timestamp & Absensi): ${sum.tokoNACount.toLocaleString("id-ID")} dari ${sum.totalTokoCount.toLocaleString("id-ID")} toko` },
-          { l: `Durasi Bermasalah (Absensi): ${sum.durasiCount.toLocaleString("id-ID")} dari ${sum.absensiPromotorAll.toLocaleString("id-ID")} promotor` },
+          { l: `Kunjungan hanya satu waktu: ${sum.zoneNotComplyCount.toLocaleString("id-ID")} dari ${sum.timestampPromotorAll.toLocaleString("id-ID")} promotor` },
+          { l: `Data toko belum lengkap: ${sum.tokoNACount.toLocaleString("id-ID")} dari ${sum.totalTokoCount.toLocaleString("id-ID")} toko` },
+          { l: `Durasi kerja tidak wajar: ${sum.durasiCount.toLocaleString("id-ID")} dari ${sum.absensiPromotorAll.toLocaleString("id-ID")} promotor` },
         ];
         s.addShape("roundRect", { x: 0.7, y: 5.55, w: 11.9, h: 1.55, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
         cats.forEach((c, i) => {
@@ -2007,16 +2008,16 @@ function DashboardPage(props) {
         pageNum(s, 4, false);
       }
 
-      // ── Slide 5: Proxy Efisiensi & Efektivitas ──
+      // ── Slide 5: Efisiensi & Efektivitas ──
       {
         const s = bgSlide(false);
-        kicker(s, "Proxy Efisiensi & Efektivitas", false);
-        title(s, "Kedisiplinan Pola Kerja Lapangan", false);
-        s.addShape("roundRect", { x: 0.7, y: 1.85, w: 11.9, h: 0.65, rectRadius: 0.06, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
+        kicker(s, "Kedisiplinan Kerja", false);
+        title(s, "Efektivitas dan Efisiensi Kerja Lapangan", false);
+        s.addShape("roundRect", { x: 0.7, y: 1.8, w: 11.9, h: 0.6, rectRadius: 0.06, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
         s.addText([
-          { text: "⚠ Catatan:  ", options: { bold: true, color: AMBER } },
-          { text: "ini proxy kedisiplinan, BUKAN efektivitas penjualan/pencapaian (data pencapaian belum tersedia).", options: { color: INK } },
-        ], { x: 1.0, y: 1.85, w: 11.3, h: 0.65, fontFace: FONT_BODY, fontSize: 12, valign: "middle", margin: 0 });
+          { text: "Catatan:  ", options: { bold: true, color: AMBER } },
+          { text: "angka berikut bukan angka penjualan, melainkan indikasi kedisiplinan dari data yang tersedia.", options: { color: INK } },
+        ], { x: 1.0, y: 1.8, w: 11.3, h: 0.6, fontFace: FONT_BODY, fontSize: 12, valign: "middle", margin: 0 });
 
         const rows = [
           { t: "In Store Promotor", c: AMBER, ts: inStoreTs, ab: inStoreAb },
@@ -2024,18 +2025,36 @@ function DashboardPage(props) {
         ];
         rows.forEach((r, i) => {
           const x = 0.7 + i * 6.0;
-          s.addShape("roundRect", { x, y: 2.75, w: 5.7, h: 3.9, rectRadius: 0.1, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
-          s.addText(r.t, { x: x + 0.35, y: 2.95, w: 5.0, h: 0.5, fontFace: FONT_HEAD, fontSize: 17, bold: true, color: r.c, margin: 0 });
-          const lines = [
-            { l: "Efektivitas — Kehadiran (Timestamp)", v: fmt(r.ts?.attendanceRate) + "%" },
-            { l: "Efektivitas — Kehadiran (Absensi)", v: fmt(r.ab?.attendanceRate) + "%" },
-            { l: "Efisiensi — Kepatuhan Zona (Timestamp)", v: fmt(r.ts?.complianceRate) + "%" },
-            { l: "Efisiensi — Durasi Wajar (Absensi)", v: fmt(r.ab?.complianceRate) + "%" },
-          ];
-          lines.forEach((ln, j) => {
-            const ly = 3.55 + j * 0.78;
-            s.addText(ln.l, { x: x + 0.35, y: ly, w: 3.5, h: 0.5, fontFace: FONT_BODY, fontSize: 11.5, color: MUTED, valign: "middle", margin: 0 });
-            s.addText(ln.v, { x: x + 3.85, y: ly, w: 1.5, h: 0.5, fontFace: FONT_HEAD, fontSize: 16, bold: true, color: INK, align: "right", valign: "middle", margin: 0 });
+          const efektivitas = (r.ts?.attendanceRate != null && r.ab?.attendanceRate != null) ? (r.ts.attendanceRate + r.ab.attendanceRate) / 2 : null;
+          const efisiensi = (r.ts?.complianceRate != null && r.ab?.complianceRate != null) ? (r.ts.complianceRate + r.ab.complianceRate) / 2 : null;
+
+          s.addShape("roundRect", { x, y: 2.6, w: 5.7, h: 4.2, rectRadius: 0.1, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+          s.addText(r.t, { x: x + 0.35, y: 2.8, w: 5.0, h: 0.45, fontFace: FONT_HEAD, fontSize: 16, bold: true, color: r.c, margin: 0 });
+
+          // Blok Efektivitas
+          s.addText([
+            { text: "Efektivitas: ", options: { bold: true, color: INK, fontSize: 14 } },
+            { text: `${fmt(efektivitas)}%`, options: { bold: true, color: r.c, fontSize: 20 } },
+          ], { x: x + 0.35, y: 3.35, w: 5.0, h: 0.45, fontFace: FONT_HEAD, margin: 0 });
+          s.addText("Konsistensi promotor menunjukkan aktivitas, dibandingkan hari kerja yang seharusnya.", {
+            x: x + 0.35, y: 3.82, w: 5.0, h: 0.5, fontFace: FONT_BODY, fontSize: 10.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
+          });
+          s.addText(`Rincian: ${fmt(r.ts?.attendanceRate)}% dari data kunjungan harian, ${fmt(r.ab?.attendanceRate)}% dari data absensi.`, {
+            x: x + 0.35, y: 4.35, w: 5.0, h: 0.4, fontFace: FONT_BODY, fontSize: 10, italic: true, color: MUTED, margin: 0,
+          });
+
+          s.addShape("line", { x: x + 0.35, y: 4.85, w: 5.0, h: 0, line: { color: LINE, width: 1 } });
+
+          // Blok Efisiensi
+          s.addText([
+            { text: "Efisiensi: ", options: { bold: true, color: INK, fontSize: 14 } },
+            { text: `${fmt(efisiensi)}%`, options: { bold: true, color: r.c, fontSize: 20 } },
+          ], { x: x + 0.35, y: 5.0, w: 5.0, h: 0.45, fontFace: FONT_HEAD, margin: 0 });
+          s.addText("Kesesuaian pola kerja dengan standar yang ditetapkan.", {
+            x: x + 0.35, y: 5.47, w: 5.0, h: 0.35, fontFace: FONT_BODY, fontSize: 10.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
+          });
+          s.addText(`Rincian: ${fmt(r.ts?.complianceRate)}% pola kunjungan sesuai standar, ${fmt(r.ab?.complianceRate)}% durasi kerja wajar.`, {
+            x: x + 0.35, y: 5.9, w: 5.0, h: 0.4, fontFace: FONT_BODY, fontSize: 10, italic: true, color: MUTED, margin: 0,
           });
         });
         pageNum(s, 5, false);
@@ -2045,8 +2064,8 @@ function DashboardPage(props) {
       {
         const s = bgSlide(true);
         s.addShape("ellipse", { x: 10.3, y: -1.8, w: 5, h: 5, fill: { color: "263180" }, line: { type: "none" } });
-        kicker(s, "Insight Otomatis", true);
-        title(s, "Temuan dari Data Saat Ini", true);
+        kicker(s, "Temuan Utama", true);
+        title(s, "Kesimpulan dari Data Saat Ini", true);
 
         // Bandingin gap terbesar antara Kepatuhan Zona (Timestamp) vs Durasi Wajar (Absensi) per tipe
         const gapIn = (inStoreAb?.complianceRate ?? 0) - (inStoreTs?.complianceRate ?? 0);
@@ -2060,16 +2079,17 @@ function DashboardPage(props) {
         });
         s.addText(
           gapVal > 15
-            ? `Kepatuhan durasi kerja (${fmt(worst.ab?.complianceRate)}%) jauh lebih tinggi dari kepatuhan zona waktu (${fmt(worst.ts?.complianceRate)}%). Jam kerja sudah tertib, namun pola kunjungan sepanjang hari (3 zona waktu berturut-turut) belum konsisten — titik perbaikan yang konkret dan berbeda dari sekadar "kurang disiplin".`
-            : `Kepatuhan durasi kerja (${fmt(worst.ab?.complianceRate)}%) dan kepatuhan zona waktu (${fmt(worst.ts?.complianceRate)}%) relatif berimbang — tidak ada kesenjangan besar antara keduanya pada data saat ini.`,
+            ? `Kepatuhan durasi kerja sudah baik (${fmt(worst.ab?.complianceRate)}%). Namun kepatuhan pola kunjungan sepanjang hari masih rendah (${fmt(worst.ts?.complianceRate)}%). Artinya, persoalannya bukan pada disiplin waktu kerja, melainkan pada penyebaran kunjungan sepanjang hari yang perlu diperbaiki.`
+            : `Kepatuhan durasi kerja (${fmt(worst.ab?.complianceRate)}%) dan kepatuhan pola kunjungan (${fmt(worst.ts?.complianceRate)}%) relatif seimbang — tidak terdapat kesenjangan besar pada data saat ini.`,
           { x: 1.1, y: 3.05, w: 11.1, h: 1.1, fontFace: FONT_BODY, fontSize: 13, color: ICE, margin: 0, lineSpacingMultiple: 1.3 }
         );
 
+        s.addText("Informasi Tambahan", { x: 0.7, y: 4.4, w: 5, h: 0.35, fontFace: FONT_BODY, fontSize: 11, bold: true, color: "8892C4", charSpacing: 1, margin: 0 });
         const extra = insights.slice(0, 3);
         extra.forEach((txt, i) => {
-          const y = 4.55 + i * 0.75;
+          const y = 4.8 + i * 0.7;
           s.addShape("ellipse", { x: 0.7, y: y + 0.07, w: 0.13, h: 0.13, fill: { color: ICE }, line: { type: "none" } });
-          s.addText(txt, { x: 1.05, y: y - 0.1, w: 11.4, h: 0.6, fontFace: FONT_BODY, fontSize: 13, color: WHITE, margin: 0 });
+          s.addText(txt, { x: 1.05, y: y - 0.1, w: 11.4, h: 0.6, fontFace: FONT_BODY, fontSize: 12.5, color: WHITE, margin: 0 });
         });
         pageNum(s, 6, true);
       }
@@ -2077,13 +2097,13 @@ function DashboardPage(props) {
       // ── Slide 7: Kesimpulan & Rekomendasi ──
       {
         const s = bgSlide(false);
-        kicker(s, "Kesimpulan", false);
+        kicker(s, "Langkah Selanjutnya", false);
         title(s, "Rekomendasi Tindak Lanjut", false);
         const recs = [
-          "Anomali dengan minimal 3 kejadian adalah titik awal investigasi — verifikasi manual tetap diperlukan sebelum menjadi dasar keputusan HR.",
-          `Prioritaskan region/cluster dengan tingkat Not Comply tertinggi (drill-down tersedia di dashboard) untuk pembinaan lapangan.`,
-          "Lengkapi data pencapaian (target vs realisasi) agar efektivitas penjualan yang sesungguhnya dapat diukur, melengkapi proxy kedisiplinan ini.",
-          "Pertimbangkan otomatisasi tarik data dari OneDrive begitu akses Azure tersedia, agar dashboard selalu menampilkan data terbaru.",
+          "Anomali yang ditandai adalah titik awal untuk pemeriksaan lebih lanjut, bukan keputusan final — verifikasi manual tetap diperlukan.",
+          "Prioritaskan wilayah (region/cluster) dengan jumlah kejadian tertinggi — rincian dapat dilihat langsung di dashboard.",
+          "Untuk mengukur efektivitas penjualan yang sesungguhnya, diperlukan data target dan pencapaian yang saat ini belum tersedia.",
+          "Ke depan, penarikan data dapat diotomatisasi dari OneDrive tanpa unggah manual, menunggu persetujuan akses dari tim IT.",
         ];
         recs.forEach((r, i) => {
           const y = 2.3 + i * 1.15;
@@ -2547,7 +2567,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v96</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v98</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
