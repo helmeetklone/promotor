@@ -1,4 +1,4 @@
-// Dashboard.tsx — v95
+// Dashboard.tsx — v96
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1910,7 +1910,71 @@ function DashboardPage(props) {
         s.addText(`Dihasilkan otomatis dari dashboard  •  ${today}`, { x: 0.9, y: 4.1, w: 10.5, h: 0.5, fontFace: FONT_BODY, fontSize: 14, italic: true, color: ICE, margin: 0 });
       }
 
-      // ── Slide 2: Overview ──
+      // ── Slide 2: Metodologi — Cara Baca Dashboard Ini ──
+      {
+        const s = bgSlide(false);
+        kicker(s, "Sebelum Membaca Data", false);
+        title(s, "Metodologi: Cara Baca Dashboard Ini", false);
+
+        const cats = [
+          { t: "Zona Waktu", d: "Comply = minimal 3 zona jam berturut-turut (Pagi→Siang→Sore→Malam), tanpa lompat. (Timestamp)" },
+          { t: "GPS Identik", d: "2+ check-in di hari sama dengan koordinat persis sama. (Timestamp)" },
+          { t: "GPS Jauh dari Toko", d: "Jarak ke koordinat outlet melebihi threshold jarak. (Timestamp & Absensi)" },
+          { t: "GPS Toko N/A", d: "Referensi koordinat toko gagal ditemukan — dihitung per TOKO, bukan per orang. (Timestamp & Absensi)" },
+          { t: "Status Non-Active", d: "Aktivitas tercatat SETELAH tanggal resign (End Date) — bukan sekadar status berbeda hari ini. (Timestamp & Absensi)" },
+          { t: "Durasi Bermasalah", d: "Shift terlalu pendek, terlalu panjang, atau tanpa check-out. (Absensi)" },
+        ];
+        const gridX = 0.7, gridY = 1.9, cw = 3.85, ch = 1.5, gx = 0.2, gy = 0.18;
+        cats.forEach((cat, i) => {
+          const col = i % 3, row = Math.floor(i / 3);
+          const x = gridX + col * (cw + gx), y = gridY + row * (ch + gy);
+          s.addShape("roundRect", { x, y, w: cw, h: ch, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+          s.addText(cat.t, { x: x + 0.2, y: y + 0.14, w: cw - 0.4, h: 0.35, fontFace: FONT_HEAD, fontSize: 13, bold: true, color: NAVY, margin: 0 });
+          s.addText(cat.d, { x: x + 0.2, y: y + 0.5, w: cw - 0.4, h: 0.95, fontFace: FONT_BODY, fontSize: 10, color: MUTED, margin: 0, lineSpacingMultiple: 1.15 });
+        });
+
+        s.addShape("roundRect", { x: 0.7, y: 5.45, w: 11.9, h: 1.3, rectRadius: 0.08, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
+        s.addText([
+          { text: "Ambang \"Total Anomali\":  ", options: { bold: true, color: AMBER } },
+          { text: "promotor ditandai hanya bila punya MINIMAL 3 kejadian anomali gabungan (bukan 1 kejadian tunggal) — 1x insiden ringan itu wajar & manusiawi, ambang ini menyaring pola yang berulang.", options: { color: INK } },
+        ], { x: 1.0, y: 5.6, w: 11.3, h: 1.0, fontFace: FONT_BODY, fontSize: 12, valign: "middle", margin: 0, lineSpacingMultiple: 1.25 });
+        pageNum(s, 2, false);
+      }
+
+      // ── Slide 3: Metodologi — Proxy Efisiensi & Efektivitas + Prinsip Fairness ──
+      {
+        const s = bgSlide(true);
+        s.addShape("ellipse", { x: 10.3, y: -1.8, w: 5, h: 5, fill: { color: "263180" }, line: { type: "none" } });
+        kicker(s, "Sebelum Membaca Data", true);
+        title(s, "Cara Hitung Proxy & Hal yang Perlu Diketahui", true);
+
+        s.addShape("roundRect", { x: 0.7, y: 1.9, w: 11.9, h: 2.1, rectRadius: 0.1, fill: { color: "263180" }, line: { type: "none" } });
+        s.addText("⚠ Ini BUKAN efektivitas penjualan/pencapaian", { x: 1.1, y: 2.1, w: 11.1, h: 0.45, fontFace: FONT_HEAD, fontSize: 15, bold: true, color: WHITE, margin: 0 });
+        s.addText("Data pencapaian (target vs realisasi) belum tersedia. \"Proxy\" = pendekatan sementara dari data yang SUDAH ada, bukan pengukuran langsung.", {
+          x: 1.1, y: 2.55, w: 11.1, h: 0.5, fontFace: FONT_BODY, fontSize: 12.5, color: ICE, margin: 0, lineSpacingMultiple: 1.2,
+        });
+        s.addText([
+          { text: "Efektivitas (Tingkat Kehadiran) = ", options: { bold: true, color: WHITE } },
+          { text: "hari-kerja tercatat ÷ (jumlah orang × panjang periode data)", options: { color: ICE } },
+        ], { x: 1.1, y: 3.15, w: 11.1, h: 0.4, fontFace: FONT_BODY, fontSize: 12, margin: 0 });
+        s.addText([
+          { text: "Efisiensi (Kepatuhan Pola Kerja) = ", options: { bold: true, color: WHITE } },
+          { text: "% hari/shift yang sesuai standar (zona waktu untuk Timestamp, durasi wajar untuk Absensi)", options: { color: ICE } },
+        ], { x: 1.1, y: 3.55, w: 11.1, h: 0.4, fontFace: FONT_BODY, fontSize: 12, margin: 0 });
+
+        const principles = [
+          "Semua angka anomali adalah titik awal investigasi, bukan vonis final — perlu verifikasi manual sebelum jadi dasar keputusan.",
+          "Anomali serentak di tanggal/perangkat yang sama biasanya isu teknis sistem, bukan kesalahan individu.",
+        ];
+        principles.forEach((p, i) => {
+          const y = 4.35 + i * 0.85;
+          s.addShape("ellipse", { x: 0.7, y: y + 0.06, w: 0.13, h: 0.13, fill: { color: ICE }, line: { type: "none" } });
+          s.addText(p, { x: 1.05, y: y - 0.12, w: 11.4, h: 0.7, fontFace: FONT_BODY, fontSize: 13, color: WHITE, margin: 0, lineSpacingMultiple: 1.25 });
+        });
+        pageNum(s, 3, true);
+      }
+
+      // ── Slide 4: Overview ──
       {
         const s = bgSlide(false);
         kicker(s, "Overview", false);
@@ -1940,10 +2004,10 @@ function DashboardPage(props) {
         cats.forEach((c, i) => {
           s.addText(`•  ${c.l}`, { x: 1.0, y: 5.7 + i * 0.42, w: 11.3, h: 0.4, fontFace: FONT_BODY, fontSize: 12, color: INK, margin: 0 });
         });
-        pageNum(s, 2, false);
+        pageNum(s, 4, false);
       }
 
-      // ── Slide 3: Proxy Efisiensi & Efektivitas ──
+      // ── Slide 5: Proxy Efisiensi & Efektivitas ──
       {
         const s = bgSlide(false);
         kicker(s, "Proxy Efisiensi & Efektivitas", false);
@@ -1974,10 +2038,10 @@ function DashboardPage(props) {
             s.addText(ln.v, { x: x + 3.85, y: ly, w: 1.5, h: 0.5, fontFace: FONT_HEAD, fontSize: 16, bold: true, color: INK, align: "right", valign: "middle", margin: 0 });
           });
         });
-        pageNum(s, 3, false);
+        pageNum(s, 5, false);
       }
 
-      // ── Slide 4: Insight otomatis ──
+      // ── Slide 6: Insight otomatis ──
       {
         const s = bgSlide(true);
         s.addShape("ellipse", { x: 10.3, y: -1.8, w: 5, h: 5, fill: { color: "263180" }, line: { type: "none" } });
@@ -2007,10 +2071,10 @@ function DashboardPage(props) {
           s.addShape("ellipse", { x: 0.7, y: y + 0.07, w: 0.13, h: 0.13, fill: { color: ICE }, line: { type: "none" } });
           s.addText(txt, { x: 1.05, y: y - 0.1, w: 11.4, h: 0.6, fontFace: FONT_BODY, fontSize: 13, color: WHITE, margin: 0 });
         });
-        pageNum(s, 4, true);
+        pageNum(s, 6, true);
       }
 
-      // ── Slide 5: Kesimpulan & Rekomendasi ──
+      // ── Slide 7: Kesimpulan & Rekomendasi ──
       {
         const s = bgSlide(false);
         kicker(s, "Kesimpulan", false);
@@ -2028,7 +2092,7 @@ function DashboardPage(props) {
           s.addText(String(i + 1), { x: 0.95, y: y + 0.22, w: 0.5, h: 0.5, fontFace: FONT_HEAD, fontSize: 16, bold: true, color: WHITE, align: "center", valign: "middle", margin: 0 });
           s.addText(r, { x: 1.65, y, w: 10.7, h: 0.95, fontFace: FONT_BODY, fontSize: 12.5, color: INK, valign: "middle", margin: 0, lineSpacingMultiple: 1.2 });
         });
-        pageNum(s, 5, false);
+        pageNum(s, 7, false);
       }
 
       await pres.writeFile({ fileName: `Dashboard-Promotor-Ringkasan-${new Date().toISOString().slice(0, 10)}.pptx` });
@@ -2483,7 +2547,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v95</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v96</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
