@@ -1,4 +1,4 @@
-// Dashboard.tsx — v100
+// Dashboard.tsx — v101
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1720,28 +1720,27 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
           <div className="text-base font-bold text-gray-900 mb-2">Rincian per Kategori Anomali</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
-              { label: "In Store Promotor", data: categoryByType["In Store Promotor"], accent: "text-amber-700" },
-              { label: "Out Store Promotor", data: categoryByType["Out Store Promotor"], accent: "text-fuchsia-700" },
-            ].map(({ label, data, accent }) => (
-              <div key={label}>
-                <div className={`text-xs font-bold mb-1.5 ${accent}`}>{label}</div>
-                <ol className="text-sm text-gray-800 space-y-1.5 list-decimal list-inside">
-                  <li>
-                    <span className="font-semibold">Zona Waktu — Not Comply (&lt;50% hari)</span>{" "}
-                    <span className="text-[11px] text-gray-500">(Timestamp)</span>:{" "}
-                    <b>{data.zone.notComply.toLocaleString("id-ID")}</b> dari {data.zone.total.toLocaleString("id-ID")} promotor
-                  </li>
-                  <li>
-                    <span className="font-semibold">GPS Toko N/A</span>{" "}
-                    <span className="text-[11px] text-gray-500">(Timestamp &amp; Absensi)</span>:{" "}
-                    <b>{data.toko.naCount.toLocaleString("id-ID")}</b> dari {data.toko.totalToko.toLocaleString("id-ID")} toko
-                  </li>
-                  <li>
-                    <span className="font-semibold">Durasi Bermasalah</span>{" "}
-                    <span className="text-[11px] text-gray-500">(Absensi)</span>:{" "}
-                    <b>{data.durasi.count.toLocaleString("id-ID")}</b> dari {data.durasi.total.toLocaleString("id-ID")} promotor
-                  </li>
-                </ol>
+              { label: "In Store Promotor", data: categoryByType["In Store Promotor"], accent: "text-amber-700", border: "border-amber-200" },
+              { label: "Out Store Promotor", data: categoryByType["Out Store Promotor"], accent: "text-fuchsia-700", border: "border-fuchsia-200" },
+            ].map(({ label, data, accent, border }) => (
+              <div key={label} className={`bg-white border ${border} rounded-lg overflow-hidden`}>
+                <div className={`text-xs font-bold px-3 py-2 ${accent} bg-gray-50 border-b ${border}`}>{label}</div>
+                <div className="divide-y divide-gray-100">
+                  {[
+                    { title: "Zona Waktu — Not Comply (<50% hari)", source: "Timestamp", value: data.zone.notComply, of: data.zone.total, unit: "promotor" },
+                    { title: "GPS Toko N/A", source: "Timestamp & Absensi", value: data.toko.naCount, of: data.toko.totalToko, unit: "toko" },
+                    { title: "Durasi Bermasalah", source: "Absensi", value: data.durasi.count, of: data.durasi.total, unit: "promotor" },
+                  ].map((row) => (
+                    <div key={row.title} className="px-3 py-2">
+                      <div className="text-[12px] text-gray-700">
+                        {row.title} <span className="text-[10px] text-gray-400">({row.source})</span>
+                      </div>
+                      <div className="text-sm text-gray-900 mt-0.5">
+                        <b className="text-base">{row.value.toLocaleString("id-ID")}</b> dari {row.of.toLocaleString("id-ID")} {row.unit}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -2261,10 +2260,10 @@ function DashboardPage(props) {
       </div>
 
       {/* ═══════ GRID A: bagian Timestamp (Journey) tiap tipe ═══════ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 mb-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 mb-5 md:divide-x md:divide-gray-200">
 
         {/* ── IN STORE PROMOTOR — Timestamp ── */}
-        <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0">
+        <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0 md:pr-5">
           <div className="text-base font-bold text-amber-700 mb-1">In Store Promotor</div>
           <div className="text-base font-bold text-gray-900 mb-0.5">Timestamp (Journey)</div>
           <div className="text-[11px] text-gray-500 mb-2">{inStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreTs?.total.toLocaleString("id-ID") ?? 0} aktivitas</div>
@@ -2281,7 +2280,7 @@ function DashboardPage(props) {
         </div>
 
         {/* ── OUT STORE PROMOTOR — Timestamp ── */}
-        <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0">
+        <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0 md:pl-5">
           <div className="text-base font-bold text-fuchsia-700 mb-1">Out Store Promotor</div>
           <div className="text-base font-bold text-gray-900 mb-0.5">Timestamp (Journey)</div>
           <div className="text-[11px] text-gray-500 mb-2">{outStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreTs?.total.toLocaleString("id-ID") ?? 0} aktivitas</div>
@@ -2297,7 +2296,7 @@ function DashboardPage(props) {
           ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
         </div>
 
-        <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0">
+        <div className="md:col-start-1 md:pr-5 md:row-start-2 mb-3 md:mb-0">
           <Panel title="Tren Anomali per Tanggal — In Store (Timestamp, by Activity ID)" height={160} exportData={inStoreTs?.byDate} exportFilename="instore-timestamp-tren-tanggal">
             {inStoreTs && (
               <ResponsiveContainer width="100%" height="100%">
@@ -2315,7 +2314,7 @@ function DashboardPage(props) {
             )}
           </Panel>
         </div>
-        <div className="md:col-start-2 md:row-start-2 mb-3 md:mb-0">
+        <div className="md:col-start-2 md:pl-5 md:row-start-2 mb-3 md:mb-0">
           <Panel title="Tren Anomali per Tanggal — Out Store (Timestamp, by Activity ID)" height={160} exportData={outStoreTs?.byDate} exportFilename="outstore-timestamp-tren-tanggal">
             {outStoreTs && (
               <ResponsiveContainer width="100%" height="100%">
@@ -2334,31 +2333,31 @@ function DashboardPage(props) {
           </Panel>
         </div>
 
-        <div className="md:col-start-1 md:row-start-3 mb-3 md:mb-0">
+        <div className="md:col-start-1 md:pr-5 md:row-start-3 mb-3 md:mb-0">
           <Leaderboard title="Top 5 Anomali — In Store (Timestamp)" data={inStoreTs?.topOffenders || []} tone="teal"
             onItemClick={(d) => openDetail(`In Store — Timestamp — ${d.name}`, (inStoreTs?.flagged || []).filter((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
             exportFilename="instore-timestamp-leaderboard" />
         </div>
-        <div className="md:col-start-2 md:row-start-3 mb-3 md:mb-0">
+        <div className="md:col-start-2 md:pl-5 md:row-start-3 mb-3 md:mb-0">
           <Leaderboard title="Top 5 Anomali — Out Store (Timestamp)" data={outStoreTs?.topOffenders || []} tone="indigo"
             onItemClick={(d) => openDetail(`Out Store — Timestamp — ${d.name}`, (outStoreTs?.flagged || []).filter((v) => v.employee_name === d.name), TIMESTAMP_COLUMNS)}
             exportFilename="outstore-timestamp-leaderboard" />
         </div>
 
-        <div className="md:col-start-1 md:row-start-4">
+        <div className="md:col-start-1 md:pr-5 md:row-start-4">
           <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag In Store — Timestamp ({inStoreTs?.flagged.length ?? 0}/{inStoreTs?.total ?? 0})</div>
           <FlaggedTable rows={inStoreTs?.flagged || []} columns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-detail-anomali" />
         </div>
-        <div className="md:col-start-2 md:row-start-4">
+        <div className="md:col-start-2 md:pl-5 md:row-start-4">
           <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Out Store — Timestamp ({outStoreTs?.flagged.length ?? 0}/{outStoreTs?.total ?? 0})</div>
           <FlaggedTable rows={outStoreTs?.flagged || []} columns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-detail-anomali" />
         </div>
       </div>
 
       {/* ═══════ GRID B: bagian Absensi (Attendance) tiap tipe ═══════ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 mt-10 pt-6 border-t-2 border-gray-200">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 mt-10 pt-6 border-t-2 border-gray-200 md:divide-x md:divide-gray-200">
 
-        <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0">
+        <div className="md:col-start-1 md:pr-5 md:row-start-1 mb-3 md:mb-0">
           <div className="text-base font-bold text-gray-900 mb-0.5">Absensi (Attendance)</div>
           <div className="text-[11px] text-gray-500 mb-2">{inStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {inStoreAb ? (
@@ -2372,7 +2371,7 @@ function DashboardPage(props) {
             </div>
           ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
         </div>
-        <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0">
+        <div className="md:col-start-2 md:pl-5 md:row-start-1 mb-3 md:mb-0">
           <div className="text-base font-bold text-gray-900 mb-0.5">Absensi (Attendance)</div>
           <div className="text-[11px] text-gray-500 mb-2">{outStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {outStoreAb ? (
@@ -2387,7 +2386,7 @@ function DashboardPage(props) {
           ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
         </div>
 
-        <div className="md:col-start-1 md:row-start-2 mb-3 md:mb-0">
+        <div className="md:col-start-1 md:pr-5 md:row-start-2 mb-3 md:mb-0">
           <Panel title="Tren Anomali per Tanggal — In Store (Absensi, by Activity ID)" height={160} exportData={inStoreAb?.byDate} exportFilename="instore-absensi-tren-tanggal">
             {inStoreAb && (
               <ResponsiveContainer width="100%" height="100%">
@@ -2405,7 +2404,7 @@ function DashboardPage(props) {
             )}
           </Panel>
         </div>
-        <div className="md:col-start-2 md:row-start-2 mb-3 md:mb-0">
+        <div className="md:col-start-2 md:pl-5 md:row-start-2 mb-3 md:mb-0">
           <Panel title="Tren Anomali per Tanggal — Out Store (Absensi, by Activity ID)" height={160} exportData={outStoreAb?.byDate} exportFilename="outstore-absensi-tren-tanggal">
             {outStoreAb && (
               <ResponsiveContainer width="100%" height="100%">
@@ -2424,22 +2423,22 @@ function DashboardPage(props) {
           </Panel>
         </div>
 
-        <div className="md:col-start-1 md:row-start-3 mb-3 md:mb-0">
+        <div className="md:col-start-1 md:pr-5 md:row-start-3 mb-3 md:mb-0">
           <Leaderboard title="Top 5 Anomali — In Store (Absensi)" data={inStoreAb?.topOffenders || []} tone="teal"
             onItemClick={(d) => openDetail(`In Store — Absensi — ${d.name}`, (inStoreAb?.flagged || []).filter((s) => s.employee_name === d.name), ABSENSI_COLUMNS)}
             exportFilename="instore-absensi-leaderboard" />
         </div>
-        <div className="md:col-start-2 md:row-start-3 mb-3 md:mb-0">
+        <div className="md:col-start-2 md:pl-5 md:row-start-3 mb-3 md:mb-0">
           <Leaderboard title="Top 5 Anomali — Out Store (Absensi)" data={outStoreAb?.topOffenders || []} tone="indigo"
             onItemClick={(d) => openDetail(`Out Store — Absensi — ${d.name}`, (outStoreAb?.flagged || []).filter((s) => s.employee_name === d.name), ABSENSI_COLUMNS)}
             exportFilename="outstore-absensi-leaderboard" />
         </div>
 
-        <div className="md:col-start-1 md:row-start-4">
+        <div className="md:col-start-1 md:pr-5 md:row-start-4">
           <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag In Store — Absensi ({inStoreAb?.flagged.length ?? 0}/{inStoreAb?.total ?? 0})</div>
           <FlaggedTable rows={inStoreAb?.flagged || []} columns={ABSENSI_COLUMNS} exportFilename="instore-absensi-detail-anomali" />
         </div>
-        <div className="md:col-start-2 md:row-start-4">
+        <div className="md:col-start-2 md:pl-5 md:row-start-4">
           <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Out Store — Absensi ({outStoreAb?.flagged.length ?? 0}/{outStoreAb?.total ?? 0})</div>
           <FlaggedTable rows={outStoreAb?.flagged || []} columns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-detail-anomali" />
         </div>
@@ -2637,7 +2636,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v100</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v101</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
