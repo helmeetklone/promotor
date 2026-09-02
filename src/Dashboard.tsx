@@ -1,4 +1,4 @@
-// Dashboard.tsx — v105
+// Dashboard.tsx — v106
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -2201,7 +2201,41 @@ function DashboardPage(props) {
         pageNum(s, 2, false);
       }
 
-      // ── Slide 3: Soal Angka Efisiensi & Efektivitas + Prinsip Fairness ──
+      // ── Slide 3 (BARU): Metodologi & Parameter yang Digunakan ──
+      {
+        const s = bgSlide(false);
+        kicker(s, "Sebelum Membaca Data", false);
+        title(s, "Metodologi & Parameter yang Digunakan", false);
+        s.addText("Ambang batas di bawah ini bisa diatur di dashboard — angka berikut adalah nilai yang aktif dipakai saat laporan ini dibuat.", {
+          x: 0.7, y: 1.75, w: 11.9, h: 0.4, fontFace: FONT_BODY, fontSize: 12, italic: true, color: MUTED, margin: 0,
+        });
+
+        const params = [
+          { t: "Ambang Jarak GPS", v: `${moveThresholdM} meter`, d: "Jarak maksimum wajar antara lokasi check-in dan koordinat toko sebelum ditandai \"lokasi jauh dari toko\"." },
+          { t: "Ambang Durasi Pendek", v: `< ${shortHr} jam`, d: "Durasi kerja di bawah angka ini ditandai sebagai \"terlalu singkat\"." },
+          { t: "Ambang Durasi Panjang", v: `> ${longHr} jam`, d: "Durasi kerja di atas angka ini ditandai sebagai \"terlalu panjang\"." },
+          { t: "Ambang Total Anomali", v: "≥ 3 kejadian", d: "Promotor ditandai perlu diperiksa hanya bila total kejadian anomali (gabungan 6 kategori & 2 sumber data) mencapai minimal 3 kali — bukan 1 kejadian tunggal." },
+        ];
+        const pW = 5.75, pGap = 0.4, pX0 = 0.7, pY0 = 2.3, pH = 1.35;
+        params.forEach((p, i) => {
+          const col = i % 2, row = Math.floor(i / 2);
+          const x = pX0 + col * (pW + pGap), y = pY0 + row * (pH + 0.25);
+          s.addShape("roundRect", { x, y, w: pW, h: pH, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+          s.addText(p.t, { x: x + 0.25, y: y + 0.12, w: pW - 0.5, h: 0.35, fontFace: FONT_BODY, fontSize: 11.5, bold: true, color: MUTED, margin: 0 });
+          s.addText(p.v, { x: x + 0.25, y: y + 0.42, w: pW - 0.5, h: 0.4, fontFace: FONT_HEAD, fontSize: 20, bold: true, color: NAVY, margin: 0 });
+          s.addText(p.d, { x: x + 0.25, y: y + 0.88, w: pW - 0.5, h: 0.42, fontFace: FONT_BODY, fontSize: 9.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.15 });
+        });
+
+        s.addShape("roundRect", { x: 0.7, y: 5.4, w: 11.9, h: 1.4, rectRadius: 0.08, fill: { color: "F0F4FF" }, line: { color: "C7D2FE", width: 1 } });
+        s.addText("Aturan Zona Waktu (khusus kategori \"Kunjungan Hanya Satu Waktu\")", { x: 1.0, y: 5.55, w: 11.3, h: 0.35, fontFace: FONT_BODY, fontSize: 11.5, bold: true, color: NAVY, margin: 0 });
+        s.addText("Check-in dikelompokkan ke 5 zona jam: Pagi (07–10), Siang (11–14), Sore (15–18), Malam 1 (19–22), Malam 2 (23–00). Comply per hari = tercapai minimal 3 zona BERTURUT-TURUT tanpa lompat (boleh mulai dari zona mana saja). Per orang: Comply bila ≥50% hari kerjanya comply, Not Comply bila di bawah itu.", {
+          x: 1.0, y: 5.88, w: 11.3, h: 0.85, fontFace: FONT_BODY, fontSize: 10.5, color: INK, margin: 0, lineSpacingMultiple: 1.25,
+        });
+        logo(s, false);
+        pageNum(s, 3, false);
+      }
+
+      // ── Slide 4: Soal Angka Efisiensi & Efektivitas + Prinsip Fairness ──
       {
         const s = bgSlide(true);
         s.addShape("ellipse", { x: 10.5, y: -1.6, w: 4.7, h: 4.7, fill: { color: "3B2CC4" }, line: { type: "none" } });
@@ -2234,10 +2268,10 @@ function DashboardPage(props) {
           s.addText(p, { x: 1.05, y: y - 0.12, w: 11.4, h: 0.7, fontFace: FONT_BODY, fontSize: 12.5, color: WHITE, margin: 0, lineSpacingMultiple: 1.25 });
         });
         logo(s, true);
-        pageNum(s, 3, true);
+        pageNum(s, 4, true);
       }
 
-      // ── Slide 4: Overview ──
+      // ── Slide 5: Overview ──
       {
         const s = bgSlide(false);
         kicker(s, "Ringkasan Data", false);
@@ -2268,10 +2302,10 @@ function DashboardPage(props) {
           s.addText(`•  ${c.l}`, { x: 1.0, y: 5.7 + i * 0.42, w: 11.3, h: 0.4, fontFace: FONT_BODY, fontSize: 12, color: INK, margin: 0 });
         });
         logo(s, false);
-        pageNum(s, 4, false);
+        pageNum(s, 5, false);
       }
 
-      // ── Slide 5: Efisiensi & Efektivitas ──
+      // ── Slide 6: Efisiensi & Efektivitas ──
       {
         const s = bgSlide(false);
         kicker(s, "Kedisiplinan Kerja", false);
@@ -2321,10 +2355,10 @@ function DashboardPage(props) {
           });
         });
         logo(s, false);
-        pageNum(s, 5, false);
+        pageNum(s, 6, false);
       }
 
-      // ── Slide 6: Insight otomatis ──
+      // ── Slide 7: Insight otomatis ──
       {
         const s = bgSlide(true);
         s.addShape("ellipse", { x: 10.5, y: -1.6, w: 4.7, h: 4.7, fill: { color: "3B2CC4" }, line: { type: "none" } });
@@ -2357,10 +2391,10 @@ function DashboardPage(props) {
           s.addText(txt, { x: 1.05, y: y - 0.1, w: 11.4, h: 0.6, fontFace: FONT_BODY, fontSize: 12.5, color: WHITE, margin: 0 });
         });
         logo(s, true);
-        pageNum(s, 6, true);
+        pageNum(s, 7, true);
       }
 
-      // ── Slide 7: Kesimpulan & Rekomendasi ──
+      // ── Slide 8: Kesimpulan & Rekomendasi ──
       {
         const s = bgSlide(false);
         kicker(s, "Langkah Selanjutnya", false);
@@ -2379,7 +2413,7 @@ function DashboardPage(props) {
           s.addText(r, { x: 1.65, y, w: 10.7, h: 0.95, fontFace: FONT_BODY, fontSize: 12.5, color: INK, valign: "middle", margin: 0, lineSpacingMultiple: 1.2 });
         });
         logo(s, false);
-        pageNum(s, 7, false);
+        pageNum(s, 8, false);
       }
 
       await pres.writeFile({ fileName: `Dashboard-Promotor-Ringkasan-${new Date().toISOString().slice(0, 10)}.pptx` });
@@ -2854,7 +2888,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v105</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v106</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
