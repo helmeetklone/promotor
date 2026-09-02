@@ -1,4 +1,4 @@
-// Dashboard.tsx — v104
+// Dashboard.tsx — v105
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1229,6 +1229,24 @@ function GlossaryModal({ open, onClose }) {
             <div>Kenapa 3, bukan 1: kalau cuma butuh 1 kejadian, hampir semua orang bakal kena di periode data yang panjang (1x kesenggol itu wajar). Threshold 3 lebih tajam — cuma nangkep pola berulang.</div>
           </Section>
 
+          <Section title="Proxy Efisiensi & Efektivitas Lapangan">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[12px] text-amber-800">
+              ⚠ Ini <b>BUKAN</b> efektivitas penjualan/pencapaian — data target &amp; realisasi belum tersedia. Ini cuma <i>proxy</i> (pendekatan sementara) dari pola kerja yang tercatat.
+            </div>
+            <Term name="Efektivitas (Tingkat Kehadiran)">
+              hari-kerja yang BENERAN tercatat aktivitas ÷ panjang periode data. Ngukur seberapa konsisten seseorang/kelompok punya jejak aktivitas selama periode data — bukan soal "hadir resmi" (itu urusan HR terpisah).
+            </Term>
+            <Term name="Efisiensi (Kepatuhan Pola Kerja)">
+              dari hari-kerja yang TERCATAT (bukan dari total periode), berapa persen yang polanya sesuai standar — Zona Waktu comply utk Timestamp, durasi wajar (bukan Durasi Bermasalah) utk Absensi.
+            </Term>
+            <div>Dihitung di 2 level, formula SAMA PERSIS, cuma pembaginya beda:</div>
+            <ul className="list-disc list-inside ml-2">
+              <li><b>Per tipe</b> (In Store/Out Store, gabungan semua orang di tipe itu) — muncul di kartu "Proxy Efisiensi &amp; Efektivitas Lapangan", bisa diklik buat lihat rata-rata per Region/Cluster.</li>
+              <li><b>Per individu</b> (1 orang) — muncul sebagai kolom "Efektivitas (Individu)" &amp; "Efisiensi (Individu)" di tabel detail. Angkanya SAMA di semua baris tanggal milik orang itu (dihitung sekali dari gabungan semua harinya, bukan dihitung ulang per hari — baris detail tanggal/zona/flag tetap data mentah per hari, cuma 2 kolom ini yang nempel angka ringkasan orangnya).</li>
+            </ul>
+            <div className="text-[12px] text-gray-500">Contoh: periode data 15 hari, seseorang tercatat 12 hari (9 di antaranya polanya sesuai standar) → Efektivitas = 12/15 = 80%, Efisiensi = 9/12 = 75%.</div>
+          </Section>
+
           <Section title="Selisih Cakupan: Timestamp & Absensi vs Total Promotor">
             <Term name="Selisih total Timestamp">jumlah karyawan yang HANYA ada di Absensi (tidak tercatat di Timestamp).</Term>
             <Term name="Selisih total Absensi">jumlah karyawan yang HANYA ada di Timestamp (tidak tercatat di Absensi).</Term>
@@ -1237,6 +1255,19 @@ function GlossaryModal({ open, onClose }) {
           <Section title="Struktur Wilayah">
             <Term name="Region">wilayah besar (contoh: BALI NUSRA). Dropdown filter cuma nampilin nilai HURUF BESAR SEMUA — varian typo/tidak konsisten otomatis disaring.</Term>
             <Term name="Cluster">sub-wilayah di dalam 1 Region.</Term>
+          </Section>
+
+          <Section title="Data Kepegawaian">
+            <Term name="Join Date & Masa Kerja">
+              diambil dari file DOP. Masa Kerja (dalam bulan) dihitung otomatis dari Join Date sampai tanggal record itu sendiri — muncul sebagai kolom di tabel detail.
+            </Term>
+            <Term name="Status Terminate/Resign/Non-Active">
+              karyawan dengan status ini di-exclude TOTAL dari seluruh analisis (bukan cuma disembunyiin dari tampilan) — nggak akan muncul di manapun di dashboard. Status yang kosong/nggak jelas TETAP diikutin (nggak otomatis dianggap terminate).
+            </Term>
+          </Section>
+
+          <Section title="Export ke PPT">
+            <div>Tombol di pojok kanan atas halaman dashboard — generate deck ringkasan 7 slide (metodologi, overview, Proxy Efisiensi &amp; Efektivitas, insight otomatis, kesimpulan &amp; rekomendasi) langsung dari data yang lagi di-load, pakai identitas brand kantor (logo &amp; warna resmi). Semua angka di deck dihitung otomatis dari data live — bukan diketik manual.</div>
           </Section>
 
           <Section title="Catatan">
@@ -2823,7 +2854,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v104</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v105</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
