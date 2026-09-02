@@ -1,4 +1,4 @@
-// Dashboard.tsx — v101
+// Dashboard.tsx — v102
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -437,6 +437,8 @@ const TIMESTAMP_COLUMNS = [
   { key: "endDate", label: "End Date (Resign)", render: (v) => v.endDate ? formatDateShort(v.endDate) : "-" },
   { key: "joinDate", label: "Join Date", render: (v) => v.joinDate ? formatDateShort(v.joinDate) : "-" },
   { key: "tenureMonths", label: "Masa Kerja (Bulan)", render: (v) => v.tenureMonths != null ? v.tenureMonths.toLocaleString("id-ID") : "-" },
+  { key: "individualAttendanceRate", label: "Efektivitas (Individu)", render: (v) => v.individualAttendanceRate != null ? v.individualAttendanceRate.toFixed(1).replace(".", ",") + "%" : "-" },
+  { key: "individualComplianceRate", label: "Efisiensi (Individu)", render: (v) => v.individualComplianceRate != null ? v.individualComplianceRate.toFixed(1).replace(".", ",") + "%" : "-" },
   { key: "target", label: "Target/Bulan", render: (v) => getTargetLabel(v.tenureMonths) },
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
@@ -456,6 +458,8 @@ const ABSENSI_COLUMNS = [
   { key: "endDate", label: "End Date (Resign)", render: (r) => r.endDate ? formatDateShort(r.endDate) : "-" },
   { key: "joinDate", label: "Join Date", render: (r) => r.joinDate ? formatDateShort(r.joinDate) : "-" },
   { key: "tenureMonths", label: "Masa Kerja (Bulan)", render: (r) => r.tenureMonths != null ? r.tenureMonths.toLocaleString("id-ID") : "-" },
+  { key: "individualAttendanceRate", label: "Efektivitas (Individu)", render: (r) => r.individualAttendanceRate != null ? r.individualAttendanceRate.toFixed(1).replace(".", ",") + "%" : "-" },
+  { key: "individualComplianceRate", label: "Efisiensi (Individu)", render: (r) => r.individualComplianceRate != null ? r.individualComplianceRate.toFixed(1).replace(".", ",") + "%" : "-" },
   { key: "target", label: "Target/Bulan", render: (r) => getTargetLabel(r.tenureMonths) },
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
   { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
@@ -1864,6 +1868,27 @@ function computeTypeView(result, promotorType, isTimestamp) {
   const periodDays = sortedDates.length ? daysBetween(sortedDates[0], sortedDates[sortedDates.length - 1]) : null;
   const attendanceRate = (uniqueCoverage && periodDays) ? (total / (uniqueCoverage * periodDays)) * 100 : null;
 
+  // ── Efektivitas & Efisiensi PER INDIVIDU — rumus PERSIS SAMA kayak versi
+  // per-tipe di atas, cuma dihitung buat 1 orang (bukan digabung se-tipe):
+  //   Efektivitas = hari-kerja tercatat orang itu / panjang periode data
+  //   Efisiensi   = % hari/shift dia yang sesuai standar (zona/durasi)
+  // Nempel langsung ke tiap baris (mutate in-place, biar `flagged` yang
+  // dibangun dari reference equality ke `all` tetap valid).
+  const perEmployee = new Map();
+  all.forEach((r) => {
+    if (!r.employee_id) return;
+    const e = perEmployee.get(r.employee_id) || { days: 0, compliantDays: 0 };
+    e.days++;
+    const isCompliant = isTimestamp ? !r.zoneNotCompliant : !r.durationIssue;
+    if (isCompliant) e.compliantDays++;
+    perEmployee.set(r.employee_id, e);
+  });
+  all.forEach((r) => {
+    const e = r.employee_id ? perEmployee.get(r.employee_id) : null;
+    r.individualAttendanceRate = (e && periodDays) ? (e.days / periodDays) * 100 : null;
+    r.individualComplianceRate = (e && e.days) ? (e.compliantDays / e.days) * 100 : null;
+  });
+
   if (isTimestamp) {
     const zoneNotCompliantCount = all.filter((r) => r.zoneNotCompliant).length;
     const complianceRate = total ? ((total - zoneNotCompliantCount) / total) * 100 : null;
@@ -2636,7 +2661,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v101</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v102</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
