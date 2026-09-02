@@ -1,4 +1,4 @@
-// Dashboard.tsx — v103
+// Dashboard.tsx — v104
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1419,32 +1419,44 @@ function EfficiencyDrillModal({ open, title, personRows, onClose }) {
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="overflow-y-auto px-2 py-2">
+        <div className="overflow-y-auto px-3 py-3">
           {grouped.length === 0 && <div className="text-sm text-gray-400 text-center py-8">Tidak ada data</div>}
           {grouped.map((g) => (
-            <div key={g.region} className="mb-1">
+            <div key={g.region} className="mb-2 border border-gray-200 rounded-lg overflow-hidden">
               <button
                 onClick={() => setExpandedRegion(expandedRegion === g.region ? null : g.region)}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-50 text-left"
+                className="w-full text-left hover:bg-gray-50"
               >
-                <span className="text-sm font-medium text-gray-800">{g.region}</span>
-                <span className="flex items-center gap-3">
-                  <span className="text-xs text-gray-600">Efektivitas <b className="text-indigo-700">{fmtPct(g.efektivitas)}</b></span>
-                  <span className="text-xs text-gray-600">Efisiensi <b className="text-teal-700">{fmtPct(g.efisiensi)}</b></span>
-                  <span className="text-xs text-gray-500">{g.count.toLocaleString("id-ID")} promotor</span>
-                  {expandedRegion === g.region ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-                </span>
+                <div className="flex items-center justify-between px-3 pt-2.5">
+                  <span className="text-sm font-semibold text-gray-900">{g.region}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">{g.count.toLocaleString("id-ID")} promotor</span>
+                    {expandedRegion === g.region ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 px-3 py-2.5">
+                  <div className="bg-indigo-50 rounded-md px-2.5 py-1.5">
+                    <div className="text-[10px] text-indigo-500 font-medium">Efektivitas</div>
+                    <div className="text-base font-bold text-indigo-700">{fmtPct(g.efektivitas)}</div>
+                  </div>
+                  <div className="bg-teal-50 rounded-md px-2.5 py-1.5">
+                    <div className="text-[10px] text-teal-600 font-medium">Efisiensi</div>
+                    <div className="text-base font-bold text-teal-700">{fmtPct(g.efisiensi)}</div>
+                  </div>
+                </div>
               </button>
               {expandedRegion === g.region && (
-                <div className="pl-4 pb-1">
+                <div className="border-t border-gray-100 divide-y divide-gray-100 bg-gray-50/50">
                   {g.clusters.map((c) => (
-                    <div key={c.cluster} className="w-full flex items-center justify-between px-3 py-2 rounded-lg">
-                      <span className="text-[13px] text-gray-600">{c.cluster}</span>
-                      <span className="flex items-center gap-3">
-                        <span className="text-[11px] text-gray-500">Efektivitas <b className="text-indigo-700">{fmtPct(c.efektivitas)}</b></span>
-                        <span className="text-[11px] text-gray-500">Efisiensi <b className="text-teal-700">{fmtPct(c.efisiensi)}</b></span>
+                    <div key={c.cluster} className="px-3 py-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[13px] font-medium text-gray-700">{c.cluster}</span>
                         <span className="text-[11px] text-gray-400">{c.count.toLocaleString("id-ID")} promotor</span>
-                      </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-[12px] text-gray-500">
+                        <span>Efektivitas <b className="text-indigo-700">{fmtPct(c.efektivitas)}</b></span>
+                        <span>Efisiensi <b className="text-teal-700">{fmtPct(c.efisiensi)}</b></span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2388,34 +2400,42 @@ function DashboardPage(props) {
         <div className="text-[11px] uppercase tracking-wide text-indigo-700 font-semibold mb-1">Proxy Efisiensi &amp; Efektivitas Lapangan</div>
         <div className="text-[11px] text-gray-500 mb-4">
           Ini BUKAN efektivitas penjualan/pencapaian (data pencapaian belum tersedia) — ini indikator kedisiplinan dari pola kerja yang tercatat.
-          <b> Efektivitas</b> = konsistensi hadir; <b>Efisiensi</b> = kepatuhan pola kerja (zona waktu utk Timestamp, durasi wajar utk Absensi).
           Klik kartu di bawah buat lihat rinciannya per Region.
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-indigo-200/50">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { type: "In Store Promotor", label: "In Store Promotor", accent: "amber", ts: inStoreTs, ab: inStoreAb, pad: "md:pr-6" },
-            { type: "Out Store Promotor", label: "Out Store Promotor", accent: "fuchsia", ts: outStoreTs, ab: outStoreAb, pad: "md:pl-6" },
-          ].map(({ type, label, ts, ab, pad }) => (
-            <button
-              key={label}
-              onClick={() => setEfficiencyDrill({ title: `Efektivitas & Efisiensi — ${label} per Region`, personRows: buildPersonMetrics(ts?.all, ab?.all) })}
-              className={`${pad} text-left rounded-lg hover:bg-white/60 transition-colors -m-1 p-1`}
-            >
-              <div className="text-lg font-bold text-gray-900 mb-3">{label}</div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-1">Efektivitas (Tingkat Kehadiran)</div>
-                  <div className="text-base text-gray-700">Timestamp: <b className="text-2xl text-gray-900">{ts?.attendanceRate != null ? ts.attendanceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
-                  <div className="text-base text-gray-700">Absensi: <b className="text-2xl text-gray-900">{ab?.attendanceRate != null ? ab.attendanceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+            { label: "In Store Promotor", accent: "amber", ts: inStoreTs, ab: inStoreAb },
+            { label: "Out Store Promotor", accent: "fuchsia", ts: outStoreTs, ab: outStoreAb },
+          ].map(({ label, accent, ts, ab }) => {
+            const efektivitas = (ts?.attendanceRate != null && ab?.attendanceRate != null) ? (ts.attendanceRate + ab.attendanceRate) / 2 : null;
+            const efisiensi = (ts?.complianceRate != null && ab?.complianceRate != null) ? (ts.complianceRate + ab.complianceRate) / 2 : null;
+            const fmt = (v) => (v == null ? "-" : v.toFixed(1).replace(".", ",") + "%");
+            return (
+              <button
+                key={label}
+                onClick={() => setEfficiencyDrill({ title: `Efektivitas & Efisiensi — ${label} per Region`, personRows: buildPersonMetrics(ts?.all, ab?.all) })}
+                className="text-left bg-white border border-gray-200 rounded-lg p-4 hover:border-indigo-300 hover:shadow-sm transition-all"
+              >
+                <div className={`text-base font-bold mb-3 ${accent === "amber" ? "text-amber-700" : "text-fuchsia-700"}`}>{label}</div>
+
+                <div className="mb-3">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-semibold text-gray-900">Efektivitas</span>
+                    <span className="text-2xl font-bold text-indigo-700">{fmt(efektivitas)}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">Rincian: {fmt(ts?.attendanceRate)} dari Timestamp, {fmt(ab?.attendanceRate)} dari Absensi</div>
                 </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-1">Efisiensi (Kepatuhan Pola Kerja)</div>
-                  <div className="text-base text-gray-700">Timestamp (zona): <b className="text-2xl text-gray-900">{ts?.complianceRate != null ? ts.complianceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
-                  <div className="text-base text-gray-700">Absensi (durasi): <b className="text-2xl text-gray-900">{ab?.complianceRate != null ? ab.complianceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+
+                <div className="pt-3 border-t border-gray-100">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-semibold text-gray-900">Efisiensi</span>
+                    <span className="text-2xl font-bold text-teal-700">{fmt(efisiensi)}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">Rincian: {fmt(ts?.complianceRate)} pola kunjungan sesuai, {fmt(ab?.complianceRate)} durasi wajar</div>
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -2803,7 +2823,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v103</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v104</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
