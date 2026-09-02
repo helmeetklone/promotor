@@ -1,4 +1,4 @@
-// Dashboard.tsx — v102
+// Dashboard.tsx — v103
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1328,6 +1328,135 @@ function RegionDrillModal({ open, title, rows, onClose, onDrillToCluster }) {
   );
 }
 
+// Gabungin metrik individu (Efektivitas/Efisiensi) per orang dari sumber
+// Timestamp & Absensi jadi 1 angka per orang (rata-rata dari sumber yang ada)
+// — persis rumus yang sama dipakai di section Proxy tingkat tipe.
+function buildPersonMetrics(tsRows, abRows) {
+  const map = new Map();
+  (tsRows || []).forEach((r) => {
+    if (!r.employee_id) return;
+    if (!map.has(r.employee_id)) map.set(r.employee_id, {});
+    const e = map.get(r.employee_id);
+    if (!e.region) e.region = r.region;
+    if (!e.cluster) e.cluster = r.cluster;
+    e.tsAtt = r.individualAttendanceRate;
+    e.tsComp = r.individualComplianceRate;
+  });
+  (abRows || []).forEach((r) => {
+    if (!r.employee_id) return;
+    if (!map.has(r.employee_id)) map.set(r.employee_id, {});
+    const e = map.get(r.employee_id);
+    if (!e.region) e.region = r.region;
+    if (!e.cluster) e.cluster = r.cluster;
+    e.abAtt = r.individualAttendanceRate;
+    e.abComp = r.individualComplianceRate;
+  });
+  const result = [];
+  map.forEach((e, id) => {
+    const attVals = [e.tsAtt, e.abAtt].filter((v) => v != null);
+    const compVals = [e.tsComp, e.abComp].filter((v) => v != null);
+    result.push({
+      employee_id: id,
+      region: e.region || "-",
+      cluster: e.cluster || "-",
+      efektivitas: attVals.length ? attVals.reduce((a, b) => a + b, 0) / attVals.length : null,
+      efisiensi: compVals.length ? compVals.reduce((a, b) => a + b, 0) / compVals.length : null,
+    });
+  });
+  return result;
+}
+
+function EfficiencyDrillModal({ open, title, personRows, onClose }) {
+  const [expandedRegion, setExpandedRegion] = useState(null);
+
+  const avg = (arr, key) => {
+    const vals = arr.map((p) => p[key]).filter((v) => v != null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  const fmtPct = (v) => (v == null ? "-" : v.toFixed(1).replace(".", ",") + "%");
+
+  const grouped = useMemo(() => {
+    if (!personRows) return [];
+    const byRegion = new Map();
+    personRows.forEach((p) => {
+      const region = p.region || "-";
+      const cluster = p.cluster || "-";
+      if (!byRegion.has(region)) byRegion.set(region, { people: [], clusters: new Map() });
+      const entry = byRegion.get(region);
+      entry.people.push(p);
+      if (!entry.clusters.has(cluster)) entry.clusters.set(cluster, []);
+      entry.clusters.get(cluster).push(p);
+    });
+    return [...byRegion.entries()]
+      .map(([region, data]) => ({
+        region,
+        count: data.people.length,
+        efektivitas: avg(data.people, "efektivitas"),
+        efisiensi: avg(data.people, "efisiensi"),
+        clusters: [...data.clusters.entries()]
+          .map(([cluster, arr]) => ({
+            cluster, count: arr.length,
+            efektivitas: avg(arr, "efektivitas"),
+            efisiensi: avg(arr, "efisiensi"),
+          }))
+          .sort((a, b) => b.count - a.count),
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [personRows]);
+
+  React.useEffect(() => { setExpandedRegion(null); }, [open, personRows]);
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white border border-gray-300 rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div className="text-sm font-semibold text-gray-900">{title}</div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto px-2 py-2">
+          {grouped.length === 0 && <div className="text-sm text-gray-400 text-center py-8">Tidak ada data</div>}
+          {grouped.map((g) => (
+            <div key={g.region} className="mb-1">
+              <button
+                onClick={() => setExpandedRegion(expandedRegion === g.region ? null : g.region)}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-50 text-left"
+              >
+                <span className="text-sm font-medium text-gray-800">{g.region}</span>
+                <span className="flex items-center gap-3">
+                  <span className="text-xs text-gray-600">Efektivitas <b className="text-indigo-700">{fmtPct(g.efektivitas)}</b></span>
+                  <span className="text-xs text-gray-600">Efisiensi <b className="text-teal-700">{fmtPct(g.efisiensi)}</b></span>
+                  <span className="text-xs text-gray-500">{g.count.toLocaleString("id-ID")} promotor</span>
+                  {expandedRegion === g.region ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                </span>
+              </button>
+              {expandedRegion === g.region && (
+                <div className="pl-4 pb-1">
+                  {g.clusters.map((c) => (
+                    <div key={c.cluster} className="w-full flex items-center justify-between px-3 py-2 rounded-lg">
+                      <span className="text-[13px] text-gray-600">{c.cluster}</span>
+                      <span className="flex items-center gap-3">
+                        <span className="text-[11px] text-gray-500">Efektivitas <b className="text-indigo-700">{fmtPct(c.efektivitas)}</b></span>
+                        <span className="text-[11px] text-gray-500">Efisiensi <b className="text-teal-700">{fmtPct(c.efisiensi)}</b></span>
+                        <span className="text-[11px] text-gray-400">{c.count.toLocaleString("id-ID")} promotor</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PAGE_SIZE = 10;
 
 function DetailModal({ detail, onClose }) {
@@ -1943,6 +2072,7 @@ function DashboardPage(props) {
   const outStoreAb = useMemo(() => computeTypeView(absensiResult, "Out Store Promotor", false), [absensiResult]);
 
   const [pptStatus, setPptStatus] = useState(""); // "" | "generating" | "done" | "error"
+  const [efficiencyDrill, setEfficiencyDrill] = useState(null); // { title, personRows } | null
 
   const generatePPT = useCallback(async () => {
     setPptStatus("generating");
@@ -2259,30 +2389,42 @@ function DashboardPage(props) {
         <div className="text-[11px] text-gray-500 mb-4">
           Ini BUKAN efektivitas penjualan/pencapaian (data pencapaian belum tersedia) — ini indikator kedisiplinan dari pola kerja yang tercatat.
           <b> Efektivitas</b> = konsistensi hadir; <b>Efisiensi</b> = kepatuhan pola kerja (zona waktu utk Timestamp, durasi wajar utk Absensi).
+          Klik kartu di bawah buat lihat rinciannya per Region.
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-indigo-200/50">
           {[
             { type: "In Store Promotor", label: "In Store Promotor", accent: "amber", ts: inStoreTs, ab: inStoreAb, pad: "md:pr-6" },
             { type: "Out Store Promotor", label: "Out Store Promotor", accent: "fuchsia", ts: outStoreTs, ab: outStoreAb, pad: "md:pl-6" },
-          ].map(({ label, ts, ab, pad }) => (
-            <div key={label} className={pad}>
-              <div className="text-base font-bold text-gray-900 mb-3">{label}</div>
+          ].map(({ type, label, ts, ab, pad }) => (
+            <button
+              key={label}
+              onClick={() => setEfficiencyDrill({ title: `Efektivitas & Efisiensi — ${label} per Region`, personRows: buildPersonMetrics(ts?.all, ab?.all) })}
+              className={`${pad} text-left rounded-lg hover:bg-white/60 transition-colors -m-1 p-1`}
+            >
+              <div className="text-lg font-bold text-gray-900 mb-3">{label}</div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Efektivitas (Tingkat Kehadiran)</div>
-                  <div className="text-xs text-gray-600">Timestamp: <b className="text-gray-900">{ts?.attendanceRate != null ? ts.attendanceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
-                  <div className="text-xs text-gray-600">Absensi: <b className="text-gray-900">{ab?.attendanceRate != null ? ab.attendanceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+                  <div className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-1">Efektivitas (Tingkat Kehadiran)</div>
+                  <div className="text-base text-gray-700">Timestamp: <b className="text-2xl text-gray-900">{ts?.attendanceRate != null ? ts.attendanceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+                  <div className="text-base text-gray-700">Absensi: <b className="text-2xl text-gray-900">{ab?.attendanceRate != null ? ab.attendanceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Efisiensi (Kepatuhan Pola Kerja)</div>
-                  <div className="text-xs text-gray-600">Timestamp (zona): <b className="text-gray-900">{ts?.complianceRate != null ? ts.complianceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
-                  <div className="text-xs text-gray-600">Absensi (durasi): <b className="text-gray-900">{ab?.complianceRate != null ? ab.complianceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+                  <div className="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-1">Efisiensi (Kepatuhan Pola Kerja)</div>
+                  <div className="text-base text-gray-700">Timestamp (zona): <b className="text-2xl text-gray-900">{ts?.complianceRate != null ? ts.complianceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
+                  <div className="text-base text-gray-700">Absensi (durasi): <b className="text-2xl text-gray-900">{ab?.complianceRate != null ? ab.complianceRate.toFixed(1).replace(".", ",") + "%" : "-"}</b></div>
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
+
+      <EfficiencyDrillModal
+        open={!!efficiencyDrill}
+        title={efficiencyDrill?.title}
+        personRows={efficiencyDrill?.personRows}
+        onClose={() => setEfficiencyDrill(null)}
+      />
 
       {/* ═══════ GRID A: bagian Timestamp (Journey) tiap tipe ═══════ */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 mb-5 md:divide-x md:divide-gray-200">
@@ -2661,7 +2803,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v102</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v103</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
