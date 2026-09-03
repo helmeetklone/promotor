@@ -1,4 +1,4 @@
-// Dashboard.tsx — v110
+// Dashboard.tsx — v111
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -2392,37 +2392,48 @@ function DashboardPage(props) {
         const s = bgSlide(false);
         kicker(s, "Kedisiplinan Kerja", false);
         title(s, `Efektivitas & Efisiensi Kerja Lapangan — ${label}`, false);
-        s.addShape("roundRect", { x: 0.7, y: 2.15, w: 11.9, h: 0.6, rectRadius: 0.06, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
+        s.addShape("roundRect", { x: 0.7, y: 2.15, w: 11.9, h: 0.55, rectRadius: 0.06, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
         s.addText([
           { text: "Catatan:  ", options: { bold: true, color: AMBER } },
           { text: "angka berikut bukan angka penjualan, melainkan indikasi kedisiplinan dari data yang tersedia.", options: { color: INK } },
-        ], { x: 1.0, y: 2.15, w: 11.3, h: 0.6, fontFace: FONT_BODY, fontSize: 12, valign: "middle", margin: 0 });
+        ], { x: 1.0, y: 2.15, w: 11.3, h: 0.55, fontFace: FONT_BODY, fontSize: 11.5, valign: "middle", margin: 0 });
 
         const efektivitas = (ts?.attendanceRate != null && ab?.attendanceRate != null) ? (ts.attendanceRate + ab.attendanceRate) / 2 : null;
         const efisiensi = (ts?.complianceRate != null && ab?.complianceRate != null) ? (ts.complianceRate + ab.complianceRate) / 2 : null;
 
-        const bW = 5.6, bX0 = 0.7, bGap = 0.5, bY = 2.7, bH = 3.6;
-        // Blok Efektivitas
+        // 2 blok angka besar (Efektivitas & Efisiensi) — dipersempit tingginya
+        // biar ada ruang buat kotak pill breakdown di bawahnya.
+        const bW = 5.6, bX0 = 0.7, bGap = 0.5, bY = 2.85, bH = 1.65;
         s.addShape("roundRect", { x: bX0, y: bY, w: bW, h: bH, rectRadius: 0.1, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
-        s.addText("Efektivitas", { x: bX0 + 0.4, y: bY + 0.35, w: bW - 0.8, h: 0.5, fontFace: FONT_HEAD, fontSize: 17, bold: true, color: INK, margin: 0 });
-        s.addText(`${fmt(efektivitas)}%`, { x: bX0 + 0.4, y: bY + 0.85, w: bW - 0.8, h: 1.1, fontFace: FONT_HEAD, fontSize: 48, bold: true, color: accentColor, margin: 0 });
+        s.addText("Efektivitas", { x: bX0 + 0.4, y: bY + 0.2, w: bW - 0.8, h: 0.4, fontFace: FONT_HEAD, fontSize: 15, bold: true, color: INK, margin: 0 });
+        s.addText(`${fmt(efektivitas)}%`, { x: bX0 + 0.4, y: bY + 0.6, w: 2.8, h: 0.9, fontFace: FONT_HEAD, fontSize: 40, bold: true, color: accentColor, margin: 0, valign: "middle" });
         s.addText("Konsistensi promotor menunjukkan aktivitas, dibandingkan hari kerja yang seharusnya.", {
-          x: bX0 + 0.4, y: bY + 2.05, w: bW - 0.8, h: 0.7, fontFace: FONT_BODY, fontSize: 11.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.25,
-        });
-        s.addText(`Rincian: ${fmt(ts?.attendanceRate)}% dari data kunjungan harian, ${fmt(ab?.attendanceRate)}% dari data absensi.`, {
-          x: bX0 + 0.4, y: bY + 2.85, w: bW - 0.8, h: 0.6, fontFace: FONT_BODY, fontSize: 10.5, italic: true, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
+          x: bX0 + 2.9, y: bY + 0.65, w: bW - 3.3, h: 0.9, fontFace: FONT_BODY, fontSize: 9.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2, valign: "middle",
         });
 
-        // Blok Efisiensi
         const bX1 = bX0 + bW + bGap;
         s.addShape("roundRect", { x: bX1, y: bY, w: bW, h: bH, rectRadius: 0.1, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
-        s.addText("Efisiensi", { x: bX1 + 0.4, y: bY + 0.35, w: bW - 0.8, h: 0.5, fontFace: FONT_HEAD, fontSize: 17, bold: true, color: INK, margin: 0 });
-        s.addText(`${fmt(efisiensi)}%`, { x: bX1 + 0.4, y: bY + 0.85, w: bW - 0.8, h: 1.1, fontFace: FONT_HEAD, fontSize: 48, bold: true, color: accentColor, margin: 0 });
+        s.addText("Efisiensi", { x: bX1 + 0.4, y: bY + 0.2, w: bW - 0.8, h: 0.4, fontFace: FONT_HEAD, fontSize: 15, bold: true, color: INK, margin: 0 });
+        s.addText(`${fmt(efisiensi)}%`, { x: bX1 + 0.4, y: bY + 0.6, w: 2.8, h: 0.9, fontFace: FONT_HEAD, fontSize: 40, bold: true, color: accentColor, margin: 0, valign: "middle" });
         s.addText("Kesesuaian pola kerja dengan standar yang ditetapkan.", {
-          x: bX1 + 0.4, y: bY + 2.05, w: bW - 0.8, h: 0.7, fontFace: FONT_BODY, fontSize: 11.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.25,
+          x: bX1 + 2.9, y: bY + 0.65, w: bW - 3.3, h: 0.9, fontFace: FONT_BODY, fontSize: 9.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2, valign: "middle",
         });
-        s.addText(`Rincian: ${fmt(ts?.complianceRate)}% pola kunjungan sesuai standar, ${fmt(ab?.complianceRate)}% durasi kerja wajar.`, {
-          x: bX1 + 0.4, y: bY + 2.85, w: bW - 0.8, h: 0.6, fontFace: FONT_BODY, fontSize: 10.5, italic: true, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
+
+        // 4 kotak pill (merah) — rincian sumber data di balik ke-2 angka di atas,
+        // gaya sama persis kayak slide "Data Overview".
+        const pills = [
+          { t: "Kehadiran (Timestamp)", v: ts?.attendanceRate },
+          { t: "Kehadiran (Absensi)", v: ab?.attendanceRate },
+          { t: "Pola Kunjungan Sesuai", v: ts?.complianceRate },
+          { t: "Durasi Kerja Wajar", v: ab?.complianceRate },
+        ];
+        const pW = 2.75, pGap = 0.2, pX0 = 0.7, pY = 4.75, pH = 1.75;
+        pills.forEach((p, i) => {
+          const x = pX0 + i * (pW + pGap);
+          s.addShape("roundRect", { x, y: pY, w: pW, h: pH, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+          s.addShape("roundRect", { x: x + 0.12, y: pY + 0.15, w: pW - 0.24, h: 0.75, rectRadius: 0.25, fill: { color: "B91C1C" }, line: { type: "none" } });
+          s.addText(p.t, { x: x + 0.15, y: pY + 0.15, w: pW - 0.3, h: 0.75, fontFace: FONT_HEAD, fontSize: 10.5, bold: true, color: WHITE, align: "center", valign: "middle", margin: 0, lineSpacingMultiple: 1.05 });
+          s.addText(`${fmt(p.v)}%`, { x: x + 0.15, y: pY + 1.0, w: pW - 0.3, h: 0.6, fontFace: FONT_HEAD, fontSize: 22, bold: true, color: NAVY, align: "center", margin: 0 });
         });
 
         logo(s, false);
@@ -2962,7 +2973,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v110</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v111</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
