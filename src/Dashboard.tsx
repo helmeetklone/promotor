@@ -1,4 +1,4 @@
-// Dashboard.tsx — v111
+// Dashboard.tsx — v112
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -989,16 +989,11 @@ function computeCategoryDetailByType(timestampResult, absensiResult, promotorTyp
   const abTotalPromotor = new Set(abAllType.map((s) => s.employee_id).filter(Boolean)).size;
   const combinedTotalPromotor = new Set([...tsAllType, ...abAllType].map((r) => r.employee_id).filter(Boolean)).size;
 
-  const zoneNotComplyIdsType = new Set();
-  const zonePattern = new Map();
-  tsAllType.forEach((v) => {
-    if (!v.employee_id) return;
-    const e = zonePattern.get(v.employee_id) || { totalDays: 0, complyDays: 0 };
-    e.totalDays++;
-    if (!v.zoneNotCompliant) e.complyDays++;
-    zonePattern.set(v.employee_id, e);
-  });
-  zonePattern.forEach((e, id) => { if ((e.totalDays ? e.complyDays / e.totalDays : 0) < 0.5) zoneNotComplyIdsType.add(id); });
+  // Zona Waktu: "kena" = minimal 1 hari ke-flag zoneNotCompliant — SAMA kayak
+  // definisi di tabel "Total Anomali per Kategori" (buildAnomaliDetail), biar
+  // konsisten. Sebelumnya di sini pakai aturan mayoritas (>=50% hari), beda
+  // definisi sama tabel dashboard — udah disamain per revisi user.
+  const zoneAffectedIds = new Set(tsAllType.filter((v) => v.zoneNotCompliant).map((v) => v.employee_id).filter(Boolean));
   const zoneActivityCount = tsAllType.filter((v) => v.zoneNotCompliant).length;
 
   const gpsNARows = [...tsAllType.filter((v) => v.noOutletData), ...abAllType.filter((s) => s.noOutletData)];
@@ -1008,7 +1003,7 @@ function computeCategoryDetailByType(timestampResult, absensiResult, promotorTyp
   const durasiPromotorCount = new Set(durasiRows.map((s) => s.employee_id).filter(Boolean)).size;
 
   return {
-    zona: { promotorCount: zoneNotComplyIdsType.size, activityCount: zoneActivityCount, pct: tsTotalPromotor ? (zoneNotComplyIdsType.size / tsTotalPromotor) * 100 : null },
+    zona: { promotorCount: zoneAffectedIds.size, activityCount: zoneActivityCount, pct: tsTotalPromotor ? (zoneAffectedIds.size / tsTotalPromotor) * 100 : null },
     gpsNA: { promotorCount: gpsNAPromotorCount, activityCount: gpsNARows.length, pct: combinedTotalPromotor ? (gpsNAPromotorCount / combinedTotalPromotor) * 100 : null },
     durasi: { promotorCount: durasiPromotorCount, activityCount: durasiRows.length, pct: abTotalPromotor ? (durasiPromotorCount / abTotalPromotor) * 100 : null },
   };
@@ -2973,7 +2968,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v111</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v112</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
