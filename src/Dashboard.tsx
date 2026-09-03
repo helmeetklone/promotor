@@ -1,4 +1,4 @@
-// Dashboard.tsx — v109
+// Dashboard.tsx — v110
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -979,6 +979,41 @@ function computeExportSummary(timestampResult, absensiResult) {
   };
 }
 
+// Versi berdiri sendiri (sama pola kayak computeExportSummary di atas) — nggak
+// nyender ke computed/DashboardPage sama sekali, biar nggak ada masalah scope.
+// Dipakai khusus buat slide PPT "Data Overview (In/Out Store Promotor)".
+function computeCategoryDetailByType(timestampResult, absensiResult, promotorType) {
+  const tsAllType = (timestampResult?.all || []).filter((v) => v.promotorType === promotorType);
+  const abAllType = (absensiResult?.all || []).filter((s) => s.promotorType === promotorType);
+  const tsTotalPromotor = new Set(tsAllType.map((v) => v.employee_id).filter(Boolean)).size;
+  const abTotalPromotor = new Set(abAllType.map((s) => s.employee_id).filter(Boolean)).size;
+  const combinedTotalPromotor = new Set([...tsAllType, ...abAllType].map((r) => r.employee_id).filter(Boolean)).size;
+
+  const zoneNotComplyIdsType = new Set();
+  const zonePattern = new Map();
+  tsAllType.forEach((v) => {
+    if (!v.employee_id) return;
+    const e = zonePattern.get(v.employee_id) || { totalDays: 0, complyDays: 0 };
+    e.totalDays++;
+    if (!v.zoneNotCompliant) e.complyDays++;
+    zonePattern.set(v.employee_id, e);
+  });
+  zonePattern.forEach((e, id) => { if ((e.totalDays ? e.complyDays / e.totalDays : 0) < 0.5) zoneNotComplyIdsType.add(id); });
+  const zoneActivityCount = tsAllType.filter((v) => v.zoneNotCompliant).length;
+
+  const gpsNARows = [...tsAllType.filter((v) => v.noOutletData), ...abAllType.filter((s) => s.noOutletData)];
+  const gpsNAPromotorCount = new Set(gpsNARows.map((r) => r.employee_id).filter(Boolean)).size;
+
+  const durasiRows = abAllType.filter((s) => s.durationIssue);
+  const durasiPromotorCount = new Set(durasiRows.map((s) => s.employee_id).filter(Boolean)).size;
+
+  return {
+    zona: { promotorCount: zoneNotComplyIdsType.size, activityCount: zoneActivityCount, pct: tsTotalPromotor ? (zoneNotComplyIdsType.size / tsTotalPromotor) * 100 : null },
+    gpsNA: { promotorCount: gpsNAPromotorCount, activityCount: gpsNARows.length, pct: combinedTotalPromotor ? (gpsNAPromotorCount / combinedTotalPromotor) * 100 : null },
+    durasi: { promotorCount: durasiPromotorCount, activityCount: durasiRows.length, pct: abTotalPromotor ? (durasiPromotorCount / abTotalPromotor) * 100 : null },
+  };
+}
+
 function InsightsCard({ insights }) {
   if (!insights || insights.length === 0) return null;
   return (
@@ -1824,42 +1859,6 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       "Out Store Promotor": { zone: zoneNotComplyByType("Out Store Promotor"), toko: tokoNAByType("Out Store Promotor"), durasi: durasiByType("Out Store Promotor") },
     };
 
-    // ── Versi "#Promotor / #Activity / %" per kategori per tipe — dipakai khusus
-    // di slide PPT "Data Overview (In/Out Store Promotor)" & Efektivitas/Efisiensi
-    // per tipe. Beda dari categoryByType di atas: di sini SEMUA kategori (termasuk
-    // GPS Toko N/A) dihitung per PROMOTOR (bukan per toko) biar konsisten 1 gaya.
-    const categoryDetailByType = (promotorType) => {
-      const tsAllType = (timestampResult?.all || []).filter((v) => v.promotorType === promotorType);
-      const abAllType = (absensiResult?.all || []).filter((s) => s.promotorType === promotorType);
-      const tsTotalPromotor = new Set(tsAllType.map((v) => v.employee_id).filter(Boolean)).size;
-      const abTotalPromotor = new Set(abAllType.map((s) => s.employee_id).filter(Boolean)).size;
-      const combinedTotalPromotor = new Set([...tsAllType, ...abAllType].map((r) => r.employee_id).filter(Boolean)).size;
-
-      const zoneNotComplyIdsType = new Set();
-      const zonePattern = new Map();
-      tsAllType.forEach((v) => {
-        if (!v.employee_id) return;
-        const e = zonePattern.get(v.employee_id) || { totalDays: 0, complyDays: 0 };
-        e.totalDays++;
-        if (!v.zoneNotCompliant) e.complyDays++;
-        zonePattern.set(v.employee_id, e);
-      });
-      zonePattern.forEach((e, id) => { if ((e.totalDays ? e.complyDays / e.totalDays : 0) < 0.5) zoneNotComplyIdsType.add(id); });
-      const zoneActivityCount = tsAllType.filter((v) => v.zoneNotCompliant).length;
-
-      const gpsNARows = [...tsAllType.filter((v) => v.noOutletData), ...abAllType.filter((s) => s.noOutletData)];
-      const gpsNAPromotorCount = new Set(gpsNARows.map((r) => r.employee_id).filter(Boolean)).size;
-
-      const durasiRows = abAllType.filter((s) => s.durationIssue);
-      const durasiPromotorCount = new Set(durasiRows.map((s) => s.employee_id).filter(Boolean)).size;
-
-      return {
-        zona: { promotorCount: zoneNotComplyIdsType.size, activityCount: zoneActivityCount, pct: tsTotalPromotor ? (zoneNotComplyIdsType.size / tsTotalPromotor) * 100 : null },
-        gpsNA: { promotorCount: gpsNAPromotorCount, activityCount: gpsNARows.length, pct: combinedTotalPromotor ? (gpsNAPromotorCount / combinedTotalPromotor) * 100 : null },
-        durasi: { promotorCount: durasiPromotorCount, activityCount: durasiRows.length, pct: abTotalPromotor ? (durasiPromotorCount / abTotalPromotor) * 100 : null },
-      };
-    };
-
     return {
       totalPromotorAll, timestampPromotorAll, absensiPromotorAll,
       combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
@@ -1867,7 +1866,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       buildCategorySummary, categorySummaryColumns,
       zoneComplyIds, zoneNotComplyIds, zoneAffectedCount, byZoneIds,
       gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
-      statusCombinedCount, durasiCount, categoryByType, categoryDetailByType,
+      statusCombinedCount, durasiCount, categoryByType,
     };
   }, [timestampResult, absensiResult]);
 
@@ -1878,7 +1877,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     buildCategorySummary, categorySummaryColumns,
     zoneComplyIds, zoneNotComplyIds, zoneAffectedCount, byZoneIds,
     gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
-    statusCombinedCount, durasiCount, categoryByType, categoryDetailByType,
+    statusCombinedCount, durasiCount, categoryByType,
   } = computed;
 
   const mixedColumns = [
@@ -2355,8 +2354,8 @@ function DashboardPage(props) {
         s.addText(`${anomaliCount.toLocaleString("id-ID")}/${totalCount.toLocaleString("id-ID")}`, { x: 0.95, y: 2.6, w: 2.65, h: 0.8, fontFace: FONT_HEAD, fontSize: 26, bold: true, color: accentColor, margin: 0 });
         s.addText(`${label} — Perlu Diperiksa Lebih Lanjut (${pctVal}%)`, { x: 0.95, y: 3.5, w: 2.65, h: 1.0, fontFace: FONT_BODY, fontSize: 11, color: MUTED, margin: 0, lineSpacingMultiple: 1.2 });
 
-        // 3 kartu kategori (pill merah) di kanan — "detail" sudah dihitung sebelum
-        // fungsi ini dipanggil (bukan manggil categoryDetailByType dari dalam sini).
+        // 3 kartu kategori (pill merah) di kanan — "detail" sudah dihitung di luar (pakai
+        // computeCategoryDetailByType yang berdiri sendiri) sebelum fungsi ini dipanggil.
         const cats = [
           { t: "Zona Waktu (< 3)", d: detail.zona },
           { t: "GPS Toko N/A", d: detail.gpsNA },
@@ -2383,8 +2382,8 @@ function DashboardPage(props) {
         logo(s, false);
         pageNum(s, pageN, false);
       };
-      const detailInStore = categoryDetailByType("In Store Promotor");
-      const detailOutStore = categoryDetailByType("Out Store Promotor");
+      const detailInStore = computeCategoryDetailByType(timestampResult, absensiResult, "In Store Promotor");
+      const detailOutStore = computeCategoryDetailByType(timestampResult, absensiResult, "Out Store Promotor");
       categoryOverviewSlide(detailInStore, "In Store Promotor", AMBER, sum.anomaliInStoreCount, sum.inStore, pctIn, 6);
       categoryOverviewSlide(detailOutStore, "Out Store Promotor", FUCHSIA, sum.anomaliOutStoreCount, sum.outStore, pctOut, 7);
 
@@ -2498,7 +2497,7 @@ function DashboardPage(props) {
       console.error("Gagal generate PPT:", err);
       setPptStatus("error");
     }
-  }, [timestampResult, absensiResult, insights, inStoreTs, inStoreAb, outStoreTs, outStoreAb, categoryDetailByType]);
+  }, [timestampResult, absensiResult, insights, inStoreTs, inStoreAb, outStoreTs, outStoreAb]);
 
   return (
     <div>
@@ -2963,7 +2962,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v109</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v110</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
