@@ -1,4 +1,4 @@
-// Dashboard.tsx — v112
+// Dashboard.tsx — v113
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -983,30 +983,43 @@ function computeExportSummary(timestampResult, absensiResult) {
 // nyender ke computed/DashboardPage sama sekali, biar nggak ada masalah scope.
 // Dipakai khusus buat slide PPT "Data Overview (In/Out Store Promotor)".
 function computeCategoryDetailByType(timestampResult, absensiResult, promotorType) {
-  const tsAllType = (timestampResult?.all || []).filter((v) => v.promotorType === promotorType);
-  const abAllType = (absensiResult?.all || []).filter((s) => s.promotorType === promotorType);
-  const tsTotalPromotor = new Set(tsAllType.map((v) => v.employee_id).filter(Boolean)).size;
-  const abTotalPromotor = new Set(abAllType.map((s) => s.employee_id).filter(Boolean)).size;
-  const combinedTotalPromotor = new Set([...tsAllType, ...abAllType].map((r) => r.employee_id).filter(Boolean)).size;
+  // Persis sama logic-nya kayak popup "Total Anomali (Terindikasi)" di dashboard
+  // (buildAnomaliDetail/buildCategorySummary) — cuma ngitung dari orang yang UDAH
+  // lolos syarat minimal 3 kejadian gabungan (anomaliQualifiedIds), BUKAN dari
+  // semua orang di tipe itu. Sebelumnya versi ini ngitung dari populasi penuh,
+  // beda dari angka headline di slide yang sama (yang emang dari populasi ≥3) —
+  // udah dibenerin biar 1 slide konsisten & sama persis kayak popup dashboard.
+  const combinedFlagged = [...(timestampResult?.flagged || []), ...(absensiResult?.flagged || [])];
 
-  // Zona Waktu: "kena" = minimal 1 hari ke-flag zoneNotCompliant — SAMA kayak
-  // definisi di tabel "Total Anomali per Kategori" (buildAnomaliDetail), biar
-  // konsisten. Sebelumnya di sini pakai aturan mayoritas (>=50% hari), beda
-  // definisi sama tabel dashboard — udah disamain per revisi user.
-  const zoneAffectedIds = new Set(tsAllType.filter((v) => v.zoneNotCompliant).map((v) => v.employee_id).filter(Boolean));
-  const zoneActivityCount = tsAllType.filter((v) => v.zoneNotCompliant).length;
+  const ANOMALI_MIN_COUNT = 3;
+  const flaggedCountByEmployee = new Map();
+  combinedFlagged.forEach((r) => {
+    if (!r.employee_id) return;
+    flaggedCountByEmployee.set(r.employee_id, (flaggedCountByEmployee.get(r.employee_id) || 0) + 1);
+  });
+  const anomaliQualifiedIds = new Set(
+    [...flaggedCountByEmployee.entries()].filter(([, count]) => count >= ANOMALI_MIN_COUNT).map(([id]) => id)
+  );
 
-  const gpsNARows = [...tsAllType.filter((v) => v.noOutletData), ...abAllType.filter((s) => s.noOutletData)];
-  const gpsNAPromotorCount = new Set(gpsNARows.map((r) => r.employee_id).filter(Boolean)).size;
+  const perPersonMap = new Map();
+  combinedFlagged.forEach((r) => {
+    if (!r.employee_id || !anomaliQualifiedIds.has(r.employee_id) || r.promotorType !== promotorType) return;
+    const entry = perPersonMap.get(r.employee_id) || { zona: 0, gpsNA: 0, durasi: 0 };
+    if (r.zoneNotCompliant) entry.zona++;
+    if (r.noOutletData) entry.gpsNA++;
+    if (r.durationIssue) entry.durasi++;
+    perPersonMap.set(r.employee_id, entry);
+  });
+  const perPerson = [...perPersonMap.values()];
+  const totalPeople = perPerson.length;
 
-  const durasiRows = abAllType.filter((s) => s.durationIssue);
-  const durasiPromotorCount = new Set(durasiRows.map((s) => s.employee_id).filter(Boolean)).size;
-
-  return {
-    zona: { promotorCount: zoneAffectedIds.size, activityCount: zoneActivityCount, pct: tsTotalPromotor ? (zoneAffectedIds.size / tsTotalPromotor) * 100 : null },
-    gpsNA: { promotorCount: gpsNAPromotorCount, activityCount: gpsNARows.length, pct: combinedTotalPromotor ? (gpsNAPromotorCount / combinedTotalPromotor) * 100 : null },
-    durasi: { promotorCount: durasiPromotorCount, activityCount: durasiRows.length, pct: abTotalPromotor ? (durasiPromotorCount / abTotalPromotor) * 100 : null },
+  const computeCat = (key) => {
+    const affected = perPerson.filter((p) => p[key] > 0).length;
+    const totalKejadian = perPerson.reduce((sum, p) => sum + p[key], 0);
+    return { promotorCount: affected, activityCount: totalKejadian, pct: totalPeople ? (affected / totalPeople) * 100 : null };
   };
+
+  return { zona: computeCat("zona"), gpsNA: computeCat("gpsNA"), durasi: computeCat("durasi") };
 }
 
 function InsightsCard({ insights }) {
@@ -2968,7 +2981,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v112</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v113</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
