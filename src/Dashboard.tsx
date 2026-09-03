@@ -1,4 +1,4 @@
-// Dashboard.tsx — v107
+// Dashboard.tsx — v108
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -2179,7 +2179,7 @@ function DashboardPage(props) {
       };
       const logo = (s, dark) => {
         const b64 = dark ? XLSMART_LOGO_TRANSPARENT_B64 : XLSMART_LOGO_WHITE_B64;
-        s.addImage({ data: `image/png;base64,${b64}`, x: W - 2.25, y: 0.42, w: 1.75, h: 0.32 });
+        s.addImage({ data: `data:image/png;base64,${b64}`, x: W - 2.25, y: 0.42, w: 1.75, h: 0.32 });
       };
       const kicker = (s, text, dark) => s.addText(text.toUpperCase(), {
         x: 0.7, y: 0.55, w: 8, h: 0.35, fontFace: FONT_BODY, fontSize: 12, bold: true,
@@ -2961,7 +2961,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v107</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v108</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
