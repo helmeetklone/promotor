@@ -1,4 +1,4 @@
-// Dashboard.tsx — v108
+// Dashboard.tsx — v109
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -2342,7 +2342,7 @@ function DashboardPage(props) {
       }
 
       // ── Slide 5b/5c (BARU): Data Overview per Tipe (In Store / Out Store) ──
-      const categoryOverviewSlide = (promotorType, label, accentColor, anomaliCount, totalCount, pctVal, pageN) => {
+      const categoryOverviewSlide = (detail, label, accentColor, anomaliCount, totalCount, pctVal, pageN) => {
         const s = bgSlide(false);
         kicker(s, "Ringkasan Data", false);
         title(s, `Data Overview (${label})`, false);
@@ -2355,8 +2355,8 @@ function DashboardPage(props) {
         s.addText(`${anomaliCount.toLocaleString("id-ID")}/${totalCount.toLocaleString("id-ID")}`, { x: 0.95, y: 2.6, w: 2.65, h: 0.8, fontFace: FONT_HEAD, fontSize: 26, bold: true, color: accentColor, margin: 0 });
         s.addText(`${label} — Perlu Diperiksa Lebih Lanjut (${pctVal}%)`, { x: 0.95, y: 3.5, w: 2.65, h: 1.0, fontFace: FONT_BODY, fontSize: 11, color: MUTED, margin: 0, lineSpacingMultiple: 1.2 });
 
-        // 3 kartu kategori (pill merah) di kanan
-        const detail = categoryDetailByType(promotorType);
+        // 3 kartu kategori (pill merah) di kanan — "detail" sudah dihitung sebelum
+        // fungsi ini dipanggil (bukan manggil categoryDetailByType dari dalam sini).
         const cats = [
           { t: "Zona Waktu (< 3)", d: detail.zona },
           { t: "GPS Toko N/A", d: detail.gpsNA },
@@ -2383,8 +2383,10 @@ function DashboardPage(props) {
         logo(s, false);
         pageNum(s, pageN, false);
       };
-      categoryOverviewSlide("In Store Promotor", "In Store Promotor", AMBER, sum.anomaliInStoreCount, sum.inStore, pctIn, 6);
-      categoryOverviewSlide("Out Store Promotor", "Out Store Promotor", FUCHSIA, sum.anomaliOutStoreCount, sum.outStore, pctOut, 7);
+      const detailInStore = categoryDetailByType("In Store Promotor");
+      const detailOutStore = categoryDetailByType("Out Store Promotor");
+      categoryOverviewSlide(detailInStore, "In Store Promotor", AMBER, sum.anomaliInStoreCount, sum.inStore, pctIn, 6);
+      categoryOverviewSlide(detailOutStore, "Out Store Promotor", FUCHSIA, sum.anomaliOutStoreCount, sum.outStore, pctOut, 7);
 
       // ── Slide 8/9 (DIPECAH per tipe): Efisiensi & Efektivitas ──
       const efficiencySlide = (label, accentColor, ts, ab, pageN) => {
@@ -2496,7 +2498,7 @@ function DashboardPage(props) {
       console.error("Gagal generate PPT:", err);
       setPptStatus("error");
     }
-  }, [timestampResult, absensiResult, insights, inStoreTs, inStoreAb, outStoreTs, outStoreAb]);
+  }, [timestampResult, absensiResult, insights, inStoreTs, inStoreAb, outStoreTs, outStoreAb, categoryDetailByType]);
 
   return (
     <div>
@@ -2961,7 +2963,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v108</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v109</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
