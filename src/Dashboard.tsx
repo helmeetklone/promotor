@@ -1,4 +1,4 @@
-// Dashboard.tsx — v106
+// Dashboard.tsx — v107
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1824,6 +1824,42 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       "Out Store Promotor": { zone: zoneNotComplyByType("Out Store Promotor"), toko: tokoNAByType("Out Store Promotor"), durasi: durasiByType("Out Store Promotor") },
     };
 
+    // ── Versi "#Promotor / #Activity / %" per kategori per tipe — dipakai khusus
+    // di slide PPT "Data Overview (In/Out Store Promotor)" & Efektivitas/Efisiensi
+    // per tipe. Beda dari categoryByType di atas: di sini SEMUA kategori (termasuk
+    // GPS Toko N/A) dihitung per PROMOTOR (bukan per toko) biar konsisten 1 gaya.
+    const categoryDetailByType = (promotorType) => {
+      const tsAllType = (timestampResult?.all || []).filter((v) => v.promotorType === promotorType);
+      const abAllType = (absensiResult?.all || []).filter((s) => s.promotorType === promotorType);
+      const tsTotalPromotor = new Set(tsAllType.map((v) => v.employee_id).filter(Boolean)).size;
+      const abTotalPromotor = new Set(abAllType.map((s) => s.employee_id).filter(Boolean)).size;
+      const combinedTotalPromotor = new Set([...tsAllType, ...abAllType].map((r) => r.employee_id).filter(Boolean)).size;
+
+      const zoneNotComplyIdsType = new Set();
+      const zonePattern = new Map();
+      tsAllType.forEach((v) => {
+        if (!v.employee_id) return;
+        const e = zonePattern.get(v.employee_id) || { totalDays: 0, complyDays: 0 };
+        e.totalDays++;
+        if (!v.zoneNotCompliant) e.complyDays++;
+        zonePattern.set(v.employee_id, e);
+      });
+      zonePattern.forEach((e, id) => { if ((e.totalDays ? e.complyDays / e.totalDays : 0) < 0.5) zoneNotComplyIdsType.add(id); });
+      const zoneActivityCount = tsAllType.filter((v) => v.zoneNotCompliant).length;
+
+      const gpsNARows = [...tsAllType.filter((v) => v.noOutletData), ...abAllType.filter((s) => s.noOutletData)];
+      const gpsNAPromotorCount = new Set(gpsNARows.map((r) => r.employee_id).filter(Boolean)).size;
+
+      const durasiRows = abAllType.filter((s) => s.durationIssue);
+      const durasiPromotorCount = new Set(durasiRows.map((s) => s.employee_id).filter(Boolean)).size;
+
+      return {
+        zona: { promotorCount: zoneNotComplyIdsType.size, activityCount: zoneActivityCount, pct: tsTotalPromotor ? (zoneNotComplyIdsType.size / tsTotalPromotor) * 100 : null },
+        gpsNA: { promotorCount: gpsNAPromotorCount, activityCount: gpsNARows.length, pct: combinedTotalPromotor ? (gpsNAPromotorCount / combinedTotalPromotor) * 100 : null },
+        durasi: { promotorCount: durasiPromotorCount, activityCount: durasiRows.length, pct: abTotalPromotor ? (durasiPromotorCount / abTotalPromotor) * 100 : null },
+      };
+    };
+
     return {
       totalPromotorAll, timestampPromotorAll, absensiPromotorAll,
       combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
@@ -1831,7 +1867,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       buildCategorySummary, categorySummaryColumns,
       zoneComplyIds, zoneNotComplyIds, zoneAffectedCount, byZoneIds,
       gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
-      statusCombinedCount, durasiCount, categoryByType,
+      statusCombinedCount, durasiCount, categoryByType, categoryDetailByType,
     };
   }, [timestampResult, absensiResult]);
 
@@ -1842,7 +1878,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     buildCategorySummary, categorySummaryColumns,
     zoneComplyIds, zoneNotComplyIds, zoneAffectedCount, byZoneIds,
     gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
-    statusCombinedCount, durasiCount, categoryByType,
+    statusCombinedCount, durasiCount, categoryByType, categoryDetailByType,
   } = computed;
 
   const mixedColumns = [
@@ -2305,60 +2341,97 @@ function DashboardPage(props) {
         pageNum(s, 5, false);
       }
 
-      // ── Slide 6: Efisiensi & Efektivitas ──
-      {
+      // ── Slide 5b/5c (BARU): Data Overview per Tipe (In Store / Out Store) ──
+      const categoryOverviewSlide = (promotorType, label, accentColor, anomaliCount, totalCount, pctVal, pageN) => {
+        const s = bgSlide(false);
+        kicker(s, "Ringkasan Data", false);
+        title(s, `Data Overview (${label})`, false);
+        s.addText("Berapa Banyak yang Perlu Diperiksa Lebih Lanjut?", {
+          x: 0.7, y: 1.75, w: 11.9, h: 0.4, fontFace: FONT_BODY, fontSize: 13, italic: true, color: MUTED, margin: 0,
+        });
+
+        // kartu total di kiri
+        s.addShape("roundRect", { x: 0.7, y: 2.35, w: 3.15, h: 2.5, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+        s.addText(`${anomaliCount.toLocaleString("id-ID")}/${totalCount.toLocaleString("id-ID")}`, { x: 0.95, y: 2.6, w: 2.65, h: 0.8, fontFace: FONT_HEAD, fontSize: 26, bold: true, color: accentColor, margin: 0 });
+        s.addText(`${label} — Perlu Diperiksa Lebih Lanjut (${pctVal}%)`, { x: 0.95, y: 3.5, w: 2.65, h: 1.0, fontFace: FONT_BODY, fontSize: 11, color: MUTED, margin: 0, lineSpacingMultiple: 1.2 });
+
+        // 3 kartu kategori (pill merah) di kanan
+        const detail = categoryDetailByType(promotorType);
+        const cats = [
+          { t: "Zona Waktu (< 3)", d: detail.zona },
+          { t: "GPS Toko N/A", d: detail.gpsNA },
+          { t: "Durasi Bermasalah", d: detail.durasi },
+        ];
+        const ccW = 2.75, ccGap = 0.2, ccX0 = 4.15, ccY = 2.35, ccH = 2.5;
+        const fmtPct2 = (v) => (v == null ? "-" : v.toFixed(1).replace(".", ",") + "%");
+        cats.forEach((c, i) => {
+          const x = ccX0 + i * (ccW + ccGap);
+          s.addShape("roundRect", { x, y: ccY, w: ccW, h: ccH, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+          s.addShape("roundRect", { x: x + 0.12, y: ccY + 0.15, w: ccW - 0.24, h: 0.55, rectRadius: 0.25, fill: { color: "B91C1C" }, line: { type: "none" } });
+          s.addText(c.t, { x: x + 0.12, y: ccY + 0.15, w: ccW - 0.24, h: 0.55, fontFace: FONT_HEAD, fontSize: 11.5, bold: true, color: WHITE, align: "center", valign: "middle", margin: 0 });
+          const rows = [["#Promotor", c.d.promotorCount.toLocaleString("id-ID")], ["#Aktivitas", c.d.activityCount.toLocaleString("id-ID")], ["%", fmtPct2(c.d.pct)]];
+          rows.forEach((r, j) => {
+            const ry = ccY + 0.88 + j * 0.48;
+            s.addText(r[0], { x: x + 0.15, y: ry, w: 1.3, h: 0.4, fontFace: FONT_BODY, fontSize: 10.5, bold: true, color: MUTED, valign: "middle", margin: 0 });
+            s.addText(r[1], { x: x + 1.35, y: ry, w: ccW - 1.5, h: 0.4, fontFace: FONT_HEAD, fontSize: 13, bold: true, color: NAVY, valign: "middle", margin: 0 });
+          });
+        });
+
+        s.addText("Angka di atas hanya mencakup promotor dengan kejadian berulang (minimal 3 kali) — bukan kejadian tunggal.", {
+          x: 0.7, y: 5.15, w: 11.9, h: 0.6, fontFace: FONT_BODY, fontSize: 12, italic: true, color: MUTED, margin: 0,
+        });
+        logo(s, false);
+        pageNum(s, pageN, false);
+      };
+      categoryOverviewSlide("In Store Promotor", "In Store Promotor", AMBER, sum.anomaliInStoreCount, sum.inStore, pctIn, 6);
+      categoryOverviewSlide("Out Store Promotor", "Out Store Promotor", FUCHSIA, sum.anomaliOutStoreCount, sum.outStore, pctOut, 7);
+
+      // ── Slide 8/9 (DIPECAH per tipe): Efisiensi & Efektivitas ──
+      const efficiencySlide = (label, accentColor, ts, ab, pageN) => {
         const s = bgSlide(false);
         kicker(s, "Kedisiplinan Kerja", false);
-        title(s, "Efektivitas dan Efisiensi Kerja Lapangan", false);
-        s.addShape("roundRect", { x: 0.7, y: 1.8, w: 11.9, h: 0.6, rectRadius: 0.06, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
+        title(s, `Efektivitas & Efisiensi Kerja Lapangan — ${label}`, false);
+        s.addShape("roundRect", { x: 0.7, y: 2.15, w: 11.9, h: 0.6, rectRadius: 0.06, fill: { color: "FFFBEB" }, line: { color: "FCD34D", width: 1 } });
         s.addText([
           { text: "Catatan:  ", options: { bold: true, color: AMBER } },
           { text: "angka berikut bukan angka penjualan, melainkan indikasi kedisiplinan dari data yang tersedia.", options: { color: INK } },
-        ], { x: 1.0, y: 1.8, w: 11.3, h: 0.6, fontFace: FONT_BODY, fontSize: 12, valign: "middle", margin: 0 });
+        ], { x: 1.0, y: 2.15, w: 11.3, h: 0.6, fontFace: FONT_BODY, fontSize: 12, valign: "middle", margin: 0 });
 
-        const rows = [
-          { t: "In Store Promotor", c: AMBER, ts: inStoreTs, ab: inStoreAb },
-          { t: "Out Store Promotor", c: FUCHSIA, ts: outStoreTs, ab: outStoreAb },
-        ];
-        rows.forEach((r, i) => {
-          const x = 0.7 + i * 6.0;
-          const efektivitas = (r.ts?.attendanceRate != null && r.ab?.attendanceRate != null) ? (r.ts.attendanceRate + r.ab.attendanceRate) / 2 : null;
-          const efisiensi = (r.ts?.complianceRate != null && r.ab?.complianceRate != null) ? (r.ts.complianceRate + r.ab.complianceRate) / 2 : null;
+        const efektivitas = (ts?.attendanceRate != null && ab?.attendanceRate != null) ? (ts.attendanceRate + ab.attendanceRate) / 2 : null;
+        const efisiensi = (ts?.complianceRate != null && ab?.complianceRate != null) ? (ts.complianceRate + ab.complianceRate) / 2 : null;
 
-          s.addShape("roundRect", { x, y: 2.6, w: 5.7, h: 4.2, rectRadius: 0.1, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
-          s.addText(r.t, { x: x + 0.35, y: 2.8, w: 5.0, h: 0.45, fontFace: FONT_HEAD, fontSize: 16, bold: true, color: r.c, margin: 0 });
-
-          // Blok Efektivitas
-          s.addText([
-            { text: "Efektivitas: ", options: { bold: true, color: INK, fontSize: 14 } },
-            { text: `${fmt(efektivitas)}%`, options: { bold: true, color: r.c, fontSize: 20 } },
-          ], { x: x + 0.35, y: 3.35, w: 5.0, h: 0.45, fontFace: FONT_HEAD, margin: 0 });
-          s.addText("Konsistensi promotor menunjukkan aktivitas, dibandingkan hari kerja yang seharusnya.", {
-            x: x + 0.35, y: 3.82, w: 5.0, h: 0.5, fontFace: FONT_BODY, fontSize: 10.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
-          });
-          s.addText(`Rincian: ${fmt(r.ts?.attendanceRate)}% dari data kunjungan harian, ${fmt(r.ab?.attendanceRate)}% dari data absensi.`, {
-            x: x + 0.35, y: 4.35, w: 5.0, h: 0.4, fontFace: FONT_BODY, fontSize: 10, italic: true, color: MUTED, margin: 0,
-          });
-
-          s.addShape("line", { x: x + 0.35, y: 4.85, w: 5.0, h: 0, line: { color: LINE, width: 1 } });
-
-          // Blok Efisiensi
-          s.addText([
-            { text: "Efisiensi: ", options: { bold: true, color: INK, fontSize: 14 } },
-            { text: `${fmt(efisiensi)}%`, options: { bold: true, color: r.c, fontSize: 20 } },
-          ], { x: x + 0.35, y: 5.0, w: 5.0, h: 0.45, fontFace: FONT_HEAD, margin: 0 });
-          s.addText("Kesesuaian pola kerja dengan standar yang ditetapkan.", {
-            x: x + 0.35, y: 5.47, w: 5.0, h: 0.35, fontFace: FONT_BODY, fontSize: 10.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
-          });
-          s.addText(`Rincian: ${fmt(r.ts?.complianceRate)}% pola kunjungan sesuai standar, ${fmt(r.ab?.complianceRate)}% durasi kerja wajar.`, {
-            x: x + 0.35, y: 5.9, w: 5.0, h: 0.4, fontFace: FONT_BODY, fontSize: 10, italic: true, color: MUTED, margin: 0,
-          });
+        const bW = 5.6, bX0 = 0.7, bGap = 0.5, bY = 2.7, bH = 3.6;
+        // Blok Efektivitas
+        s.addShape("roundRect", { x: bX0, y: bY, w: bW, h: bH, rectRadius: 0.1, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+        s.addText("Efektivitas", { x: bX0 + 0.4, y: bY + 0.35, w: bW - 0.8, h: 0.5, fontFace: FONT_HEAD, fontSize: 17, bold: true, color: INK, margin: 0 });
+        s.addText(`${fmt(efektivitas)}%`, { x: bX0 + 0.4, y: bY + 0.85, w: bW - 0.8, h: 1.1, fontFace: FONT_HEAD, fontSize: 48, bold: true, color: accentColor, margin: 0 });
+        s.addText("Konsistensi promotor menunjukkan aktivitas, dibandingkan hari kerja yang seharusnya.", {
+          x: bX0 + 0.4, y: bY + 2.05, w: bW - 0.8, h: 0.7, fontFace: FONT_BODY, fontSize: 11.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.25,
         });
-        logo(s, false);
-        pageNum(s, 6, false);
-      }
+        s.addText(`Rincian: ${fmt(ts?.attendanceRate)}% dari data kunjungan harian, ${fmt(ab?.attendanceRate)}% dari data absensi.`, {
+          x: bX0 + 0.4, y: bY + 2.85, w: bW - 0.8, h: 0.6, fontFace: FONT_BODY, fontSize: 10.5, italic: true, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
+        });
 
-      // ── Slide 7: Insight otomatis ──
+        // Blok Efisiensi
+        const bX1 = bX0 + bW + bGap;
+        s.addShape("roundRect", { x: bX1, y: bY, w: bW, h: bH, rectRadius: 0.1, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+        s.addText("Efisiensi", { x: bX1 + 0.4, y: bY + 0.35, w: bW - 0.8, h: 0.5, fontFace: FONT_HEAD, fontSize: 17, bold: true, color: INK, margin: 0 });
+        s.addText(`${fmt(efisiensi)}%`, { x: bX1 + 0.4, y: bY + 0.85, w: bW - 0.8, h: 1.1, fontFace: FONT_HEAD, fontSize: 48, bold: true, color: accentColor, margin: 0 });
+        s.addText("Kesesuaian pola kerja dengan standar yang ditetapkan.", {
+          x: bX1 + 0.4, y: bY + 2.05, w: bW - 0.8, h: 0.7, fontFace: FONT_BODY, fontSize: 11.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.25,
+        });
+        s.addText(`Rincian: ${fmt(ts?.complianceRate)}% pola kunjungan sesuai standar, ${fmt(ab?.complianceRate)}% durasi kerja wajar.`, {
+          x: bX1 + 0.4, y: bY + 2.85, w: bW - 0.8, h: 0.6, fontFace: FONT_BODY, fontSize: 10.5, italic: true, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
+        });
+
+        logo(s, false);
+        pageNum(s, pageN, false);
+      };
+      efficiencySlide("In Store Promotor", AMBER, inStoreTs, inStoreAb, 8);
+      efficiencySlide("Out Store Promotor", FUCHSIA, outStoreTs, outStoreAb, 9);
+
+
+      // ── Slide 10: Insight otomatis ──
       {
         const s = bgSlide(true);
         s.addShape("ellipse", { x: 10.5, y: -1.6, w: 4.7, h: 4.7, fill: { color: "3B2CC4" }, line: { type: "none" } });
@@ -2391,10 +2464,10 @@ function DashboardPage(props) {
           s.addText(txt, { x: 1.05, y: y - 0.1, w: 11.4, h: 0.6, fontFace: FONT_BODY, fontSize: 12.5, color: WHITE, margin: 0 });
         });
         logo(s, true);
-        pageNum(s, 7, true);
+        pageNum(s, 10, true);
       }
 
-      // ── Slide 8: Kesimpulan & Rekomendasi ──
+      // ── Slide 11: Kesimpulan & Rekomendasi ──
       {
         const s = bgSlide(false);
         kicker(s, "Langkah Selanjutnya", false);
@@ -2413,7 +2486,7 @@ function DashboardPage(props) {
           s.addText(r, { x: 1.65, y, w: 10.7, h: 0.95, fontFace: FONT_BODY, fontSize: 12.5, color: INK, valign: "middle", margin: 0, lineSpacingMultiple: 1.2 });
         });
         logo(s, false);
-        pageNum(s, 8, false);
+        pageNum(s, 11, false);
       }
 
       await pres.writeFile({ fileName: `Dashboard-Promotor-Ringkasan-${new Date().toISOString().slice(0, 10)}.pptx` });
@@ -2888,7 +2961,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v106</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v107</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
