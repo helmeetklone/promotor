@@ -1,4 +1,4 @@
-// Dashboard.tsx — v113
+// Dashboard.tsx — v115
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -382,6 +382,23 @@ function getTargetLabel(tenureMonths) {
   return tenureMonths >= 3 ? "150" : "<150";
 }
 
+// Ambil field Pencapaian (Tagging) & Kualitas (NCA) dari 1 baris data mentah
+// hasil merge — field ini OPSIONAL (cuma ada kalau user upload file Tagging/
+// NCA di merger tool), makanya semua fallback ke null kalau nggak ketemu.
+function extractPencapaianFields(r) {
+  return {
+    pencapaianXL: toNum(r["Pencapaian XL (Bulan Berjalan)_TAGGING"]),
+    pencapaianAXIS: toNum(r["Pencapaian AXIS (Bulan Berjalan)_TAGGING"]),
+    pencapaianSMART: toNum(r["Pencapaian SMART (Bulan Berjalan)_TAGGING"]),
+    pencapaianTotal: toNum(r["Pencapaian Total (Bulan Berjalan)_TAGGING"]),
+    ncaGAR: toNum(r["GAR Total (Bulan Berjalan)_NCA"]),
+    ncaNCA: toNum(r["NCA Total (Bulan Berjalan)_NCA"]),
+    ncaGoodSRC: toNum(r["Good SRC Total (Bulan Berjalan)_NCA"]),
+    ncaBadSRC: toNum(r["Bad SRC Total (Bulan Berjalan)_NCA"]),
+    ncaUnidentified: toNum(r["Unidentified Imei Total (Bulan Berjalan)_NCA"]),
+  };
+}
+
 function parseAnyDate(v) {
   if (v == null || v === "" || v === "-") return null;
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
@@ -439,6 +456,11 @@ const TIMESTAMP_COLUMNS = [
   { key: "tenureMonths", label: "Masa Kerja (Bulan)", render: (v) => v.tenureMonths != null ? v.tenureMonths.toLocaleString("id-ID") : "-" },
   { key: "individualAttendanceRate", label: "Efektivitas (Individu)", render: (v) => v.individualAttendanceRate != null ? v.individualAttendanceRate.toFixed(1).replace(".", ",") + "%" : "-" },
   { key: "individualComplianceRate", label: "Efisiensi (Individu)", render: (v) => v.individualComplianceRate != null ? v.individualComplianceRate.toFixed(1).replace(".", ",") + "%" : "-" },
+  { key: "pencapaianTotal", label: "Pencapaian Total (Tagging)", render: (v) => v.pencapaian?.pencapaianTotal != null ? v.pencapaian.pencapaianTotal.toLocaleString("id-ID") : "-" },
+  { key: "ncaGAR", label: "GAR (NCA)", render: (v) => v.pencapaian?.ncaGAR != null ? v.pencapaian.ncaGAR.toLocaleString("id-ID") : "-" },
+  { key: "ncaNCA", label: "NCA", render: (v) => v.pencapaian?.ncaNCA != null ? v.pencapaian.ncaNCA.toLocaleString("id-ID") : "-" },
+  { key: "ncaGoodSRC", label: "Good SRC (NCA)", render: (v) => v.pencapaian?.ncaGoodSRC != null ? v.pencapaian.ncaGoodSRC.toLocaleString("id-ID") : "-" },
+  { key: "ncaBadSRC", label: "Bad SRC (NCA)", render: (v) => v.pencapaian?.ncaBadSRC != null ? v.pencapaian.ncaBadSRC.toLocaleString("id-ID") : "-" },
   { key: "target", label: "Target/Bulan", render: (v) => getTargetLabel(v.tenureMonths) },
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
@@ -460,6 +482,11 @@ const ABSENSI_COLUMNS = [
   { key: "tenureMonths", label: "Masa Kerja (Bulan)", render: (r) => r.tenureMonths != null ? r.tenureMonths.toLocaleString("id-ID") : "-" },
   { key: "individualAttendanceRate", label: "Efektivitas (Individu)", render: (r) => r.individualAttendanceRate != null ? r.individualAttendanceRate.toFixed(1).replace(".", ",") + "%" : "-" },
   { key: "individualComplianceRate", label: "Efisiensi (Individu)", render: (r) => r.individualComplianceRate != null ? r.individualComplianceRate.toFixed(1).replace(".", ",") + "%" : "-" },
+  { key: "pencapaianTotal", label: "Pencapaian Total (Tagging)", render: (r) => r.pencapaian?.pencapaianTotal != null ? r.pencapaian.pencapaianTotal.toLocaleString("id-ID") : "-" },
+  { key: "ncaGAR", label: "GAR (NCA)", render: (r) => r.pencapaian?.ncaGAR != null ? r.pencapaian.ncaGAR.toLocaleString("id-ID") : "-" },
+  { key: "ncaNCA", label: "NCA", render: (r) => r.pencapaian?.ncaNCA != null ? r.pencapaian.ncaNCA.toLocaleString("id-ID") : "-" },
+  { key: "ncaGoodSRC", label: "Good SRC (NCA)", render: (r) => r.pencapaian?.ncaGoodSRC != null ? r.pencapaian.ncaGoodSRC.toLocaleString("id-ID") : "-" },
+  { key: "ncaBadSRC", label: "Bad SRC (NCA)", render: (r) => r.pencapaian?.ncaBadSRC != null ? r.pencapaian.ncaBadSRC.toLocaleString("id-ID") : "-" },
   { key: "target", label: "Target/Bulan", render: (r) => getTargetLabel(r.tenureMonths) },
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
   { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
@@ -528,6 +555,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     const status = getStatus(r);
     const endDate = r["End Date_HR"] ?? r["End Date_DOP"] ?? null;
     const joinDate = r["Join Date_DOP"] ?? null;
+    const pencapaian = extractPencapaianFields(r);
     const tenureMonths = monthsBetween(joinDate, r["Date_ABSENSI"]);
     const statusCheck = checkStatusAnomaly(status, r["Date_ABSENSI"], endDate);
     const noCoord = !hasIn;
@@ -545,6 +573,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
       status,
       joinDate,
       tenureMonths,
+      pencapaian,
       promotorType: classifyPromotorType(position),
       durHr,
       noClockOut,
@@ -718,6 +747,7 @@ function processTimestamp(rows, storeThresholdM) {
     const status = getStatus(first);
     const endDate = first["End Date_HR"] ?? first["End Date_DOP"] ?? null;
     const joinDate = first["Join Date_DOP"] ?? null;
+    const pencapaian = extractPencapaianFields(first);
     const tenureMonths = monthsBetween(joinDate, first["Date_TIMESTAMP"]);
     const statusCheck = checkStatusAnomaly(status, first["Date_TIMESTAMP"], endDate);
 
@@ -774,6 +804,7 @@ function processTimestamp(rows, storeThresholdM) {
       status,
       joinDate,
       tenureMonths,
+      pencapaian,
       promotorType: classifyPromotorType(position),
       checkinCount,
       distinctZoneCount: distinctZones.size,
@@ -910,6 +941,61 @@ function computeInsights(timestampResult, absensiResult) {
   if (topPerson) insights.push(`Anomali Tertinggi (Gabungan): ${topPerson[0]} (${topPerson[1].toLocaleString("id-ID")} kejadian)`);
 
   return insights;
+}
+
+// Klasifikasi Efektivitas & Efisiensi berbasis data PENCAPAIAN BENERAN (dari
+// Tagging & NCA) — beda dari section "Proxy Efisiensi & Efektivitas" yang
+// berbasis pola kerja doang. Cuma promotor yang punya DUA-DUANYA data
+// (Tagging & NCA lengkap) yang dinilai — kalau cuma punya salah satu,
+// di-skip (nggak masuk hitungan) biar hasilnya adil/nggak setengah-setengah.
+function computePencapaianSummary(timestampResult, absensiResult) {
+  const allRows = [...(timestampResult?.all || []), ...(absensiResult?.all || [])];
+  const perPerson = new Map();
+  allRows.forEach((r) => {
+    if (!r.employee_id) return;
+    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, pencapaian: null };
+    if (existing.tenureMonths == null && r.tenureMonths != null) existing.tenureMonths = r.tenureMonths;
+    if (r.pencapaian && (r.pencapaian.pencapaianTotal != null || r.pencapaian.ncaGAR != null)) {
+      existing.pencapaian = Object.assign({}, existing.pencapaian || {}, r.pencapaian);
+    }
+    perPerson.set(r.employee_id, existing);
+  });
+
+  const buckets = {
+    efektifEfisien: 0, efektifTidakEfisien: 0, tidakEfektifEfisien: 0, tidakEfektifTidakEfisien: 0, baruBergabung: 0,
+  };
+  let totalDinilai = 0;
+
+  perPerson.forEach((e) => {
+    const p = e.pencapaian;
+    const hasPencapaian = p && p.pencapaianTotal != null;
+    const hasNCA = p && p.ncaGAR != null;
+    if (!hasPencapaian || !hasNCA) return; // butuh DUA-DUANYA biar bisa dinilai lengkap
+
+    if (e.tenureMonths != null && e.tenureMonths < 3) {
+      buckets.baruBergabung++;
+      totalDinilai++;
+      return;
+    }
+
+    const efektif = p.pencapaianTotal >= 150;
+
+    const ratios = [];
+    if (p.ncaGAR > 0 && p.ncaNCA != null) ratios.push((p.ncaNCA / p.ncaGAR) * 100);
+    const denom = (p.ncaGoodSRC || 0) + (p.ncaBadSRC || 0) + (p.ncaUnidentified || 0);
+    if (denom > 0) ratios.push((p.ncaGoodSRC / denom) * 100);
+    if (ratios.length === 0) return; // GAR=0 dan Good/Bad/Unidentified semua 0, nggak bisa dihitung
+    const efisienScore = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+    const efisien = efisienScore >= 50;
+
+    totalDinilai++;
+    if (efektif && efisien) buckets.efektifEfisien++;
+    else if (efektif && !efisien) buckets.efektifTidakEfisien++;
+    else if (!efektif && efisien) buckets.tidakEfektifEfisien++;
+    else buckets.tidakEfektifTidakEfisien++;
+  });
+
+  return { totalDinilai, buckets };
 }
 
 // Ringkasan angka-angka Overview, dihitung ULANG di sini (independen dari
@@ -1309,8 +1395,21 @@ function GlossaryModal({ open, onClose }) {
             </Term>
           </Section>
 
+          <Section title="Efektivitas & Efisiensi Pencapaian (Data Tagging & NCA)">
+            <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-[12px] text-teal-800">
+              Beda dari section "Proxy" — ini berbasis data pencapaian AKTUAL (Tagging &amp; NCA), bukan pola kerja. Cuma promotor yang punya DUA-DUANYA data (Tagging &amp; NCA lengkap) yang dinilai.
+            </div>
+            <Term name="Efektif">
+              pencapaian Total (Bulan Berjalan, dari Tagging) mencapai target 150/bulan. Berlaku buat promotor dengan masa kerja ≥3 bulan — yang &lt;3 bulan masuk kategori terpisah "Baru Bergabung" (target formula buat kelompok ini belum final, jadi nggak dipaksa angka pasti).
+            </Term>
+            <Term name="Efisien">
+              skor gabungan dari 2 rasio kualitas (NCA): (1) NCA/GAR — seberapa banyak GAR yang berhasil jadi registrasi berkualitas; (2) Good SRC/(Good SRC+Bad SRC+Unidentified Imei) — proporsi sumber registrasi yang baik. Skor rata-rata dari 2 rasio itu ≥50% = Efisien.
+            </Term>
+            <div>4 kombinasi status: Efektif &amp; Efisien (pertahankan, jadi acuan), Efektif tapi Tidak Efisien (perbaiki kualitas registrasi), Tidak Efektif tapi Efisien (tingkatkan volume/intensitas), Tidak Efektif &amp; Tidak Efisien (perlu pembinaan menyeluruh) — masing-masing dengan rekomendasi tindak lanjut yang tampil otomatis di dashboard.</div>
+          </Section>
+
           <Section title="Export ke PPT">
-            <div>Tombol di pojok kanan atas halaman dashboard — generate deck ringkasan 7 slide (metodologi, overview, Proxy Efisiensi &amp; Efektivitas, insight otomatis, kesimpulan &amp; rekomendasi) langsung dari data yang lagi di-load, pakai identitas brand kantor (logo &amp; warna resmi). Semua angka di deck dihitung otomatis dari data live — bukan diketik manual.</div>
+            <div>Tombol di pojok kanan atas halaman dashboard — generate deck ringkasan 11 slide (metodologi &amp; parameter, data overview per tipe, Proxy Efisiensi &amp; Efektivitas per tipe, insight otomatis, kesimpulan &amp; rekomendasi) langsung dari data yang lagi di-load, pakai identitas brand kantor (logo &amp; warna resmi). Semua angka di deck dihitung otomatis dari data live — bukan diketik manual.</div>
           </Section>
 
           <Section title="Catatan">
@@ -1888,6 +1987,11 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     statusCombinedCount, durasiCount, categoryByType,
   } = computed;
 
+  const pencapaianSummary = useMemo(
+    () => computePencapaianSummary(timestampResult, absensiResult),
+    [timestampResult, absensiResult]
+  );
+
   const mixedColumns = [
     { key: "_source", label: "Sumber" },
     { key: "date", label: "Tgl" },
@@ -2253,26 +2357,39 @@ function DashboardPage(props) {
           x: 0.7, y: 1.75, w: 11.9, h: 0.4, fontFace: FONT_BODY, fontSize: 12, italic: true, color: MUTED, margin: 0,
         });
 
-        const params = [
-          { t: "Ambang Jarak GPS", v: `${moveThresholdM} meter`, d: "Jarak maksimum wajar antara lokasi check-in dan koordinat toko sebelum ditandai \"lokasi jauh dari toko\"." },
-          { t: "Ambang Durasi Pendek", v: `< ${shortHr} jam`, d: "Durasi kerja di bawah angka ini ditandai sebagai \"terlalu singkat\"." },
-          { t: "Ambang Durasi Panjang", v: `> ${longHr} jam`, d: "Durasi kerja di atas angka ini ditandai sebagai \"terlalu panjang\"." },
-          { t: "Ambang Total Anomali", v: "≥ 3 kejadian", d: "Promotor ditandai perlu diperiksa hanya bila total kejadian anomali (gabungan 6 kategori & 2 sumber data) mencapai minimal 3 kali — bukan 1 kejadian tunggal." },
-        ];
-        const pW = 5.75, pGap = 0.4, pX0 = 0.7, pY0 = 2.3, pH = 1.35;
-        params.forEach((p, i) => {
-          const col = i % 2, row = Math.floor(i / 2);
-          const x = pX0 + col * (pW + pGap), y = pY0 + row * (pH + 0.25);
-          s.addShape("roundRect", { x, y, w: pW, h: pH, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
-          s.addText(p.t, { x: x + 0.25, y: y + 0.12, w: pW - 0.5, h: 0.35, fontFace: FONT_BODY, fontSize: 11.5, bold: true, color: MUTED, margin: 0 });
-          s.addText(p.v, { x: x + 0.25, y: y + 0.42, w: pW - 0.5, h: 0.4, fontFace: FONT_HEAD, fontSize: 20, bold: true, color: NAVY, margin: 0 });
-          s.addText(p.d, { x: x + 0.25, y: y + 0.88, w: pW - 0.5, h: 0.42, fontFace: FONT_BODY, fontSize: 9.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.15 });
+        const pW = 3.77, pGap = 0.4, pX0 = 0.7, pY0 = 2.3, pH = 2.1;
+
+        // Kartu 1: Jarak
+        s.addShape("roundRect", { x: pX0, y: pY0, w: pW, h: pH, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+        s.addText("Jarak", { x: pX0 + 0.25, y: pY0 + 0.15, w: pW - 0.5, h: 0.35, fontFace: FONT_BODY, fontSize: 11.5, bold: true, color: MUTED, margin: 0 });
+        s.addText(`${moveThresholdM} meter`, { x: pX0 + 0.25, y: pY0 + 0.48, w: pW - 0.5, h: 0.45, fontFace: FONT_HEAD, fontSize: 20, bold: true, color: NAVY, margin: 0 });
+        s.addText("Jarak maksimum wajar antara lokasi check-in dan koordinat toko sebelum ditandai \"lokasi jauh dari toko\".", {
+          x: pX0 + 0.25, y: pY0 + 1.02, w: pW - 0.5, h: 0.95, fontFace: FONT_BODY, fontSize: 9.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
         });
 
-        s.addShape("roundRect", { x: 0.7, y: 5.4, w: 11.9, h: 1.4, rectRadius: 0.08, fill: { color: "F0F4FF" }, line: { color: "C7D2FE", width: 1 } });
-        s.addText("Aturan Zona Waktu (khusus kategori \"Kunjungan Hanya Satu Waktu\")", { x: 1.0, y: 5.55, w: 11.3, h: 0.35, fontFace: FONT_BODY, fontSize: 11.5, bold: true, color: NAVY, margin: 0 });
+        // Kartu 2: Durasi (Pendek + Panjang digabung dalam 1 kartu)
+        const dX = pX0 + pW + pGap;
+        s.addShape("roundRect", { x: dX, y: pY0, w: pW, h: pH, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+        s.addText("Durasi", { x: dX + 0.25, y: pY0 + 0.15, w: pW - 0.5, h: 0.35, fontFace: FONT_BODY, fontSize: 11.5, bold: true, color: MUTED, margin: 0 });
+        s.addText(`Pendek: < ${shortHr} jam`, { x: dX + 0.25, y: pY0 + 0.48, w: pW - 0.5, h: 0.35, fontFace: FONT_HEAD, fontSize: 15.5, bold: true, color: NAVY, margin: 0 });
+        s.addText(`Panjang: > ${longHr} jam`, { x: dX + 0.25, y: pY0 + 0.83, w: pW - 0.5, h: 0.35, fontFace: FONT_HEAD, fontSize: 15.5, bold: true, color: NAVY, margin: 0 });
+        s.addText("Durasi kerja di luar rentang ini ditandai sebagai \"terlalu singkat\" atau \"terlalu panjang\".", {
+          x: dX + 0.25, y: pY0 + 1.24, w: pW - 0.5, h: 0.75, fontFace: FONT_BODY, fontSize: 9.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
+        });
+
+        // Kartu 3: Total Kejadian
+        const tX = dX + pW + pGap;
+        s.addShape("roundRect", { x: tX, y: pY0, w: pW, h: pH, rectRadius: 0.08, fill: { color: CARD_BG }, line: { color: LINE, width: 1 } });
+        s.addText("Total Kejadian", { x: tX + 0.25, y: pY0 + 0.15, w: pW - 0.5, h: 0.35, fontFace: FONT_BODY, fontSize: 11.5, bold: true, color: MUTED, margin: 0 });
+        s.addText("≥ 3 kejadian", { x: tX + 0.25, y: pY0 + 0.48, w: pW - 0.5, h: 0.45, fontFace: FONT_HEAD, fontSize: 20, bold: true, color: NAVY, margin: 0 });
+        s.addText("Promotor ditandai perlu diperiksa hanya bila total kejadian anomali (gabungan 6 kategori & 2 sumber data) mencapai minimal 3 kali — bukan 1 kejadian tunggal.", {
+          x: tX + 0.25, y: pY0 + 1.02, w: pW - 0.5, h: 0.95, fontFace: FONT_BODY, fontSize: 9.5, color: MUTED, margin: 0, lineSpacingMultiple: 1.2,
+        });
+
+        s.addShape("roundRect", { x: 0.7, y: 4.75, w: 11.9, h: 1.7, rectRadius: 0.08, fill: { color: "F0F4FF" }, line: { color: "C7D2FE", width: 1 } });
+        s.addText("Aturan Zona Waktu (khusus kategori \"Kunjungan Hanya Satu Waktu\")", { x: 1.0, y: 4.9, w: 11.3, h: 0.35, fontFace: FONT_BODY, fontSize: 11.5, bold: true, color: NAVY, margin: 0 });
         s.addText("Check-in dikelompokkan ke 5 zona jam: Pagi (07–10), Siang (11–14), Sore (15–18), Malam 1 (19–22), Malam 2 (23–00). Comply per hari = tercapai minimal 3 zona BERTURUT-TURUT tanpa lompat (boleh mulai dari zona mana saja). Per orang: Comply bila ≥50% hari kerjanya comply, Not Comply bila di bawah itu.", {
-          x: 1.0, y: 5.88, w: 11.3, h: 0.85, fontFace: FONT_BODY, fontSize: 10.5, color: INK, margin: 0, lineSpacingMultiple: 1.25,
+          x: 1.0, y: 5.28, w: 11.3, h: 1.05, fontFace: FONT_BODY, fontSize: 10.5, color: INK, margin: 0, lineSpacingMultiple: 1.25,
         });
         logo(s, false);
         pageNum(s, 3, false);
@@ -2603,6 +2720,71 @@ function DashboardPage(props) {
         personRows={efficiencyDrill?.personRows}
         onClose={() => setEfficiencyDrill(null)}
       />
+
+      {/* ═══════ Efektivitas & Efisiensi Pencapaian (Data Tagging & NCA) ═══════ */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5">
+        <div className="text-[11px] uppercase tracking-wide text-teal-700 font-semibold mb-1">Efektivitas &amp; Efisiensi Pencapaian</div>
+        <div className="text-[11px] text-gray-500 mb-4">
+          Berbeda dari bagian "Proxy" di atas, penilaian ini berbasis data pencapaian aktual (Tagging &amp; NCA) — bukan pola kerja.
+          Hanya promotor dengan kedua data tersebut lengkap yang dinilai.
+        </div>
+
+        {pencapaianSummary.totalDinilai === 0 ? (
+          <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-4">
+            Data Tagging dan/atau NCA belum tersedia untuk periode ini. Unggah kedua data tersebut melalui alat penggabung data (merger tool) agar bagian ini dapat menampilkan penilaian efektivitas dan efisiensi pencapaian secara otomatis.
+          </div>
+        ) : (
+          <>
+            {(() => {
+              const { totalDinilai, buckets } = pencapaianSummary;
+              const pct = (n) => totalDinilai ? ((n / totalDinilai) * 100).toFixed(1).replace(".", ",") : "0,0";
+              const cards = [
+                {
+                  label: "Efektif & Efisien", count: buckets.efektifEfisien, accent: "border-teal-200 bg-teal-50", textAccent: "text-teal-700",
+                  rekomendasi: "Pencapaian telah memenuhi target dan kualitas registrasi tergolong baik. Direkomendasikan agar dipertahankan dan dapat dijadikan acuan bagi promotor lain.",
+                },
+                {
+                  label: "Efektif, Tidak Efisien", count: buckets.efektifTidakEfisien, accent: "border-amber-200 bg-amber-50", textAccent: "text-amber-700",
+                  rekomendasi: "Pencapaian telah memenuhi target, namun kualitas registrasi (NCA) masih perlu diperbaiki. Direkomendasikan evaluasi terhadap proses verifikasi dan aktivasi.",
+                },
+                {
+                  label: "Tidak Efektif, Efisien", count: buckets.tidakEfektifEfisien, accent: "border-sky-200 bg-sky-50", textAccent: "text-sky-700",
+                  rekomendasi: "Kualitas registrasi sudah baik, namun pencapaian masih di bawah target. Direkomendasikan peningkatan intensitas kunjungan dan aktivitas penjualan.",
+                },
+                {
+                  label: "Tidak Efektif & Tidak Efisien", count: buckets.tidakEfektifTidakEfisien, accent: "border-red-200 bg-red-50", textAccent: "text-red-700",
+                  rekomendasi: "Pencapaian dan kualitas registrasi sama-sama berada di bawah standar. Direkomendasikan evaluasi menyeluruh dan pembinaan intensif.",
+                },
+              ];
+              return (
+                <>
+                  <div className="text-sm text-gray-700 mb-3">
+                    Total promotor yang dinilai: <b>{totalDinilai.toLocaleString("id-ID")}</b> orang
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {cards.map((c) => (
+                      <div key={c.label} className={`border rounded-lg p-3.5 ${c.accent}`}>
+                        <div className="flex items-baseline justify-between mb-1.5">
+                          <span className={`text-sm font-bold ${c.textAccent}`}>{c.label}</span>
+                          <span className="text-xs text-gray-500">
+                            <b className="text-base text-gray-900">{c.count.toLocaleString("id-ID")}</b> orang ({pct(c.count)}%)
+                          </span>
+                        </div>
+                        <div className="text-[12px] text-gray-600 leading-relaxed">{c.rekomendasi}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {buckets.baruBergabung > 0 && (
+                    <div className="text-[12px] text-gray-500 mt-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                      Selain itu, terdapat <b>{buckets.baruBergabung.toLocaleString("id-ID")}</b> promotor ({pct(buckets.baruBergabung)}%) dengan status <b>Baru Bergabung</b> (masa kerja kurang dari 3 bulan) yang belum dinilai secara ketat, karena target pencapaian untuk kelompok ini masih dalam proses penentuan.
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </>
+        )}
+      </div>
 
       {/* ═══════ GRID A: bagian Timestamp (Journey) tiap tipe ═══════ */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 min-w-0 mb-5 md:divide-x md:divide-gray-200">
@@ -2981,7 +3163,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v113</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v115</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
