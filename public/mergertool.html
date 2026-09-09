@@ -318,6 +318,22 @@ function parseNdjson(text) {
   return text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l));
 }
 
+// Beberapa file export (Absensi/DOP/HR dari sistem HRIS mereka) punya baris
+// metadata/judul laporan (misal "Attendance Report", "Organization: ...")
+// SEBELUM baris header kolom beneran — bukan langsung di baris pertama.
+// Baris metadata biasanya cuma 1-2 sel keisi; baris header kolom asli biasanya
+// banyak sel keisi sekaligus (10+). Threshold 5 dipilih di bawah jumlah kolom
+// riil (biasanya 15+) tapi jauh di atas baris metadata (biasanya 1-2).
+function detectHeaderRowIndex(rows, maxScan = 30, minNonNullCells = 5) {
+  for (let i = 0; i < Math.min(rows.length, maxScan); i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const nonNullCount = row.filter((v) => v != null && v !== "").length;
+    if (nonNullCount >= minNonNullCells) return i;
+  }
+  return 0; // fallback: kalau nggak ketemu pola jelas, anggap baris pertama header (perilaku lama)
+}
+
 async function parseWorkbook(file) {
   const name = file.name.toLowerCase();
   if (name.endsWith(".json")) {
@@ -333,12 +349,15 @@ async function parseWorkbook(file) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
   if (rows.length === 0) return [];
-  const headers = dedupeHeaders(rows[0]);
-  return rows.slice(1).map((r) => {
-    const obj = {};
-    headers.forEach((h, i) => (obj[h] = r[i] !== undefined ? r[i] : null));
-    return obj;
-  });
+  const headerIdx = detectHeaderRowIndex(rows);
+  const headers = dedupeHeaders(rows[headerIdx]);
+  return rows.slice(headerIdx + 1)
+    .filter((r) => r.some((v) => v != null && v !== ""))
+    .map((r) => {
+      const obj = {};
+      headers.forEach((h, i) => (obj[h] = r[i] !== undefined ? r[i] : null));
+      return obj;
+    });
 }
 
 function resolveIdKey(sampleKeys, idCol) {

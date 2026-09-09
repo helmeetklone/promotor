@@ -162,6 +162,7 @@
         <input type="number" id="splitMb" value="10" min="1" style="width:50px; background:var(--panel-alt); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:2px 4px;" /> MB per bagian
       </label>
     </div>
+    <p class="hint" style="margin:8px 0 0;">Kalau browser nanya izin buat download banyak file sekaligus, pilih <b>Allow/Izinkan</b> — tiap bagian didownload dengan jeda biar nggak keblokir otomatis.</p>
 
     <div class="actions">
       <button class="primary" id="convertBtn" type="button">Convert &amp; Download</button>
@@ -391,9 +392,21 @@ convertBtn.addEventListener("click", () => {
 
           if (doSplit) {
             const chunks = splitIntoChunks(rows, splitBytes);
+            // Browsers (especially mobile Safari) block/drop rapid-fire
+            // programmatic downloads triggered back-to-back — staggering
+            // them with a delay avoids that.
             chunks.forEach((chunk, i) => {
-              const partName = `${baseName}${tag}_part${i + 1}of${chunks.length}.json`;
-              downloadRows(chunk, partName, asNdjson);
+              setTimeout(() => {
+                const partName = `${baseName}${tag}_part${i + 1}of${chunks.length}.json`;
+                downloadRows(chunk, partName, asNdjson);
+                statusTxt.textContent = `Mengunduh bagian ${i + 1} dari ${chunks.length}...`;
+                if (i === chunks.length - 1) {
+                  setTimeout(() => {
+                    statusTxt.textContent = "Selesai — semua bagian ke-download";
+                    statusTxt.className = "status ok";
+                  }, 400);
+                }
+              }, i * 600);
             });
           } else {
             downloadRows(rows, `${baseName}${tag}.json`, asNdjson);
@@ -406,8 +419,11 @@ convertBtn.addEventListener("click", () => {
       const totalNote = Array.isArray(previewRows) && previewRows.length > 5 ? `\n... (${previewRows.length} baris total)` : "";
       preview.textContent = JSON.stringify(previewArr, null, 2) + totalNote;
 
-      statusTxt.textContent = doSplit ? "Selesai — file terpecah ke-download" : "Selesai — file JSON ke-download";
-      statusTxt.className = "status ok";
+      if (!doSplit) {
+        statusTxt.textContent = "Selesai — file JSON ke-download";
+        statusTxt.className = "status ok";
+      }
+      // when doSplit, the staggered setTimeout loop above sets the final status
     } catch (e) {
       showError("Gagal konversi: " + e.message);
       statusTxt.textContent = "Gagal konversi";
