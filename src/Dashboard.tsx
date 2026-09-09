@@ -1,4 +1,4 @@
-// Dashboard.tsx — v115
+// Dashboard.tsx — v116
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -98,7 +98,7 @@
 //        "Promotor di Timestamp" (kolom kiri) — nambah field `all` di processAbsensi juga.
 //   v32: swap nilai "Promotor di Timestamp"/"Promotor di Absensi" atas permintaan eksplisit
 //        user — labelnya tetap sama, tapi angka yang ditampilkan ditukar posisinya.
-import React, { useState, useMemo, useCallback, useRef } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import Papa from "papaparse";
 import pptxgen from "pptxgenjs";
 
@@ -2980,6 +2980,15 @@ function DashboardPage(props) {
 
 export default function Dashboard() {
   const [page, setPage] = useState("upload");
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Matiin loading overlay SETELAH konten dashboard yang berat itu selesai
+  // di-render & commit (bukan bareng pas setPage dipanggil) — biar overlay-nya
+  // beneran nutupin durasi hitungan berat, bukan ilang duluan sebelum konten
+  // aslinya siap ditampilin.
+  useEffect(() => {
+    if (page === "dashboard") setIsTransitioning(false);
+  }, [page]);
   const [showGlossary, setShowGlossary] = useState(false);
 
   const [rawRows, setRawRows] = useState(null);
@@ -3073,6 +3082,12 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 overflow-x-hidden">
+      {isTransitioning && (
+        <div className="fixed inset-0 bg-white/90 z-[100] flex flex-col items-center justify-center gap-3">
+          <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+          <div className="text-sm text-gray-600">Memproses data, mohon tunggu sebentar...</div>
+        </div>
+      )}
       <div className="max-w-6xl mx-auto px-4 py-6 w-full min-w-0">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-bold">Dashboard Anomali Lapangan</h1>
@@ -3099,7 +3114,21 @@ export default function Dashboard() {
           <UploadPage
             fileNames={fileNames}
             onFiles={onFiles}
-            onGoDashboard={() => setPage("dashboard")}
+            onGoDashboard={() => {
+              // Ngitung dashboard (processTimestamp/processAbsensi/dst) itu
+              // BERAT di dataset gede (ratusan ribu baris) dan jalan blocking
+              // dalam 1 render React — kalau langsung setPage("dashboard"),
+              // browser nggak sempet nge-paint APAPUN (termasuk loading state)
+              // sampai semua hitungan selesai, jadi kesannya "halaman nggak
+              // muncul-muncul". Fix: tampilin loading state DULU, kasih jeda
+              // 1 tick (via setTimeout) biar itu sempet ke-paint, baru abis
+              // itu trigger transisi berat yang sebenarnya. isTransitioning
+              // BARU dimatiin lewat useEffect di bawah, setelah render berat
+              // itu selesai commit — biar spinner-nya tetep keliatan selama
+              // proses beratnya jalan, bukan ilang duluan.
+              setIsTransitioning(true);
+              setTimeout(() => setPage("dashboard"), 50);
+            }}
             canGo={!!rawRows && rawRows.length > 0}
           />
         ) : (
@@ -3163,7 +3192,7 @@ export default function Dashboard() {
             />
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v115</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v116</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
