@@ -172,7 +172,10 @@
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
         <div style="font-size:13px; font-weight:600;">Filter Role</div>
-        <button class="ghost" id="roleFilterAllBtn" type="button" style="padding:4px 10px; font-size:11px;">Pilih semua</button>
+        <div style="display:flex; gap:6px;">
+          <button class="ghost" id="roleFilterAllBtn" type="button" style="padding:4px 10px; font-size:11px;">Pilih semua</button>
+          <button class="ghost" id="roleFilterNoneBtn" type="button" style="padding:4px 10px; font-size:11px;">Kosongkan semua</button>
+        </div>
       </div>
       <div id="roleFilterList" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
     </div>
@@ -1173,6 +1176,11 @@ document.getElementById("downloadBtn").addEventListener("click", downloadExcel);
 document.getElementById("downloadCsvBtn").addEventListener("click", downloadCsv);
 document.getElementById("roleFilterAllBtn").addEventListener("click", () => {
   state.excludedRoles.clear();
+  renderResults();
+});
+document.getElementById("roleFilterNoneBtn").addEventListener("click", () => {
+  const roles = [...new Set(state.result.rows.map(getRowRole))];
+  state.excludedRoles = new Set(roles);
   renderResults();
 });
 document.getElementById("resetBtn").addEventListener("click", resetApp);
