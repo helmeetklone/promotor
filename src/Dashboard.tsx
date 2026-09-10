@@ -1,4 +1,4 @@
-// Dashboard.tsx — v118
+// Dashboard.tsx — v119
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -502,7 +502,11 @@ const ABSENSI_COLUMNS = [
 
 function summarizeCoverage(items, idFn, dateFn) {
   const ids = new Set(items.map(idFn).filter((v) => v && v !== "-"));
-  const dates = items.map(dateFn).filter((v) => v && v !== "-").sort();
+  // PENTING: .sort() polos ngurutin berdasarkan teks (lexicographic), BUKAN
+  // secara kronologis — kalau nilainya objek Date (bukan string rapi format
+  // ISO), urutannya jadi ngaco (dateMin bisa jadi bukan tanggal paling awal
+  // beneran). Comparator eksplisit ini yang bikin urutannya bener.
+  const dates = items.map(dateFn).filter((v) => v && v !== "-").sort((a, b) => new Date(a) - new Date(b));
   return {
     uniqueEmployees: ids.size,
     employeeIds: ids,
@@ -2178,7 +2182,10 @@ function computeTypeView(result, promotorType, isTimestamp) {
   //     total hari periode data — makin dekat 100%, makin konsisten hadir.
   //   - Tingkat Kepatuhan Pola Kerja (proxy Efisiensi): % hari/shift yang
   //     sesuai standar (zona waktu buat Timestamp, durasi wajar buat Absensi).
-  const sortedDates = all.map((r) => r.date).filter(Boolean).sort();
+  // Sama kayak summarizeCoverage: .sort() polos ngurutin secara teks, bukan
+  // kronologis — comparator eksplisit ini penting biar periodDays kehitung
+  // bener (efek berantai kalau salah: Efektivitas jadi NaN -> tampil kosong).
+  const sortedDates = all.map((r) => r.date).filter(Boolean).sort((a, b) => new Date(a) - new Date(b));
   const periodDays = sortedDates.length ? daysBetween(sortedDates[0], sortedDates[sortedDates.length - 1]) : null;
   const attendanceRate = (uniqueCoverage && periodDays) ? (total / (uniqueCoverage * periodDays)) * 100 : null;
 
@@ -3238,7 +3245,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v118</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v119</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
