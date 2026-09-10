@@ -1,4 +1,4 @@
-// Dashboard.tsx — v117
+// Dashboard.tsx — v118
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1987,11 +1987,6 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     statusCombinedCount, durasiCount, categoryByType,
   } = computed;
 
-  const pencapaianSummary = useMemo(
-    () => computePencapaianSummary(timestampResult, absensiResult),
-    [timestampResult, absensiResult]
-  );
-
   const mixedColumns = [
     { key: "_source", label: "Sumber" },
     { key: "date", label: "Tgl" },
@@ -2729,20 +2724,25 @@ function DashboardPage(props) {
           Hanya promotor dengan kedua data tersebut lengkap yang dinilai.
         </div>
 
-        {pencapaianSummary.totalDinilai === 0 ? (
-          <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-4">
-            Data Tagging dan/atau NCA belum tersedia untuk periode ini. Unggah kedua data tersebut melalui alat penggabung data (merger tool) agar bagian ini dapat menampilkan penilaian efektivitas dan efisiensi pencapaian secara otomatis.
-          </div>
-        ) : (
-          <>
-            {(() => {
-              const { totalDinilai, buckets } = pencapaianSummary;
-              const pct = (n) => totalDinilai ? ((n / totalDinilai) * 100).toFixed(1).replace(".", ",") : "0,0";
-              const cards = [
-                {
-                  label: "Efektif & Efisien", count: buckets.efektifEfisien, accent: "border-teal-200 bg-teal-50", textAccent: "text-teal-700",
-                  rekomendasi: "Pencapaian telah memenuhi target dan kualitas registrasi tergolong baik. Direkomendasikan agar dipertahankan dan dapat dijadikan acuan bagi promotor lain.",
-                },
+        {(() => {
+          const pencapaianSummary = computePencapaianSummary(timestampResult, absensiResult);
+          if (pencapaianSummary.totalDinilai === 0) {
+            return (
+              <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                Data Tagging dan/atau NCA belum tersedia untuk periode ini. Unggah kedua data tersebut melalui alat penggabung data (merger tool) agar bagian ini dapat menampilkan penilaian efektivitas dan efisiensi pencapaian secara otomatis.
+              </div>
+            );
+          }
+          return (
+            <>
+              {(() => {
+                const { totalDinilai, buckets } = pencapaianSummary;
+                const pct = (n) => totalDinilai ? ((n / totalDinilai) * 100).toFixed(1).replace(".", ",") : "0,0";
+                const cards = [
+                  {
+                    label: "Efektif & Efisien", count: buckets.efektifEfisien, accent: "border-teal-200 bg-teal-50", textAccent: "text-teal-700",
+                    rekomendasi: "Pencapaian telah memenuhi target dan kualitas registrasi tergolong baik. Direkomendasikan agar dipertahankan dan dapat dijadikan acuan bagi promotor lain.",
+                  },
                 {
                   label: "Efektif, Tidak Efisien", count: buckets.efektifTidakEfisien, accent: "border-amber-200 bg-amber-50", textAccent: "text-amber-700",
                   rekomendasi: "Pencapaian telah memenuhi target, namun kualitas registrasi (NCA) masih perlu diperbaiki. Direkomendasikan evaluasi terhadap proses verifikasi dan aktivasi.",
@@ -2782,8 +2782,9 @@ function DashboardPage(props) {
                 </>
               );
             })()}
-          </>
-        )}
+            </>
+          );
+        })()}
       </div>
 
       {/* ═══════ GRID A: bagian Timestamp (Journey) tiap tipe ═══════ */}
@@ -3237,7 +3238,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v117</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v118</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
