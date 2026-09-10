@@ -1,4 +1,4 @@
-// Dashboard.tsx — v116
+// Dashboard.tsx — v117
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -2978,6 +2978,49 @@ function DashboardPage(props) {
 
 // ───────────────────────── root ─────────────────────────
 
+// Kalau ada error nggak ketangkep pas ngitung/nge-render dashboard (misal
+// ada baris data dengan format yang nggak terduga), React DEFAULT-nya bakal
+// unmount SELURUH pohon komponen -> halaman jadi blank total tanpa info
+// apapun. Error boundary ini nangkep error itu, nampilin pesan yang jelas
+// (+ detail teknis biar bisa di-screenshot & dikirim buat debug) daripada
+// cuma layar kosong.
+class DashboardErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error("Dashboard crashed:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+          <div className="max-w-lg w-full bg-white border border-red-200 rounded-xl p-6">
+            <div className="text-red-600 font-bold text-lg mb-1">Terjadi kesalahan saat memproses data</div>
+            <div className="text-sm text-gray-600 mb-4">
+              Kemungkinan ada baris data dengan format yang tidak terduga. Screenshot detail teknis di bawah dan kirimkan untuk diperbaiki.
+            </div>
+            <pre className="text-left text-[11px] bg-gray-100 rounded p-3 overflow-auto max-h-64 whitespace-pre-wrap">
+              {String(this.state.error?.stack || this.state.error?.message || this.state.error)}
+            </pre>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+            >
+              Muat Ulang Halaman
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function Dashboard() {
   const [page, setPage] = useState("upload");
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -3185,14 +3228,16 @@ export default function Dashboard() {
                 )}
               </div>
             )}
-            <DashboardPage
-              timestampData={timestampData}
-              absensiData={absensiData} moveThresholdM={moveThresholdM} setMoveThresholdM={setMoveThresholdM}
-              shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
-            />
+            <DashboardErrorBoundary>
+              <DashboardPage
+                timestampData={timestampData}
+                absensiData={absensiData} moveThresholdM={moveThresholdM} setMoveThresholdM={setMoveThresholdM}
+                shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
+              />
+            </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v116</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v117</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
