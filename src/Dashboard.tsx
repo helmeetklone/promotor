@@ -1,4 +1,4 @@
-// Dashboard.tsx — v119
+// Dashboard.tsx — v122
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -374,12 +374,18 @@ function daysBetween(dateA, dateB) {
   return Math.round(Math.abs(b - a) / msPerDay) + 1;
 }
 
-// Target pencapaian per bulan berdasarkan masa kerja — formula PASTI buat
-// yang <3 bulan belum final, jadi sementara cuma ditandain "<150" (bukan
-// angka pasti). >3 bulan = 150/bulan (udah fix).
+// Target NCA per bulan berdasarkan masa kerja — 3 tingkat, sesuai keputusan
+// final: <1 bulan = 75, 1-<3 bulan = 120, ≥3 bulan = 150. Ini target buat
+// metrik "NCA" (dari file NCA), BUKAN "Pencapaian" dari Tagging — dua hal beda.
+function getTargetNCA(tenureMonths) {
+  if (tenureMonths == null) return null;
+  if (tenureMonths < 1) return 75;
+  if (tenureMonths < 3) return 120;
+  return 150;
+}
 function getTargetLabel(tenureMonths) {
-  if (tenureMonths == null) return "-";
-  return tenureMonths >= 3 ? "150" : "<150";
+  const t = getTargetNCA(tenureMonths);
+  return t == null ? "-" : String(t);
 }
 
 // Ambil field Pencapaian (Tagging) & Kualitas (NCA) dari 1 baris data mentah
@@ -461,7 +467,7 @@ const TIMESTAMP_COLUMNS = [
   { key: "ncaNCA", label: "NCA", render: (v) => v.pencapaian?.ncaNCA != null ? v.pencapaian.ncaNCA.toLocaleString("id-ID") : "-" },
   { key: "ncaGoodSRC", label: "Good SRC (NCA)", render: (v) => v.pencapaian?.ncaGoodSRC != null ? v.pencapaian.ncaGoodSRC.toLocaleString("id-ID") : "-" },
   { key: "ncaBadSRC", label: "Bad SRC (NCA)", render: (v) => v.pencapaian?.ncaBadSRC != null ? v.pencapaian.ncaBadSRC.toLocaleString("id-ID") : "-" },
-  { key: "target", label: "Target/Bulan", render: (v) => getTargetLabel(v.tenureMonths) },
+  { key: "target", label: "Target NCA/Bulan", render: (v) => getTargetLabel(v.tenureMonths) },
   { key: "checkinCount", label: "Absen" },
   { key: "distinctZoneCount", label: "Zona" },
   { key: "coordsList", label: "Koordinat Check-in (lat, lon)" },
@@ -487,7 +493,7 @@ const ABSENSI_COLUMNS = [
   { key: "ncaNCA", label: "NCA", render: (r) => r.pencapaian?.ncaNCA != null ? r.pencapaian.ncaNCA.toLocaleString("id-ID") : "-" },
   { key: "ncaGoodSRC", label: "Good SRC (NCA)", render: (r) => r.pencapaian?.ncaGoodSRC != null ? r.pencapaian.ncaGoodSRC.toLocaleString("id-ID") : "-" },
   { key: "ncaBadSRC", label: "Bad SRC (NCA)", render: (r) => r.pencapaian?.ncaBadSRC != null ? r.pencapaian.ncaBadSRC.toLocaleString("id-ID") : "-" },
-  { key: "target", label: "Target/Bulan", render: (r) => getTargetLabel(r.tenureMonths) },
+  { key: "target", label: "Target NCA/Bulan", render: (r) => getTargetLabel(r.tenureMonths) },
   { key: "durHr", label: "Jam", render: (r) => r.durHr !== null ? r.durHr.toFixed(1) : "-" },
   { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
   { key: "coordOut", label: "Koordinat Check-out (lat, lon)" },
@@ -999,7 +1005,24 @@ function computePencapaianSummary(timestampResult, absensiResult) {
     else buckets.tidakEfektifTidakEfisien++;
   });
 
-  return { totalDinilai, buckets };
+  // ── Capaian NCA vs Target (METRIK TERPISAH dari matrix Efektif/Efisien di
+  // atas) — bandingin metrik "NCA" mentah (dari file NCA) ke target per bulan
+  // berdasarkan masa kerja (3 tingkat: <1 bulan=75, 1-<3 bulan=120, ≥3 bulan=
+  // 150 — SEMUA tingkat udah punya target pasti, jadi SEMUA promotor dinilai,
+  // nggak ada lagi kategori "Baru Bergabung" khusus buat metrik ini).
+  const capaianNCA = { tercapai: 0, belumTercapai: 0 };
+  let totalDinilaiNCA = 0;
+  perPerson.forEach((e) => {
+    const p = e.pencapaian;
+    if (!p || p.ncaNCA == null || e.tenureMonths == null) return;
+    const target = getTargetNCA(e.tenureMonths);
+    if (target == null) return;
+    totalDinilaiNCA++;
+    if (p.ncaNCA >= target) capaianNCA.tercapai++;
+    else capaianNCA.belumTercapai++;
+  });
+
+  return { totalDinilai, buckets, totalDinilaiNCA, capaianNCA };
 }
 
 // Ringkasan angka-angka Overview, dihitung ULANG di sini (independen dari
@@ -1410,6 +1433,9 @@ function GlossaryModal({ open, onClose }) {
               skor gabungan dari 2 rasio kualitas (NCA): (1) NCA/GAR — seberapa banyak GAR yang berhasil jadi registrasi berkualitas; (2) Good SRC/(Good SRC+Bad SRC+Unidentified Imei) — proporsi sumber registrasi yang baik. Skor rata-rata dari 2 rasio itu ≥50% = Efisien.
             </Term>
             <div>4 kombinasi status: Efektif &amp; Efisien (pertahankan, jadi acuan), Efektif tapi Tidak Efisien (perbaiki kualitas registrasi), Tidak Efektif tapi Efisien (tingkatkan volume/intensitas), Tidak Efektif &amp; Tidak Efisien (perlu pembinaan menyeluruh) — masing-masing dengan rekomendasi tindak lanjut yang tampil otomatis di dashboard.</div>
+            <Term name="Capaian NCA vs Target (metrik terpisah)">
+              metrik "NCA" mentah (dari file NCA, BUKAN "Pencapaian" dari Tagging) dibandingkan target per bulan berdasarkan masa kerja: &lt;1 bulan = 75, 1–&lt;3 bulan = 120, ≥3 bulan = 150. Semua tingkat masa kerja sudah punya target pasti, jadi SEMUA promotor dinilai (nggak ada pengecualian "Baru Bergabung" buat metrik ini). Muncul juga sebagai kolom "Target NCA/Bulan" di tabel detail.
+            </Term>
           </Section>
 
           <Section title="Export ke PPT">
@@ -1855,7 +1881,8 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       combinedFlagged.forEach((r) => {
         if (!r.employee_id || !anomaliQualifiedIds.has(r.employee_id) || r.promotorType !== promotorType) return;
         const entry = map.get(r.employee_id) || {
-          employee_name: r.employee_name, position: r.position,
+          employee_id: r.employee_id, employee_name: r.employee_name, position: r.position,
+          region: r.region, cluster: r.cluster, promotorType: r.promotorType,
           total: 0, zona: 0, gpsIdentik: 0, gpsJauh: 0, gpsNA: 0, status: 0, durasi: 0,
         };
         entry.total++;
@@ -1950,13 +1977,18 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       });
       return { notComply, total: comply + notComply };
     };
+    // FIX (sebelumnya bug): "GPS Toko N/A" awalnya nyoba ngitung KODE TOKO dari
+    // baris yang di-flag noOutletData — padahal baris itu di-flag JUSTRU karena
+    // kode tokonya kosong, jadi hasilnya selalu 0 berapa pun kejadian aslinya.
+    // Sekarang dihitung per ORANG (employee_id), konsisten sama zoneNotComplyByType/
+    // durasiByType di bawah & sama popup "Total Anomali per Kategori".
     const tokoNAByType = (promotorType) => {
-      const tsNA = new Set((timestampResult?.flagged || []).filter((v) => v.noOutletData && v.promotorType === promotorType).map((v) => v.rawOutletCode).filter(Boolean));
-      const abNA = new Set((absensiResult?.flagged || []).filter((s) => s.noOutletData && s.promotorType === promotorType).map((s) => s.rawOutletCode).filter(Boolean));
+      const tsNA = new Set((timestampResult?.flagged || []).filter((v) => v.noOutletData && v.promotorType === promotorType).map((v) => v.employee_id).filter(Boolean));
+      const abNA = new Set((absensiResult?.flagged || []).filter((s) => s.noOutletData && s.promotorType === promotorType).map((s) => s.employee_id).filter(Boolean));
       const naCount = new Set([...tsNA, ...abNA]).size;
       const totalToko = new Set([
-        ...(timestampResult?.all || []).filter((v) => v.promotorType === promotorType).map((v) => v.rawOutletCode),
-        ...(absensiResult?.all || []).filter((s) => s.promotorType === promotorType).map((s) => s.rawOutletCode),
+        ...(timestampResult?.all || []).filter((v) => v.promotorType === promotorType).map((v) => v.employee_id),
+        ...(absensiResult?.all || []).filter((s) => s.promotorType === promotorType).map((s) => s.employee_id),
       ].filter(Boolean)).size;
       return { naCount, totalToko };
     };
@@ -1974,7 +2006,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       totalPromotorAll, timestampPromotorAll, absensiPromotorAll,
       combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
       anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
-      buildCategorySummary, categorySummaryColumns,
+      buildCategorySummary, categorySummaryColumns, buildAnomaliDetail,
       zoneComplyIds, zoneNotComplyIds, zoneAffectedCount, byZoneIds,
       gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
       statusCombinedCount, durasiCount, categoryByType,
@@ -1985,7 +2017,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
     totalPromotorAll, timestampPromotorAll, absensiPromotorAll,
     combinedFlagged, inStore, outStore, onlyInTimestamp, onlyInAbsensi,
     anomaliInStoreCount, anomaliOutStoreCount, pctIn, pctOut,
-    buildCategorySummary, categorySummaryColumns,
+    buildCategorySummary, categorySummaryColumns, buildAnomaliDetail,
     zoneComplyIds, zoneNotComplyIds, zoneAffectedCount, byZoneIds,
     gpsIdenticalCount, gpsFarCombinedCount, tokoNACount, totalTokoCount,
     statusCombinedCount, durasiCount, categoryByType,
@@ -2050,7 +2082,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
                 <div className="divide-y divide-gray-100">
                   {[
                     { title: "Zona Waktu — Not Comply (<50% hari)", source: "Timestamp", value: data.zone.notComply, of: data.zone.total, unit: "promotor" },
-                    { title: "GPS Toko N/A", source: "Timestamp & Absensi", value: data.toko.naCount, of: data.toko.totalToko, unit: "toko" },
+                    { title: "GPS Toko N/A", source: "Timestamp & Absensi", value: data.toko.naCount, of: data.toko.totalToko, unit: "promotor" },
                     { title: "Durasi Bermasalah", source: "Absensi", value: data.durasi.count, of: data.durasi.total, unit: "promotor" },
                   ].map((row) => (
                     <div key={row.title} className="px-3 py-2">
@@ -2068,6 +2100,51 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
           </div>
         </div>
       </div>
+
+      {/* ═══════ Promotor Prioritas — Top 20 Kejadian Anomali Terbanyak ═══════ */}
+      {(() => {
+        const combined = [
+          ...buildAnomaliDetail("In Store Promotor"),
+          ...buildAnomaliDetail("Out Store Promotor"),
+        ].sort((a, b) => b.total - a.total).slice(0, 20);
+        if (combined.length === 0) return null;
+        return (
+          <div className="mt-4 pt-4 border-t border-emerald-200/50">
+            <div className="text-base font-bold text-gray-900 mb-1">🎯 Promotor Prioritas — Top 20 Kejadian Anomali Terbanyak</div>
+            <div className="text-[11px] text-gray-500 mb-3">
+              Karena hampir semua promotor kena minimal 3 kejadian, daftar di bawah ini mengurutkan dari yang PALING PARAH — mulai dari sini untuk pengecekan, bukan dari daftar lengkap 2.000+ orang.
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
+              <table className="w-full text-sm min-w-[600px]">
+                <thead>
+                  <tr className="bg-gray-50 text-[11px] text-gray-500 uppercase tracking-wide">
+                    <th className="text-left px-3 py-2 font-semibold">#</th>
+                    <th className="text-left px-3 py-2 font-semibold">Nama</th>
+                    <th className="text-left px-3 py-2 font-semibold">Tipe</th>
+                    <th className="text-left px-3 py-2 font-semibold">Wilayah</th>
+                    <th className="text-right px-3 py-2 font-semibold">Total Kejadian</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {combined.map((p, i) => (
+                    <tr key={p.employee_id || i} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-gray-400">{i + 1}</td>
+                      <td className="px-3 py-2 font-medium text-gray-900">{p.employee_name || "-"}</td>
+                      <td className="px-3 py-2 text-gray-600">
+                        <span className={p.promotorType === "In Store Promotor" ? "text-amber-700" : "text-fuchsia-700"}>
+                          {p.promotorType === "In Store Promotor" ? "In Store" : "Out Store"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-600">{p.region || "-"}{p.cluster ? ` · ${p.cluster}` : ""}</td>
+                      <td className="px-3 py-2 text-right font-bold text-red-700">{p.total.toLocaleString("id-ID")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 pt-4 border-t border-emerald-200/50 md:divide-x md:divide-emerald-200/50">
         <div className="md:pr-6 space-y-2.5">
@@ -2786,6 +2863,42 @@ function DashboardPage(props) {
                       Selain itu, terdapat <b>{buckets.baruBergabung.toLocaleString("id-ID")}</b> promotor ({pct(buckets.baruBergabung)}%) dengan status <b>Baru Bergabung</b> (masa kerja kurang dari 3 bulan) yang belum dinilai secara ketat, karena target pencapaian untuk kelompok ini masih dalam proses penentuan.
                     </div>
                   )}
+
+                  {pencapaianSummary.totalDinilaiNCA > 0 && (() => {
+                    const { totalDinilaiNCA, capaianNCA } = pencapaianSummary;
+                    const pctNCA = (n) => totalDinilaiNCA ? ((n / totalDinilaiNCA) * 100).toFixed(1).replace(".", ",") : "0,0";
+                    return (
+                      <div className="mt-5 pt-4 border-t border-gray-100">
+                        <div className="text-sm font-bold text-gray-800 mb-1">Capaian NCA vs Target</div>
+                        <div className="text-[11px] text-gray-500 mb-3">
+                          Metrik "NCA" (dari file NCA) dibandingkan target per bulan berdasarkan masa kerja: &lt;1 bulan = 75, 1–&lt;3 bulan = 120, ≥3 bulan = 150. Semua tingkat masa kerja sudah punya target, jadi semua promotor dinilai.
+                        </div>
+                        <div className="text-sm text-gray-700 mb-3">
+                          Total promotor yang dinilai: <b>{totalDinilaiNCA.toLocaleString("id-ID")}</b> orang
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="border rounded-lg p-3.5 border-teal-200 bg-teal-50">
+                            <div className="flex items-baseline justify-between mb-1.5">
+                              <span className="text-sm font-bold text-teal-700">Tercapai</span>
+                              <span className="text-xs text-gray-500">
+                                <b className="text-base text-gray-900">{capaianNCA.tercapai.toLocaleString("id-ID")}</b> orang ({pctNCA(capaianNCA.tercapai)}%)
+                              </span>
+                            </div>
+                            <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA sudah memenuhi atau melebihi target sesuai masa kerja. Direkomendasikan dipertahankan.</div>
+                          </div>
+                          <div className="border rounded-lg p-3.5 border-red-200 bg-red-50">
+                            <div className="flex items-baseline justify-between mb-1.5">
+                              <span className="text-sm font-bold text-red-700">Belum Tercapai</span>
+                              <span className="text-xs text-gray-500">
+                                <b className="text-base text-gray-900">{capaianNCA.belumTercapai.toLocaleString("id-ID")}</b> orang ({pctNCA(capaianNCA.belumTercapai)}%)
+                              </span>
+                            </div>
+                            <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA masih di bawah target sesuai masa kerja. Direkomendasikan pembinaan dan pemantauan lebih lanjut.</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               );
             })()}
@@ -3245,7 +3358,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v119</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v122</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
