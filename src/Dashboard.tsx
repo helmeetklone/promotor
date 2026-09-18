@@ -1,4 +1,4 @@
-// Dashboard.tsx — v122
+// Dashboard.tsx — v124
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -511,8 +511,15 @@ function summarizeCoverage(items, idFn, dateFn) {
   // PENTING: .sort() polos ngurutin berdasarkan teks (lexicographic), BUKAN
   // secara kronologis — kalau nilainya objek Date (bukan string rapi format
   // ISO), urutannya jadi ngaco (dateMin bisa jadi bukan tanggal paling awal
-  // beneran). Comparator eksplisit ini yang bikin urutannya bener.
-  const dates = items.map(dateFn).filter((v) => v && v !== "-").sort((a, b) => new Date(a) - new Date(b));
+  // beneran). Comparator eksplisit ini yang bikin urutannya bener. TAPI itu
+  // aja belum cukup — kalau ADA 1 nilai tanggal yang rusak/nggak valid
+  // (new Date(v) jadi "Invalid Date"), comparator-nya balikin NaN buat baris
+  // itu, dan hasil sortir jadi TIDAK BISA DIPREDIKSI (nilai rusak itu bisa
+  // "nyasar" ke ujung manapun, bikin dateMin ATAU dateMax jadi "-" gantian).
+  // Makanya nilai yang nggak valid di-filter DULU, sebelum disortir.
+  const dates = items.map(dateFn)
+    .filter((v) => v && v !== "-" && !Number.isNaN(new Date(v).getTime()))
+    .sort((a, b) => new Date(a) - new Date(b));
   return {
     uniqueEmployees: ids.size,
     employeeIds: ids,
@@ -2110,7 +2117,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
         if (combined.length === 0) return null;
         return (
           <div className="mt-4 pt-4 border-t border-emerald-200/50">
-            <div className="text-base font-bold text-gray-900 mb-1">🎯 Promotor Prioritas — Top 20 Kejadian Anomali Terbanyak</div>
+            <div className="text-base font-bold text-gray-900 mb-1">🔎 Perlu Perhatian Khusus — Top 20 Kejadian Anomali Terbanyak</div>
             <div className="text-[11px] text-gray-500 mb-3">
               Karena hampir semua promotor kena minimal 3 kejadian, daftar di bawah ini mengurutkan dari yang PALING PARAH — mulai dari sini untuk pengecekan, bukan dari daftar lengkap 2.000+ orang.
             </div>
@@ -2262,9 +2269,22 @@ function computeTypeView(result, promotorType, isTimestamp) {
   // Sama kayak summarizeCoverage: .sort() polos ngurutin secara teks, bukan
   // kronologis — comparator eksplisit ini penting biar periodDays kehitung
   // bener (efek berantai kalau salah: Efektivitas jadi NaN -> tampil kosong).
-  const sortedDates = all.map((r) => r.date).filter(Boolean).sort((a, b) => new Date(a) - new Date(b));
+  // Tanggal yang nggak valid (Invalid Date) di-filter DULU sebelum disortir —
+  // kalau nggak, comparator balikin NaN buat baris itu dan hasil sortirnya
+  // jadi nggak bisa diprediksi (bisa bikin dateMin ATAU dateMax jadi salah).
+  const sortedDates = all.map((r) => r.date)
+    .filter((v) => v && !Number.isNaN(new Date(v).getTime()))
+    .sort((a, b) => new Date(a) - new Date(b));
   const periodDays = sortedDates.length ? daysBetween(sortedDates[0], sortedDates[sortedDates.length - 1]) : null;
-  const attendanceRate = (uniqueCoverage && periodDays) ? (total / (uniqueCoverage * periodDays)) * 100 : null;
+  // FIX BUG NYATA: attendanceRate sebelumnya pakai `total` (jumlah BARIS
+  // mentah) sebagai pembilang — tapi 1 orang bisa punya BEBERAPA kejadian
+  // (kunjungan/shift) di HARI YANG SAMA (kunjungi beberapa toko sehari itu
+  // NORMAL buat promotor, bukan kasus langka — 44% hari-kerja di data nyata
+  // punya >1 kejadian). Itu bikin attendanceRate bisa lewat 100% (mustahil
+  // buat rate kehadiran). Sekarang pembilangnya HARI UNIK per orang (bukan
+  // jumlah kejadian mentah) — jadi nggak akan pernah lewat 100% lagi.
+  const uniquePersonDays = new Set(all.map((r) => (r.employee_id && r.date) ? r.employee_id + "|" + r.date : null).filter(Boolean)).size;
+  const attendanceRate = (uniqueCoverage && periodDays) ? (uniquePersonDays / (uniqueCoverage * periodDays)) * 100 : null;
 
   // ── Efektivitas & Efisiensi PER INDIVIDU — rumus PERSIS SAMA kayak versi
   // per-tipe di atas, cuma dihitung buat 1 orang (bukan digabung se-tipe):
@@ -2275,15 +2295,19 @@ function computeTypeView(result, promotorType, isTimestamp) {
   const perEmployee = new Map();
   all.forEach((r) => {
     if (!r.employee_id) return;
-    const e = perEmployee.get(r.employee_id) || { days: 0, compliantDays: 0 };
+    const e = perEmployee.get(r.employee_id) || { days: 0, compliantDays: 0, uniqueDaySet: new Set() };
     e.days++;
     const isCompliant = isTimestamp ? !r.zoneNotCompliant : !r.durationIssue;
     if (isCompliant) e.compliantDays++;
+    if (r.date) e.uniqueDaySet.add(r.date);
     perEmployee.set(r.employee_id, e);
   });
   all.forEach((r) => {
     const e = r.employee_id ? perEmployee.get(r.employee_id) : null;
-    r.individualAttendanceRate = (e && periodDays) ? (e.days / periodDays) * 100 : null;
+    // FIX (sama kayak attendanceRate di atas): pakai jumlah HARI UNIK orang
+    // itu (bukan jumlah kejadian mentah e.days) — biar nggak lewat 100% kalau
+    // dia punya beberapa kejadian di hari yang sama.
+    r.individualAttendanceRate = (e && periodDays) ? (e.uniqueDaySet.size / periodDays) * 100 : null;
     r.individualComplianceRate = (e && e.days) ? (e.compliantDays / e.days) * 100 : null;
   });
 
@@ -3358,7 +3382,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v122</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v124</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
