@@ -1,4 +1,4 @@
-// Dashboard.tsx — v124
+// Dashboard.tsx — v125
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -1032,6 +1032,49 @@ function computePencapaianSummary(timestampResult, absensiResult) {
   return { totalDinilai, buckets, totalDinilaiNCA, capaianNCA };
 }
 
+// Aktivitas Lapangan vs GAR — beda lagi dari 2 metrik di atas: ini nge-cross-
+// reference SEBERAPA SERING promotor kerja (jumlah hari aktif — ada kejadian
+// Timestamp/Absensi apa saja, sepanjang periode data yang di-upload) dengan
+// SEBERAPA BESAR hasil GAR-nya (dari NCA, Bulan Berjalan). Tujuannya: nemuin
+// promotor yang rajin kerja tapi hasilnya kurang (sinyal salah penempatan
+// lokasi), atau sebaliknya. Ambang batasnya BEDA buat 2 sisi (sesuai
+// keputusan user): Aktivitas pakai angka TETAP 20 hari/bulan (standar umum
+// hari kerja — 5 hari x 4 minggu — sama buat semua orang, karena jumlah hari
+// kerja yang tersedia dalam 1 bulan nggak berubah-ubah sesuai masa kerja).
+// GAR tetap pakai target NCA sesuai masa kerja (75/120/150), karena itu
+// target penjualan yang emang wajar beda per level pengalaman.
+const AKTIVITAS_TINGGI_THRESHOLD_HARI = 20;
+function computeAktivitasVsGAR(timestampResult, absensiResult) {
+  const allRows = [...(timestampResult?.all || []), ...(absensiResult?.all || [])];
+  const perPerson = new Map();
+  allRows.forEach((r) => {
+    if (!r.employee_id) return;
+    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, ncaGAR: null, activeDays: new Set() };
+    if (existing.tenureMonths == null && r.tenureMonths != null) existing.tenureMonths = r.tenureMonths;
+    if (existing.ncaGAR == null && r.pencapaian && r.pencapaian.ncaGAR != null) existing.ncaGAR = r.pencapaian.ncaGAR;
+    if (r.date) existing.activeDays.add(r.date);
+    perPerson.set(r.employee_id, existing);
+  });
+
+  const buckets = { aktivitasTinggiGarTinggi: 0, aktivitasTinggiGarRendah: 0, aktivitasRendahGarTinggi: 0, aktivitasRendahGarRendah: 0 };
+  let totalDinilai = 0;
+
+  perPerson.forEach((e) => {
+    if (e.ncaGAR == null || e.tenureMonths == null) return;
+    const garTarget = getTargetNCA(e.tenureMonths);
+    if (garTarget == null) return;
+    totalDinilai++;
+    const aktivitasTinggi = e.activeDays.size >= AKTIVITAS_TINGGI_THRESHOLD_HARI;
+    const garTinggi = e.ncaGAR >= garTarget;
+    if (aktivitasTinggi && garTinggi) buckets.aktivitasTinggiGarTinggi++;
+    else if (aktivitasTinggi && !garTinggi) buckets.aktivitasTinggiGarRendah++;
+    else if (!aktivitasTinggi && garTinggi) buckets.aktivitasRendahGarTinggi++;
+    else buckets.aktivitasRendahGarRendah++;
+  });
+
+  return { totalDinilai, buckets };
+}
+
 // Ringkasan angka-angka Overview, dihitung ULANG di sini (independen dari
 // OverviewBanner) — dipakai khusus buat fitur "Export ke PPT", biar nggak
 // perlu prop-drilling nilai internal OverviewBanner ke DashboardPage.
@@ -1442,6 +1485,9 @@ function GlossaryModal({ open, onClose }) {
             <div>4 kombinasi status: Efektif &amp; Efisien (pertahankan, jadi acuan), Efektif tapi Tidak Efisien (perbaiki kualitas registrasi), Tidak Efektif tapi Efisien (tingkatkan volume/intensitas), Tidak Efektif &amp; Tidak Efisien (perlu pembinaan menyeluruh) — masing-masing dengan rekomendasi tindak lanjut yang tampil otomatis di dashboard.</div>
             <Term name="Capaian NCA vs Target (metrik terpisah)">
               metrik "NCA" mentah (dari file NCA, BUKAN "Pencapaian" dari Tagging) dibandingkan target per bulan berdasarkan masa kerja: &lt;1 bulan = 75, 1–&lt;3 bulan = 120, ≥3 bulan = 150. Semua tingkat masa kerja sudah punya target pasti, jadi SEMUA promotor dinilai (nggak ada pengecualian "Baru Bergabung" buat metrik ini). Muncul juga sebagai kolom "Target NCA/Bulan" di tabel detail.
+            </Term>
+            <Term name="Aktivitas Lapangan vs GAR (metrik terpisah)">
+              cross-reference seberapa sering promotor tercatat aktif (jumlah hari ada kejadian Timestamp/Absensi, sepanjang periode data yang di-upload) dengan hasil GAR (dari NCA, Bulan Berjalan) — buat nemuin promotor yang rajin kerja tapi hasil kurang (sinyal kemungkinan salah penempatan lokasi), atau sebaliknya. Aktivitas Tinggi = kerja ≥20 hari/bulan (angka tetap, standar umum hari kerja). GAR Tinggi = memenuhi target NCA sesuai masa kerja (75/120/150) — beda skala dari Aktivitas dengan sengaja, karena jumlah hari kerja tersedia dalam 1 bulan nggak berubah sesuai masa kerja, sedangkan target penjualan wajar beda per level pengalaman.
             </Term>
           </Section>
 
@@ -2923,6 +2969,55 @@ function DashboardPage(props) {
                       </div>
                     );
                   })()}
+
+                  {(() => {
+                    const aktivitasVsGar = computeAktivitasVsGAR(timestampResult, absensiResult);
+                    if (aktivitasVsGar.totalDinilai === 0) return null;
+                    const { totalDinilai, buckets: b2 } = aktivitasVsGar;
+                    const pctAG = (n) => totalDinilai ? ((n / totalDinilai) * 100).toFixed(1).replace(".", ",") : "0,0";
+                    const cardsAG = [
+                      {
+                        label: "Aktivitas Tinggi & GAR Tinggi", count: b2.aktivitasTinggiGarTinggi, accent: "border-teal-200 bg-teal-50", textAccent: "text-teal-700",
+                        rekomendasi: "Rajin bekerja di lapangan dan hasilnya sesuai. Penempatan sudah tepat — pertahankan.",
+                      },
+                      {
+                        label: "Aktivitas Tinggi, GAR Rendah", count: b2.aktivitasTinggiGarRendah, accent: "border-amber-200 bg-amber-50", textAccent: "text-amber-700",
+                        rekomendasi: "Rajin bekerja tapi hasilnya kurang. Sinyal kemungkinan penempatan lokasi kurang tepat, atau perlu evaluasi pendekatan kerja.",
+                      },
+                      {
+                        label: "Aktivitas Rendah, GAR Tinggi", count: b2.aktivitasRendahGarTinggi, accent: "border-sky-200 bg-sky-50", textAccent: "text-sky-700",
+                        rekomendasi: "Jarang tercatat aktif tapi hasilnya tetap tercapai. Perlu dicek apakah datanya lengkap, atau memang kerjanya efisien.",
+                      },
+                      {
+                        label: "Aktivitas Rendah & GAR Rendah", count: b2.aktivitasRendahGarRendah, accent: "border-red-200 bg-red-50", textAccent: "text-red-700",
+                        rekomendasi: "Jarang aktif dan hasil juga kurang. Perlu perhatian penuh — evaluasi menyeluruh.",
+                      },
+                    ];
+                    return (
+                      <div className="mt-5 pt-4 border-t border-gray-100">
+                        <div className="text-sm font-bold text-gray-800 mb-1">Aktivitas Lapangan vs GAR</div>
+                        <div className="text-[11px] text-gray-500 mb-3">
+                          Membandingkan seberapa sering promotor tercatat aktif (jumlah hari ada kejadian Timestamp/Absensi, sepanjang periode data) dengan hasil GAR (dari NCA, Bulan Berjalan) — untuk melihat apakah aktivitas di lapangan sejalan dengan hasil, atau ada indikasi penempatan kurang tepat. Aktivitas Tinggi = kerja ≥{AKTIVITAS_TINGGI_THRESHOLD_HARI} hari/bulan. GAR Tinggi = memenuhi target sesuai masa kerja (75/120/150).
+                        </div>
+                        <div className="text-sm text-gray-700 mb-3">
+                          Total promotor yang dinilai: <b>{totalDinilai.toLocaleString("id-ID")}</b> orang
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {cardsAG.map((c) => (
+                            <div key={c.label} className={`border rounded-lg p-3.5 ${c.accent}`}>
+                              <div className="flex items-baseline justify-between mb-1.5">
+                                <span className={`text-sm font-bold ${c.textAccent}`}>{c.label}</span>
+                                <span className="text-xs text-gray-500">
+                                  <b className="text-base text-gray-900">{c.count.toLocaleString("id-ID")}</b> orang ({pctAG(c.count)}%)
+                                </span>
+                              </div>
+                              <div className="text-[12px] text-gray-600 leading-relaxed">{c.rekomendasi}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               );
             })()}
@@ -3382,7 +3477,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v124</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v125</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
