@@ -1,4 +1,4 @@
-// Dashboard.tsx — v125
+// Dashboard.tsx — v126
 // Changelog:
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
@@ -2154,51 +2154,6 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
         </div>
       </div>
 
-      {/* ═══════ Promotor Prioritas — Top 20 Kejadian Anomali Terbanyak ═══════ */}
-      {(() => {
-        const combined = [
-          ...buildAnomaliDetail("In Store Promotor"),
-          ...buildAnomaliDetail("Out Store Promotor"),
-        ].sort((a, b) => b.total - a.total).slice(0, 20);
-        if (combined.length === 0) return null;
-        return (
-          <div className="mt-4 pt-4 border-t border-emerald-200/50">
-            <div className="text-base font-bold text-gray-900 mb-1">🔎 Perlu Perhatian Khusus — Top 20 Kejadian Anomali Terbanyak</div>
-            <div className="text-[11px] text-gray-500 mb-3">
-              Karena hampir semua promotor kena minimal 3 kejadian, daftar di bawah ini mengurutkan dari yang PALING PARAH — mulai dari sini untuk pengecekan, bukan dari daftar lengkap 2.000+ orang.
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
-              <table className="w-full text-sm min-w-[600px]">
-                <thead>
-                  <tr className="bg-gray-50 text-[11px] text-gray-500 uppercase tracking-wide">
-                    <th className="text-left px-3 py-2 font-semibold">#</th>
-                    <th className="text-left px-3 py-2 font-semibold">Nama</th>
-                    <th className="text-left px-3 py-2 font-semibold">Tipe</th>
-                    <th className="text-left px-3 py-2 font-semibold">Wilayah</th>
-                    <th className="text-right px-3 py-2 font-semibold">Total Kejadian</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {combined.map((p, i) => (
-                    <tr key={p.employee_id || i} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                      <td className="px-3 py-2 font-medium text-gray-900">{p.employee_name || "-"}</td>
-                      <td className="px-3 py-2 text-gray-600">
-                        <span className={p.promotorType === "In Store Promotor" ? "text-amber-700" : "text-fuchsia-700"}>
-                          {p.promotorType === "In Store Promotor" ? "In Store" : "Out Store"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">{p.region || "-"}{p.cluster ? ` · ${p.cluster}` : ""}</td>
-                      <td className="px-3 py-2 text-right font-bold text-red-700">{p.total.toLocaleString("id-ID")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 pt-4 border-t border-emerald-200/50 md:divide-x md:divide-emerald-200/50">
         <div className="md:pr-6 space-y-2.5">
           <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
@@ -2880,7 +2835,16 @@ function DashboardPage(props) {
 
         {(() => {
           const pencapaianSummary = computePencapaianSummary(timestampResult, absensiResult);
-          if (pencapaianSummary.totalDinilai === 0) {
+          const aktivitasVsGar = computeAktivitasVsGAR(timestampResult, absensiResult);
+          // FIX: sebelumnya gate ini cuma ngecek pencapaianSummary.totalDinilai
+          // (yang butuh Tagging DAN NCA dua-duanya) — jadi kalau user cuma
+          // punya NCA doang (tanpa Tagging), SEMUA sub-section di bawah ini
+          // ikut nggak muncul, PADAHAL "Capaian NCA vs Target" dan "Aktivitas
+          // vs GAR" cuma butuh NCA aja (nggak butuh Tagging). Sekarang gate-nya
+          // ngecek KETIGA sumber data, biar tiap sub-section bisa muncul
+          // independen sesuai data yang tersedia.
+          const hasAnyData = pencapaianSummary.totalDinilai > 0 || pencapaianSummary.totalDinilaiNCA > 0 || aktivitasVsGar.totalDinilai > 0;
+          if (!hasAnyData) {
             return (
               <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-4">
                 Data Tagging dan/atau NCA belum tersedia untuk periode ini. Unggah kedua data tersebut melalui alat penggabung data (merger tool) agar bagian ini dapat menampilkan penilaian efektivitas dan efisiensi pencapaian secara otomatis.
@@ -2889,7 +2853,7 @@ function DashboardPage(props) {
           }
           return (
             <>
-              {(() => {
+              {pencapaianSummary.totalDinilai > 0 && (() => {
                 const { totalDinilai, buckets } = pencapaianSummary;
                 const pct = (n) => totalDinilai ? ((n / totalDinilai) * 100).toFixed(1).replace(".", ",") : "0,0";
                 const cards = [
@@ -2933,8 +2897,11 @@ function DashboardPage(props) {
                       Selain itu, terdapat <b>{buckets.baruBergabung.toLocaleString("id-ID")}</b> promotor ({pct(buckets.baruBergabung)}%) dengan status <b>Baru Bergabung</b> (masa kerja kurang dari 3 bulan) yang belum dinilai secara ketat, karena target pencapaian untuk kelompok ini masih dalam proses penentuan.
                     </div>
                   )}
+                </>
+              );
+              })()}
 
-                  {pencapaianSummary.totalDinilaiNCA > 0 && (() => {
+              {pencapaianSummary.totalDinilaiNCA > 0 && (() => {
                     const { totalDinilaiNCA, capaianNCA } = pencapaianSummary;
                     const pctNCA = (n) => totalDinilaiNCA ? ((n / totalDinilaiNCA) * 100).toFixed(1).replace(".", ",") : "0,0";
                     return (
@@ -3021,9 +2988,6 @@ function DashboardPage(props) {
                 </>
               );
             })()}
-            </>
-          );
-        })()}
       </div>
 
       {/* ═══════ GRID A: bagian Timestamp (Journey) tiap tipe ═══════ */}
@@ -3477,7 +3441,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v125</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v126</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
