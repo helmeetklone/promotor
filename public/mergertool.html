@@ -149,7 +149,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; Outlet &rarr; 1 tabel deteksi &middot; v4</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; Outlet &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v5</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -157,8 +157,10 @@
 
 <main>
   <div id="uploadSection">
-    <h2>1. Upload 4 file sumber</h2>
-    <p class="hint">Format .xlsx, .json, atau .ndjson (file gede? convert dulu di <code>xlsx-to-json.html</code>). Employee ID otomatis distandarkan sebagai kunci join. OM &amp; Outlet Master opsional — kalau diisi, hasil merge dapet tambahan info outlet yang ditugaskan (via Sales Code) + koordinatnya.</p>
+    <h2>1. Upload file sumber</h2>
+    <p class="hint">Format .xlsx, .json, atau .ndjson (file gede? convert dulu di <code>xlsx-to-json.html</code>). Employee ID otomatis distandarkan sebagai kunci join.<br>
+    <b>DOP, File_HR, Absensi, Timestamp, OM, Outlet Master &mdash; WAJIB diisi semua</b> (OM &amp; Outlet Master dipakai buat tambahan info outlet yang ditugaskan + koordinat GPS-nya; kalau kosong, semua promotor bakal ke-flag GPS N/A).<br>
+    <b>GAR &amp; NCA &mdash; opsional.</b> Slot <b>GAR</b> = file rekap per-promotor yang flat, 1 baris per NIK, TANPA breakdown per brand (nama file biasanya <code>data_GAR_by_Promotor_&lt;bulan&gt;.xlsx</code>). Slot <b>NCA</b> = file yang breakdown per brand XL/AXIS/SMART + per bulan (nama file biasanya <code>NCA_Promotor_&lt;bulan&gt;.xlsx</code>). Kalau salah taruh nggak apa-apa, sistem tetap coba baca ID-nya (NIK), tapi lebih baik sesuai biar kolom hasil merge-nya rapi.</p>
     <div class="slots" id="slotsContainer"></div>
     <div class="error-box" id="errorBox"></div>
     <button class="primary" id="processBtn" type="button" disabled>Gabungkan &amp; deteksi &rarr;</button>
@@ -208,8 +210,8 @@ const SLOTS = [
   { key: "timestamp", label: "Timestamp", file: "Timestamp.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "TIMESTAMP", accent: "#58D68D" },
   { key: "om", label: "OM", file: "OM.xlsx / .json / .ndjson", accent: "#38BDF8" },
   { key: "outlet", label: "Outlet Master", file: "Outlet.xlsx / .json / .ndjson", accent: "#22D3EE" },
-  { key: "tagging", label: "Tagging (opsional)", file: "Tagging.xlsx — data pencapaian per brand", accent: "#F4B942", optional: true },
-  { key: "nca", label: "NCA (opsional)", file: "NCA.xlsx — data kualitas pencapaian per brand", accent: "#D97706", optional: true },
+  { key: "tagging", label: "GAR (opsional)", file: "data_GAR_by_Promotor.xlsx — GAR per promotor (1 baris per NIK, tanpa breakdown brand)", accent: "#F4B942", optional: true },
+  { key: "nca", label: "NCA (opsional)", file: "NCA_Promotor.xlsx — GAR & NCA per promotor (breakdown per brand XL/AXIS/SMART + bulan)", accent: "#D97706", optional: true },
 ];
 
 const CATEGORY_COLORS = {
@@ -256,9 +258,14 @@ const CATEGORY_MAP = {
 CATEGORY_LABEL.pencapaian = "Pencapaian (dari Tagging & NCA)";
 CATEGORY_COLORS.pencapaian = "#F4B942";
 [
+  // Kolom dari format lama/contoh (2-baris-header, "Pencapaian ... (Bulan
+  // Berjalan/Kumulatif)").
   "Region", "Cluster", "Sub cluster", "City", "Kecamatan", "Name Promotor", "Status", "SPV", "PM",
   "Pencapaian XL (Bulan Berjalan)", "Pencapaian AXIS (Bulan Berjalan)", "Pencapaian SMART (Bulan Berjalan)", "Pencapaian Total (Bulan Berjalan)",
   "Pencapaian XL (Kumulatif)", "Pencapaian AXIS (Kumulatif)", "Pencapaian SMART (Kumulatif)", "Pencapaian Total (Kumulatif)",
+  // Kolom dari format flat asli (mis. "data_GAR_by_Promotor_Aug26.xlsx").
+  "Cluster", "City", "Name", "Position", "Join Date", "Tenure",
+  "GAR", "NCA", "Fresh Imei", "Good SRC", "Bad SRC", "Unidentified Imei",
 ].forEach((col) => { CATEGORY_MAP[col + "_TAGGING"] = "pencapaian"; });
 [
   "Region", "Cluster", "City", "Name", "Position", "Tenure",
@@ -337,7 +344,35 @@ function detectHeaderRowIndex(rows, maxScan = 30, minNonNullCells = 5) {
   return 0; // fallback: kalau nggak ketemu pola jelas, anggap baris pertama header (perilaku lama)
 }
 
-async function parseWorkbook(file) {
+// Baca daftar nama sheet + jumlah baris tiap sheet TANPA nge-parse semua
+// datanya (biar cepet, terutama buat file gede). Dipakai buat nentuin: kalau
+// file punya lebih dari 1 sheet, user PERLU milih sheet mana yang bener
+// (sebelumnya selalu ambil sheet PERTAMA diam-diam — itu sumber bug kalau
+// sheet pertama ternyata cuma pivot table/ringkasan, bukan data mentahnya).
+async function listSheetInfo(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".json") || name.endsWith(".ndjson")) return null; // 1 "sheet" implisit
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: true, bookSheets: false });
+  return wb.SheetNames.map((sheetName) => {
+    const ws = wb.Sheets[sheetName];
+    const ref = ws["!ref"];
+    let rowCount = 0, headerNonNullCount = 0;
+    if (ref) {
+      const range = XLSX.utils.decode_range(ref);
+      rowCount = range.e.r - range.s.r + 1;
+    }
+    // Heuristik "sheet paling mungkin data mentah": baris header-nya (baris
+    // pertama yang kelihatan kayak header, dicek s.d. 30 baris) punya banyak
+    // sel keisi sekaligus — pivot table/ringkasan biasanya cuma 1-2 sel.
+    const preview = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true, range: 0 }).slice(0, 30);
+    const headerIdx = detectHeaderRowIndex(preview);
+    headerNonNullCount = (preview[headerIdx] || []).filter((v) => v != null && v !== "").length;
+    return { name: sheetName, rowCount, headerNonNullCount };
+  });
+}
+
+async function parseWorkbook(file, sheetName) {
   const name = file.name.toLowerCase();
   if (name.endsWith(".json")) {
     const text = await file.text();
@@ -349,7 +384,7 @@ async function parseWorkbook(file) {
   }
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
-  const ws = wb.Sheets[wb.SheetNames[0]];
+  const ws = wb.Sheets[sheetName || wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
   if (rows.length === 0) return [];
   const headerIdx = detectHeaderRowIndex(rows);
@@ -399,14 +434,35 @@ function cellText(v) {
   return String(v).replace(/\u00A0/g, " ").trim();
 }
 
-// Parser Tagging.xlsx: 2 baris header (Month_Year, lalu nama kolom).
-// Kolom identitas (Region..PM) row0-nya kosong; kolom pencapaian row0-nya
-// isi bulan ("Aug-26") atau "Total" — dijadiin 2 grup: "(Bulan Berjalan)"
-// (grup pertama yang row0-nya BUKAN "Total") dan "(Kumulatif)" (row0 = "Total").
+// Parser Tagging.xlsx — ada 2 kemungkinan bentuk file di lapangan:
+// (a) format lama/contoh: 2 baris header (Month_Year, lalu nama kolom),
+//     kolom pencapaian row0-nya isi bulan ("Aug-26") atau "Total".
+// (b) format nyata yang dipakai user (mis. "data_GAR_by_Promotor_Aug26.xlsx"):
+//     tabel FLAT biasa, cuma 1 baris header langsung isi nama kolom (Region,
+//     Cluster, City, NIK, Name, Position, ..., GAR, NCA, ...) — SAMA PERSIS
+//     bentuknya kayak DOP/HR/Absensi, cuma sebelumnya salah dikira selalu
+//     2-baris-header sehingga baris data pertama malah kebaca sebagai nama
+//     kolom (bikin kolom ID/NIK gak pernah ketemu). Sekarang di-auto-detect:
+//     kalau >=4 dari 7 sel pertama row0 udah keisi teks (ciri header biasa),
+//     dianggap flat; kalau enggak, dipakai parser 2-baris-header lama.
 async function parseTaggingFile(file) {
   const rows = await readRawSheetRows(file);
   if (rows.length < 2) return [];
-  const [row0, row1] = rows;
+  const row0 = rows[0];
+  const filledInFirst7 = row0.slice(0, 7).filter((v) => v != null && v !== "").length;
+  const looksFlat = filledInFirst7 >= 4;
+
+  if (looksFlat) {
+    const headerIdx = detectHeaderRowIndex(rows);
+    const header = rows[headerIdx].map((v, i) => cellText(v) || ("Column" + i));
+    return rows.slice(headerIdx + 1).filter((r) => r.some((v) => v != null && v !== "")).map((r) => {
+      const obj = {};
+      header.forEach((name, i) => (obj[name] = r[i] !== undefined ? r[i] : null));
+      return obj;
+    });
+  }
+
+  const [, row1] = rows;
   const nCols = row1.length;
   const colNames = [];
   for (let c = 0; c < nCols; c++) {
@@ -557,8 +613,12 @@ function processOutletMaster(rows) {
 function processTagging(rows) {
   if (rows.length === 0) return { data: [], resolvedIdKey: null };
   const sampleKeys = Object.keys(rows[0]);
+  // Fuzzy: file "Tagging" bisa berupa file pencapaian asli (kolom "ID
+  // Promotor") ATAU file GAR flat (kolom "NIK") — dua-duanya dicoba.
   const idKey = sampleKeys.find((k) => k.trim().toLowerCase() === "id promotor")
-    || sampleKeys.find((k) => k.toLowerCase().includes("id") && k.toLowerCase().includes("promotor"));
+    || sampleKeys.find((k) => k.trim().toLowerCase() === "nik")
+    || sampleKeys.find((k) => k.toLowerCase().includes("id") && k.toLowerCase().includes("promotor"))
+    || sampleKeys.find((k) => k.toLowerCase().includes("nik"));
   const data = rows.map((row) => {
     const out = {};
     Object.entries(row).forEach(([k, v]) => {
@@ -573,7 +633,8 @@ function processTagging(rows) {
 function processNCA(rows) {
   if (rows.length === 0) return { data: [], resolvedIdKey: null };
   const sampleKeys = Object.keys(rows[0]);
-  const idKey = sampleKeys.find((k) => k.trim().toLowerCase() === "nik");
+  const idKey = sampleKeys.find((k) => k.trim().toLowerCase() === "nik")
+    || sampleKeys.find((k) => k.toLowerCase().includes("nik"));
   const data = rows.map((row) => {
     const out = {};
     Object.entries(row).forEach(([k, v]) => {
@@ -731,6 +792,8 @@ const state = {
   parsed: {},     // slotKey -> full parsed rows (cleared after processing to save memory)
   headers: {},    // slotKey -> array of header names (kept for preview)
   status: {},     // slotKey -> "reading" | "ok" | "error"
+  sheets: {},     // slotKey -> array of {name, rowCount, headerNonNullCount} — only set if file has >1 sheet
+  selectedSheet: {}, // slotKey -> chosen sheet name (only relevant when state.sheets[slotKey] exists)
   result: null,
   excludedRoles: new Set(),   // role values unchecked in the Filter Role list
   excludedRowIndices: new Set(), // individual row indices unchecked in the table (applies to the on-screen 500-row cap)
@@ -773,6 +836,7 @@ function renderSlots() {
       toggleBtn.textContent = shown ? "Lihat nama kolom terdeteksi" : "Sembunyikan nama kolom";
     });
     const headerList = el("ul", { class: "header-list", id: "headerlist-" + slot.key }, []);
+    const sheetPicker = el("div", { id: "sheetpicker-" + slot.key, style: { display: "none", marginTop: "6px", marginBottom: "6px" } }, []);
     const label = el("label", { class: "file-label" }, ["\u2601 Pilih file"]);
     const input = el("input", { type: "file", accept: ".xlsx,.xls,.json,.ndjson" });
     input.addEventListener("change", (e) => handleFile(slot, e.target.files[0]));
@@ -782,22 +846,65 @@ function renderSlots() {
     card.appendChild(filename);
     card.appendChild(toggleBtn);
     card.appendChild(headerList);
+    card.appendChild(sheetPicker);
     card.appendChild(label);
     container.appendChild(card);
   });
+}
+
+async function parseSlotFile(slot, file, sheetName) {
+  const isXlsx = !file.name.toLowerCase().endsWith(".json") && !file.name.toLowerCase().endsWith(".ndjson");
+  if (slot.key === "tagging" && isXlsx) return parseTaggingFile(file);
+  if (slot.key === "nca" && isXlsx) return parseNcaFile(file);
+  return parseWorkbook(file, sheetName);
+}
+
+async function reparseWithSheet(slot, sheetName) {
+  const file = state.files[slot.key];
+  if (!file) return;
+  state.selectedSheet[slot.key] = sheetName;
+  document.getElementById("status-" + slot.key).textContent = "\u23F3";
+  try {
+    const rows = await parseSlotFile(slot, file, sheetName);
+    state.parsed[slot.key] = rows;
+    state.headers[slot.key] = rows[0] ? Object.keys(rows[0]) : [];
+    state.status[slot.key] = "ok";
+    document.getElementById("status-" + slot.key).textContent = "\u2705";
+    const list = document.getElementById("headerlist-" + slot.key);
+    list.innerHTML = "";
+    state.headers[slot.key].forEach((h) => list.appendChild(el("li", {}, [h])));
+  } catch (e) {
+    state.status[slot.key] = "error";
+    document.getElementById("status-" + slot.key).textContent = "\u26A0";
+    showError("Gagal membaca " + file.name + " (sheet \"" + sheetName + "\"): " + e.message);
+  }
 }
 
 async function handleFile(slot, file) {
   if (!file) return;
   hideError();
   state.files[slot.key] = file;
+  state.sheets[slot.key] = null;
   document.getElementById("filename-" + slot.key).textContent = file.name;
   document.getElementById("status-" + slot.key).textContent = "\u23F3";
   try {
-    const isXlsx = !file.name.toLowerCase().endsWith(".json") && !file.name.toLowerCase().endsWith(".ndjson");
-    const rows = (slot.key === "tagging" && isXlsx) ? await parseTaggingFile(file)
-      : (slot.key === "nca" && isXlsx) ? await parseNcaFile(file)
-      : await parseWorkbook(file);
+    // File Excel bisa punya lebih dari 1 sheet — sebelumnya tool ini SELALU
+    // ambil sheet PERTAMA diam-diam, yang jadi sumber bug kalau sheet
+    // pertama ternyata cuma pivot table/ringkasan (bukan data mentahnya).
+    // Sekarang: kalau ketemu >1 sheet, tampilin pilihan biar user yang milih.
+    let chosenSheet = null;
+    const sheetInfo = await listSheetInfo(file);
+    if (sheetInfo && sheetInfo.length > 1) {
+      state.sheets[slot.key] = sheetInfo;
+      // Auto-pilih sheet yang baris header-nya paling banyak keisi sekaligus
+      // (indikasi data tabel asli, bukan pivot/ringkasan) — tetap bisa
+      // di-override manual lewat dropdown yang muncul.
+      const best = [...sheetInfo].sort((a, b) => b.headerNonNullCount - a.headerNonNullCount)[0];
+      chosenSheet = best.name;
+      state.selectedSheet[slot.key] = chosenSheet;
+      showWarn(`File "${file.name}" punya ${sheetInfo.length} sheet. Otomatis dipilih sheet "${chosenSheet}" (kelihatan paling seperti data tabel) — cek dropdown di bawah kolom file ini, ganti kalau salah.`);
+    }
+    const rows = await parseSlotFile(slot, file, chosenSheet);
     state.parsed[slot.key] = rows;
     state.headers[slot.key] = rows[0] ? Object.keys(rows[0]) : [];
     state.status[slot.key] = "ok";
@@ -806,12 +913,35 @@ async function handleFile(slot, file) {
     list.innerHTML = "";
     state.headers[slot.key].forEach((h) => list.appendChild(el("li", {}, [h])));
     document.getElementById("toggle-" + slot.key).style.display = "block";
+    renderSheetPicker(slot);
   } catch (e) {
     state.status[slot.key] = "error";
     document.getElementById("status-" + slot.key).textContent = "\u26A0";
     showError("Gagal membaca " + file.name + ": " + e.message);
   }
   updateProcessButton();
+}
+
+function renderSheetPicker(slot) {
+  const container = document.getElementById("sheetpicker-" + slot.key);
+  if (!container) return;
+  container.innerHTML = "";
+  const sheets = state.sheets[slot.key];
+  if (!sheets || sheets.length <= 1) { container.style.display = "none"; return; }
+  container.style.display = "block";
+  const label = el("div", { style: { fontSize: "11px", color: "#F5A623", marginBottom: "4px" } }, [
+    `File ini punya ${sheets.length} sheet — pilih yang mana yang mau dipakai:`,
+  ]);
+  const select = el("select", { style: { fontSize: "12px", padding: "4px 8px", borderRadius: "6px" } },
+    sheets.map((s) => {
+      const optionProps = { value: s.name };
+      if (s.name === state.selectedSheet[slot.key]) optionProps.selected = "selected";
+      return el("option", optionProps, [`${s.name} (${s.rowCount.toLocaleString("id-ID")} baris)`]);
+    })
+  );
+  select.addEventListener("change", (e) => reparseWithSheet(slot, e.target.value));
+  container.appendChild(label);
+  container.appendChild(select);
 }
 
 function updateProcessButton() {
@@ -914,7 +1044,7 @@ function process() {
         const ncaSrc = processNCA(ncaRows);
 
         if (taggingRows.length > 0 && !taggingSrc.resolvedIdKey) {
-          showWarn("Kolom \"ID Promotor\" tidak ketemu di file Tagging. Cek \"Lihat nama kolom terdeteksi\".");
+          showWarn("Kolom \"NIK\"/\"ID Promotor\" tidak ketemu di file GAR. Cek \"Lihat nama kolom terdeteksi\".");
         }
         if (ncaRows.length > 0 && !ncaSrc.resolvedIdKey) {
           showWarn("Kolom \"NIK\" tidak ketemu di file NCA. Cek \"Lihat nama kolom terdeteksi\".");
@@ -1159,6 +1289,8 @@ function resetApp() {
   state.parsed = {};
   state.headers = {};
   state.status = {};
+  state.sheets = {};
+  state.selectedSheet = {};
   state.result = null;
   state.excludedRoles = new Set();
   state.excludedRowIndices = new Set();
