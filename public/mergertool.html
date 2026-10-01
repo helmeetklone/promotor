@@ -149,7 +149,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v6</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v7</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -159,7 +159,7 @@
   <div id="uploadSection">
     <h2>1. Upload file sumber</h2>
     <p class="hint">Format .xlsx, .json, atau .ndjson (file gede? convert dulu di <code>xlsx-to-json.html</code>). Employee ID otomatis distandarkan sebagai kunci join.<br>
-    <b>DOP, File_HR, Absensi, Timestamp, OM &mdash; WAJIB diisi semua</b> (OM dipakai buat tambahan info outlet yang ditugaskan ke tiap promotor — kode &amp; nama toko. Slot Outlet Master/koordinat GPS sudah dihapus — sumber datanya nggak reliable).<br>
+    <b>DOP, File_HR, Absensi, Timestamp, OM/Outlet Master &mdash; WAJIB diisi semua.</b> Slot <b>OM/Outlet Master</b> diisi dari 1 file (biasanya export "Visit Activity Frontliner") yang sekalian punya kode/nama toko DAN koordinat GPS-nya — nggak perlu file terpisah lagi.<br>
     <b>GAR &amp; NCA &mdash; opsional.</b> Slot <b>GAR</b> = file rekap per-promotor yang flat, 1 baris per NIK, TANPA breakdown per brand (nama file biasanya <code>data_GAR_by_Promotor_&lt;bulan&gt;.xlsx</code>). Slot <b>NCA</b> = file yang breakdown per brand XL/AXIS/SMART + per bulan (nama file biasanya <code>NCA_Promotor_&lt;bulan&gt;.xlsx</code>). Kalau salah taruh nggak apa-apa, sistem tetap coba baca ID-nya (NIK), tapi lebih baik sesuai biar kolom hasil merge-nya rapi.</p>
     <div class="slots" id="slotsContainer"></div>
     <div class="error-box" id="errorBox"></div>
@@ -208,7 +208,7 @@ const SLOTS = [
   { key: "hr", label: "File HR", file: "File_HR.xlsx / .json / .ndjson", idCol: "Employee Number", suffix: "HR", accent: "#5DADE2" },
   { key: "absensi", label: "Absensi", file: "Absensi.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "ABSENSI", accent: "#FF6B6B" },
   { key: "timestamp", label: "Timestamp", file: "Timestamp.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "TIMESTAMP", accent: "#58D68D" },
-  { key: "om", label: "OM", file: "OM.xlsx / .json / .ndjson", accent: "#38BDF8" },
+  { key: "om", label: "OM / Outlet Master", file: "Visit Activity Frontliner export — Frontliner ID, Outlet ID/Name, Check-In Latitude/Longitude", accent: "#38BDF8" },
   { key: "tagging", label: "GAR (opsional)", file: "data_GAR_by_Promotor.xlsx — GAR per promotor (1 baris per NIK, tanpa breakdown brand)", accent: "#F4B942", optional: true },
   { key: "nca", label: "NCA (opsional)", file: "NCA_Promotor.xlsx — GAR & NCA per promotor (breakdown per brand XL/AXIS/SMART + bulan)", accent: "#D97706", optional: true },
 ];
@@ -528,35 +528,65 @@ function parseLatLonString(v) {
   return { lat: parseFloat(m[1]), lon: parseFloat(m[2]) };
 }
 
-// OM = outlet assignment roster: which Sales Code is assigned to which outlet.
-// Join bridge to the rest of the data is "Sales Code" (matches File_HR / DOP's
-// Sales Code column), NOT Employee ID.
+// OM = outlet assignment + koordinat. Di lapangan file "OM" yang beneran
+// dipakai ternyata ADA 2 bentuk header yang berbeda (ketemu dari 2 contoh
+// nyata user) — (a) roster "Organization Code/User Name" (nggak ada
+// koordinat), dan (b) log kunjungan "Outlet ID/Frontliner ID/Check-In
+// Latitude/Longitude" (ADA koordinat per kunjungan). Fuzzy-matched biar
+// dua-duanya kebaca; kalau bentuk (b) yang dipakai, koordinatnya ikut
+// ketarik otomatis — nggak perlu file terpisah lagi buat GPS toko.
+// Join bridge ke data lain adalah "Sales Code"/"Frontliner ID" (matches
+// File_HR / DOP / Employee ID yang format "FL-XXXXX"), BUKAN NIK polos.
 function processOM(rows) {
   if (rows.length === 0) return { data: [], resolvedKeys: {} };
   const keys = Object.keys(rows[0]);
   const salesCodeKey = findColumn(keys, [
-    (k) => k === "user name",
+    (k) => k === "user name" || k === "frontliner id",
+    (k) => k.includes("frontliner") && k.includes("id"),
     (k) => k.includes("user") && k.includes("name"),
     (k) => k.includes("sales") && k.includes("code"),
   ]);
   const outletCodeKey = findColumn(keys, [
-    (k) => k === "organization code",
+    (k) => k === "organization code" || k === "outlet id" || k === "outlet code",
     (k) => k.includes("organization") && k.includes("code"),
     (k) => k.includes("outlet") && (k.includes("id") || k.includes("code")),
   ]);
   const outletNameKey = findColumn(keys, [
-    (k) => k === "organization name",
+    (k) => k === "organization name" || k === "outlet name",
     (k) => k.includes("organization") && k.includes("name"),
     (k) => k.includes("outlet") && k.includes("name"),
   ]);
+  const latKey = findColumn(keys, [
+    (k) => k === "latitude" || k === "lat",
+    (k) => k.includes("check-in") && k.includes("lat"),
+    (k) => k.includes("lat") && !k.includes("relat"),
+  ]);
+  const lonKey = findColumn(keys, [
+    (k) => k === "longitude" || k === "lon" || k === "lng",
+    (k) => k.includes("check-in") && (k.includes("long") || k.includes("lng")),
+    (k) => k.includes("long") || k.includes("lng"),
+  ]);
+  const combinedKey = !latKey || !lonKey
+    ? findColumn(keys, [(k) => k.includes("lat") && k.includes("lon"), (k) => k.includes("location") || k.includes("coordinate")])
+    : null;
   const data = rows
-    .map((r) => ({
-      "Sales Code": salesCodeKey ? String(r[salesCodeKey] ?? "").trim() : null,
-      "Outlet Code": outletCodeKey ? String(r[outletCodeKey] ?? "").trim() : null,
-      "Outlet Name": outletNameKey ? r[outletNameKey] : null,
-    }))
+    .map((r) => {
+      let lat = latKey ? toNum(r[latKey]) : null;
+      let lon = lonKey ? toNum(r[lonKey]) : null;
+      if ((lat == null || lon == null) && combinedKey) {
+        const parsed = parseLatLonString(r[combinedKey]);
+        if (parsed) { lat = parsed.lat; lon = parsed.lon; }
+      }
+      return {
+        "Sales Code": salesCodeKey ? String(r[salesCodeKey] ?? "").trim() : null,
+        "Outlet Code": outletCodeKey ? String(r[outletCodeKey] ?? "").trim() : null,
+        "Outlet Name": outletNameKey ? r[outletNameKey] : null,
+        "Outlet Latitude": lat,
+        "Outlet Longitude": lon,
+      };
+    })
     .filter((r) => r["Sales Code"]);
-  return { data, resolvedKeys: { salesCodeKey, outletCodeKey, outletNameKey } };
+  return { data, resolvedKeys: { salesCodeKey, outletCodeKey, outletNameKey, latKey, lonKey, combinedKey } };
 }
 
 // Outlet Master: RO ID / RO Name / Latitude / Longitude (header names vary,
@@ -992,29 +1022,45 @@ function process() {
 
       let master = outerJoinMaster(hrSrc.data, dopSrc.data);
 
-      // Optional enrichment: OM (Sales Code -> assigned outlet code/name),
-      // attached onto each master row by Sales Code. Slot "Outlet Master"
-      // (outlet code -> lat/long) DIHAPUS per permintaan user — sumber data
-      // koordinatnya (log per-kunjungan) ternyata nggak reliable (>50% toko
-      // nggak pernah punya koordinat tercatat), jadi dicabut dari tool ini.
-      // Kolom "Outlet Code"/"Outlet Name" tetap kebentuk dari OM, cuma
-      // "Outlet Latitude"/"Outlet Longitude" udah nggak pernah diisi lagi.
+      // Enrichment: OM (Sales Code -> outlet code/name + koordinat GPS),
+      // attached onto tiap master row by Sales Code. 1 FILE ini sekarang
+      // dipakai buat 2 hal sekaligus (sesuai bentuk file asli user: log
+      // kunjungan per-Frontliner yang sekalian punya Outlet ID + koordinat).
+      //
+      // File log-kunjungan bisa punya banyak baris per outlet (1 per
+      // kunjungan), dan kebanyakan baris "Scheduled" belum ada koordinatnya
+      // (baru keisi pas status Completed/Inprocess). Makanya dedup per
+      // Outlet Code DIPRIORITASIN ke baris yang PUNYA koordinat valid dulu,
+      // baru fallback ke baris kosong kalau outlet itu emang nggak pernah
+      // ada koordinat tercatat di file ini.
       const omRows = state.parsed.om || [];
       if (omRows.length > 0) {
         const omResult = processOM(omRows);
 
+        const outletMap = new Map();
+        omResult.data.forEach((o) => {
+          if (!o["Outlet Code"]) return;
+          const hasCoord = o["Outlet Latitude"] != null && o["Outlet Longitude"] != null;
+          const existing = outletMap.get(o["Outlet Code"]);
+          if (!existing) { outletMap.set(o["Outlet Code"], o); return; }
+          const existingHasCoord = existing["Outlet Latitude"] != null && existing["Outlet Longitude"] != null;
+          if (hasCoord && !existingHasCoord) outletMap.set(o["Outlet Code"], o);
+        });
+
         const salesCodeToOutlet = new Map();
         omResult.data.forEach((o) => {
-          if (!salesCodeToOutlet.has(o["Sales Code"])) {
-            salesCodeToOutlet.set(o["Sales Code"], {
-              "Outlet Code": o["Outlet Code"],
-              "Outlet Name": o["Outlet Name"],
-            });
-          }
+          if (!o["Sales Code"] || salesCodeToOutlet.has(o["Sales Code"])) return;
+          const outletInfo = o["Outlet Code"] ? outletMap.get(o["Outlet Code"]) : null;
+          salesCodeToOutlet.set(o["Sales Code"], {
+            "Outlet Code": o["Outlet Code"],
+            "Outlet Name": (outletInfo && outletInfo["Outlet Name"]) ?? o["Outlet Name"],
+            "Outlet Latitude": (outletInfo && outletInfo["Outlet Latitude"]) ?? null,
+            "Outlet Longitude": (outletInfo && outletInfo["Outlet Longitude"]) ?? null,
+          });
         });
 
         if (!omResult.resolvedKeys.salesCodeKey) {
-          showWarn("Kolom Sales Code (USER NAME) tidak ketemu di file OM. Cek \"Lihat nama kolom terdeteksi\".");
+          showWarn("Kolom Sales Code (USER NAME / Frontliner ID) tidak ketemu di file OM. Cek \"Lihat nama kolom terdeteksi\".");
         }
 
         master = master.map((m) => {
