@@ -3,7 +3,21 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- mergertool.html — v4
+<!-- mergertool.html — v8
+     v8: fix join GAR/NCA ke master — SELAMA INI selalu dicocokin ke "Employee ID"
+         (format TRAD...) apa pun kolom ID asli file-nya, padahal file GAR (flat)
+         & NCA pakai kolom "NIK" (kode SAP pendek, mis. "31420247") dan file
+         Tagging lama (2-baris-header) pakai "ID Promotor" (Sales Code, format
+         FL-.../SF-...) — DUA-DUANYA beda dari Employee ID. Akibatnya hampir
+         semua baris GAR/NCA gak pernah ketemu pasangannya pas merge (cuma match
+         kalau kebetulan string-nya sama persis), jadi "Capaian NCA vs Target" &
+         "Aktivitas vs GAR" di dashboard cuma kehitung 1-2 promotor walau file
+         GAR-nya lengkap. Fix: (1) tangkep kolom "NIK SAP Promotor SF" dari
+         File_HR sebagai field "NIK" unsuffixed di master (bridge yang hilang
+         — NIK ini TIDAK SAMA dengan kolom "NIK" di DOP yang isinya NIK KTP
+         16-digit); (2) pas join GAR/NCA, coba cocokin by NIK dulu, baru Sales
+         Code, baru Employee ID (fallback chain, nutupin semua variasi format
+         ID yang ada di lapangan).
      v4: tambah Region_DOP/Cluster_DOP/Sub Cluster_DOP ke kolom yang di-keep (sebelumnya kebuang
          pas merge) — dibutuhin buat fitur filter Region/Cluster di Dashboard v40
      v2: tambah OM + Outlet Master (opsional) buat enrichment outlet assignment & koordinat
@@ -149,7 +163,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v7</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v8</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -744,11 +758,26 @@ function processSource(rows, idCol, suffix) {
   const salesCodeKey = (suffix === "HR" || suffix === "DOP")
     ? findColumn(sampleKeys, [(k) => k === "sales code", (k) => k.includes("sales") && k.includes("code")])
     : null;
+  // HR juga bawa "NIK SAP Promotor SF" — ini bridge join ke file GAR/NCA,
+  // yang identitas promotornya pakai kolom "NIK" (kode SAP pendek, BUKAN
+  // NIK KTP 16-digit yang ada di kolom "NIK" punya DOP — beda konsep,
+  // makanya cuma HR yang dipakai sebagai sumber "NIK" unsuffixed di sini).
+  // Tanpa ini, GAR/NCA nggak pernah ketemu siapa pun di master (NIK SAP
+  // nggak ada sama sekali di DOP/Absensi/Timestamp), jadi Capaian NCA vs
+  // Target & Aktivitas vs GAR selalu kosong walau file GAR-nya udah bener.
+  const nikKey = suffix === "HR"
+    ? findColumn(sampleKeys, [
+        (k) => k === "nik sap promotor sf",
+        (k) => k.includes("nik") && k.includes("sap"),
+        (k) => k.trim() === "nik",
+      ])
+    : null;
   const data = rows.map((row) => {
     const out = {};
     Object.entries(row).forEach(([k, v]) => {
       if (k === resolvedIdKey) out["Employee ID"] = v == null ? null : String(v).trim();
       else if (salesCodeKey && k === salesCodeKey) out["Sales Code"] = v == null ? null : String(v).trim();
+      else if (nikKey && k === nikKey) out["NIK"] = v == null ? null : String(v).trim();
       else if (neededRaw.has(k)) out[k + "_" + suffix] = v;
     });
     return out;
@@ -1070,9 +1099,22 @@ function process() {
       }
 
       // Tagging & NCA (opsional) — data pencapaian per promotor, digabung ke
-      // master by Employee ID (sama mekanisme match-nya, cuma beda kolom
-      // sumber ID: ID Promotor utk Tagging, NIK utk NCA), jadi nempel
-      // otomatis ke semua baris Absensi/Timestamp promotor itu nanti.
+      // master. PENTING: kolom ID sumbernya BUKAN selalu "Employee ID".
+      // - File GAR flat / file NCA (3-baris-header) pakai kolom "NIK" —
+      //   isinya kode SAP pendek (mis. "31420247"), cocok ke "NIK" master
+      //   (dari File_HR, lihat processSource), BUKAN ke "Employee ID"
+      //   (format "TRAD...") ataupun ke NIK KTP 16-digit punya DOP.
+      // - File Tagging lama (2-baris-header "Pencapaian") pakai kolom
+      //   "ID Promotor" — isinya Sales Code (format "FL-..."/"SF-..."),
+      //   cocok ke "Sales Code" master, bukan "Employee ID" juga.
+      // Sebelumnya kode ini SELALU nyocokin ke "Employee ID" apa pun
+      // sumber kolomnya → nyaris semua baris GAR/NCA gak pernah ketemu
+      // pasangannya di master (cuma nyambung kalau kebetulan NIK/Sales
+      // Code-nya sama persis string-nya dengan Employee ID, hampir gak
+      // pernah kejadian) → "Capaian NCA vs Target"/"Aktivitas vs GAR"
+      // isinya cuma segelintir promotor walau file GAR-nya lengkap. Fix:
+      // coba cocokin by NIK dulu, baru Sales Code, baru Employee ID —
+      // ketiganya dicoba karena format file di lapangan bisa macem-macem.
       const taggingRows = state.parsed.tagging || [];
       const ncaRows = state.parsed.nca || [];
       if (taggingRows.length > 0 || ncaRows.length > 0) {
@@ -1091,12 +1133,31 @@ function process() {
         const ncaMap = new Map();
         ncaSrc.data.forEach((r) => { if (!ncaMap.has(r["Employee ID"])) ncaMap.set(r["Employee ID"], r); });
 
+        // For each master row, try NIK match, then Sales Code match, then
+        // literal Employee ID match — covers all 3 ID flavors found in
+        // real GAR/NCA/Tagging files above.
+        const lookupInfo = (map) => {
+          // sourceData entries are keyed by whatever ID value the source
+          // file had (stashed under "Employee ID" by processTagging/
+          // processNCA regardless of which column it actually came from).
+          // For each master row, try NIK match, then Sales Code match,
+          // then literal Employee ID match (covers files that genuinely
+          // do use Employee ID, and the old pencapaian format quirks).
+          return (m) => {
+            if (m["NIK"] && map.has(m["NIK"])) return map.get(m["NIK"]);
+            if (m["Sales Code"] && map.has(m["Sales Code"])) return map.get(m["Sales Code"]);
+            if (m["Employee ID"] && map.has(m["Employee ID"])) return map.get(m["Employee ID"]);
+            return null;
+          };
+        };
+        const getTaggingInfo = lookupInfo(taggingMap);
+        const getNcaInfo = lookupInfo(ncaMap);
+
         master = master.map((m) => {
-          const id = m["Employee ID"];
-          const taggingInfo = id ? taggingMap.get(id) : null;
-          const ncaInfo = id ? ncaMap.get(id) : null;
+          const taggingInfo = getTaggingInfo(m);
+          const ncaInfo = getNcaInfo(m);
           if (!taggingInfo && !ncaInfo) return m;
-          return Object.assign({}, m, taggingInfo || {}, ncaInfo || {}, { "Employee ID": id });
+          return Object.assign({}, m, taggingInfo || {}, ncaInfo || {}, { "Employee ID": m["Employee ID"] });
         });
       }
 
