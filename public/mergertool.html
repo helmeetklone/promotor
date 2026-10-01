@@ -149,7 +149,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; Outlet &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v5</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v6</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -159,7 +159,7 @@
   <div id="uploadSection">
     <h2>1. Upload file sumber</h2>
     <p class="hint">Format .xlsx, .json, atau .ndjson (file gede? convert dulu di <code>xlsx-to-json.html</code>). Employee ID otomatis distandarkan sebagai kunci join.<br>
-    <b>DOP, File_HR, Absensi, Timestamp, OM, Outlet Master &mdash; WAJIB diisi semua</b> (OM &amp; Outlet Master dipakai buat tambahan info outlet yang ditugaskan + koordinat GPS-nya; kalau kosong, semua promotor bakal ke-flag GPS N/A).<br>
+    <b>DOP, File_HR, Absensi, Timestamp, OM &mdash; WAJIB diisi semua</b> (OM dipakai buat tambahan info outlet yang ditugaskan ke tiap promotor — kode &amp; nama toko. Slot Outlet Master/koordinat GPS sudah dihapus — sumber datanya nggak reliable).<br>
     <b>GAR &amp; NCA &mdash; opsional.</b> Slot <b>GAR</b> = file rekap per-promotor yang flat, 1 baris per NIK, TANPA breakdown per brand (nama file biasanya <code>data_GAR_by_Promotor_&lt;bulan&gt;.xlsx</code>). Slot <b>NCA</b> = file yang breakdown per brand XL/AXIS/SMART + per bulan (nama file biasanya <code>NCA_Promotor_&lt;bulan&gt;.xlsx</code>). Kalau salah taruh nggak apa-apa, sistem tetap coba baca ID-nya (NIK), tapi lebih baik sesuai biar kolom hasil merge-nya rapi.</p>
     <div class="slots" id="slotsContainer"></div>
     <div class="error-box" id="errorBox"></div>
@@ -209,7 +209,6 @@ const SLOTS = [
   { key: "absensi", label: "Absensi", file: "Absensi.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "ABSENSI", accent: "#FF6B6B" },
   { key: "timestamp", label: "Timestamp", file: "Timestamp.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "TIMESTAMP", accent: "#58D68D" },
   { key: "om", label: "OM", file: "OM.xlsx / .json / .ndjson", accent: "#38BDF8" },
-  { key: "outlet", label: "Outlet Master", file: "Outlet.xlsx / .json / .ndjson", accent: "#22D3EE" },
   { key: "tagging", label: "GAR (opsional)", file: "data_GAR_by_Promotor.xlsx — GAR per promotor (1 baris per NIK, tanpa breakdown brand)", accent: "#F4B942", optional: true },
   { key: "nca", label: "NCA (opsional)", file: "NCA_Promotor.xlsx — GAR & NCA per promotor (breakdown per brand XL/AXIS/SMART + bulan)", accent: "#D97706", optional: true },
 ];
@@ -222,7 +221,7 @@ const CATEGORY_COLORS = {
 const CATEGORY_LABEL = {
   gps: "GPS / Lokasi", waktu: "Jam Kerja / Durasi", remark: "Remark / Catatan",
   status: "Status Employment", posisi: "Posisi / Tipe", timing: "Tanggal Input", id: "Identitas",
-  outlet: "Outlet Assignment (dari OM + Outlet Master)",
+  outlet: "Outlet Assignment (dari OM)",
   wilayah: "Wilayah (City/Kecamatan/Kelurahan, hasil parsing Address)",
   region: "Region / Cluster / Sub Cluster (dari DOP)",
 };
@@ -993,38 +992,29 @@ function process() {
 
       let master = outerJoinMaster(hrSrc.data, dopSrc.data);
 
-      // Optional enrichment: OM (Sales Code -> assigned outlet code/name) +
-      // Outlet Master (outlet code -> lat/long) chained together, then
-      // attached onto each master row by Sales Code.
+      // Optional enrichment: OM (Sales Code -> assigned outlet code/name),
+      // attached onto each master row by Sales Code. Slot "Outlet Master"
+      // (outlet code -> lat/long) DIHAPUS per permintaan user — sumber data
+      // koordinatnya (log per-kunjungan) ternyata nggak reliable (>50% toko
+      // nggak pernah punya koordinat tercatat), jadi dicabut dari tool ini.
+      // Kolom "Outlet Code"/"Outlet Name" tetap kebentuk dari OM, cuma
+      // "Outlet Latitude"/"Outlet Longitude" udah nggak pernah diisi lagi.
       const omRows = state.parsed.om || [];
-      const outletRows = state.parsed.outlet || [];
-      if (omRows.length > 0 || outletRows.length > 0) {
+      if (omRows.length > 0) {
         const omResult = processOM(omRows);
-        const outletResult = processOutletMaster(outletRows);
-
-        const outletMap = new Map();
-        outletResult.data.forEach((o) => {
-          if (o["Outlet Code"] && !outletMap.has(o["Outlet Code"])) outletMap.set(o["Outlet Code"], o);
-        });
 
         const salesCodeToOutlet = new Map();
         omResult.data.forEach((o) => {
-          const outletInfo = outletMap.get(o["Outlet Code"]) || {};
           if (!salesCodeToOutlet.has(o["Sales Code"])) {
             salesCodeToOutlet.set(o["Sales Code"], {
               "Outlet Code": o["Outlet Code"],
-              "Outlet Name": outletInfo["Outlet Name"] ?? o["Outlet Name"],
-              "Outlet Latitude": outletInfo["Outlet Latitude"] ?? null,
-              "Outlet Longitude": outletInfo["Outlet Longitude"] ?? null,
+              "Outlet Name": o["Outlet Name"],
             });
           }
         });
 
-        if (omRows.length > 0 && !omResult.resolvedKeys.salesCodeKey) {
+        if (!omResult.resolvedKeys.salesCodeKey) {
           showWarn("Kolom Sales Code (USER NAME) tidak ketemu di file OM. Cek \"Lihat nama kolom terdeteksi\".");
-        }
-        if (outletRows.length > 0 && (!outletResult.resolvedKeys.idKey || (!outletResult.resolvedKeys.latKey && !outletResult.resolvedKeys.combinedKey))) {
-          showWarn("Kolom Outlet ID atau Latitude/Longitude tidak ketemu di file Outlet Master. Cek \"Lihat nama kolom terdeteksi\".");
         }
 
         master = master.map((m) => {
