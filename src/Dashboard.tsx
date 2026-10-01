@@ -1,5 +1,11 @@
-// Dashboard.tsx — v126
+// Dashboard.tsx — v127
 // Changelog:
+//   v127: fix extractPencapaianFields() — ncaGAR/ncaNCA/ncaGoodSRC/ncaBadSRC/ncaUnidentified
+//        dulu CUMA baca field "..._NCA" (dari file NCA 3-baris-header). Kalau user cuma upload
+//        file GAR (slot Tagging, format flat) tanpa file NCA terpisah, field itu selalu null,
+//        jadi section "Capaian NCA vs Target" & "Aktivitas Lapangan vs GAR" gak pernah muncul
+//        walau data GAR-nya udah ada di merge. Sekarang ada fallback: field "_NCA" diutamakan
+//        kalau ada, kalau enggak baru pakai field flat "..._TAGGING" dari file GAR.
 //   v1: upload SGS/SDS + SPG/DS (raw dashboard, 2 upload boxes)
 //   v2: single upload (hasil Data Merger), split otomatis by Record_Type
 //   v3: klik detail (angka/chart/leaderboard), Key Insights, layout row-aligned
@@ -389,19 +395,34 @@ function getTargetLabel(tenureMonths) {
 }
 
 // Ambil field Pencapaian (Tagging) & Kualitas (NCA) dari 1 baris data mentah
-// hasil merge — field ini OPSIONAL (cuma ada kalau user upload file Tagging/
-// NCA di merger tool), makanya semua fallback ke null kalau nggak ketemu.
+// hasil merge — field ini OPSIONAL (cuma ada kalau user upload file GAR/NCA
+// di merger tool), makanya semua fallback ke null kalau nggak ketemu.
+//
+// FIX: file "GAR" (data_GAR_by_Promotor...xlsx, masuk slot Tagging) itu
+// ternyata punya metrik GAR/NCA/Good SRC/Bad SRC/Unidentified Imei juga —
+// cuma versi FLAT (1 angka per bulan berjalan, tanpa breakdown per brand),
+// suffix-nya "_TAGGING" bukan "_NCA". Dulu extractPencapaianFields cuma baca
+// field "_NCA" (dari file NCA 3-baris-header), jadi kalau user cuma upload
+// GAR tanpa NCA, ncaGAR/ncaNCA dkk selalu null — makanya "Capaian NCA vs
+// Target" & "Aktivitas vs GAR" nggak pernah muncul. Sekarang: field "_NCA"
+// (lebih detail, breakdown per brand) tetap diutamakan kalau ada, tapi kalau
+// nggak ada, fallback ke field flat "_TAGGING" dari file GAR.
 function extractPencapaianFields(r) {
+  const ncaGAR = toNum(r["GAR Total (Bulan Berjalan)_NCA"]);
+  const ncaNCA = toNum(r["NCA Total (Bulan Berjalan)_NCA"]);
+  const ncaGoodSRC = toNum(r["Good SRC Total (Bulan Berjalan)_NCA"]);
+  const ncaBadSRC = toNum(r["Bad SRC Total (Bulan Berjalan)_NCA"]);
+  const ncaUnidentified = toNum(r["Unidentified Imei Total (Bulan Berjalan)_NCA"]);
   return {
     pencapaianXL: toNum(r["Pencapaian XL (Bulan Berjalan)_TAGGING"]),
     pencapaianAXIS: toNum(r["Pencapaian AXIS (Bulan Berjalan)_TAGGING"]),
     pencapaianSMART: toNum(r["Pencapaian SMART (Bulan Berjalan)_TAGGING"]),
     pencapaianTotal: toNum(r["Pencapaian Total (Bulan Berjalan)_TAGGING"]),
-    ncaGAR: toNum(r["GAR Total (Bulan Berjalan)_NCA"]),
-    ncaNCA: toNum(r["NCA Total (Bulan Berjalan)_NCA"]),
-    ncaGoodSRC: toNum(r["Good SRC Total (Bulan Berjalan)_NCA"]),
-    ncaBadSRC: toNum(r["Bad SRC Total (Bulan Berjalan)_NCA"]),
-    ncaUnidentified: toNum(r["Unidentified Imei Total (Bulan Berjalan)_NCA"]),
+    ncaGAR: ncaGAR != null ? ncaGAR : toNum(r["GAR_TAGGING"]),
+    ncaNCA: ncaNCA != null ? ncaNCA : toNum(r["NCA_TAGGING"]),
+    ncaGoodSRC: ncaGoodSRC != null ? ncaGoodSRC : toNum(r["Good SRC_TAGGING"]),
+    ncaBadSRC: ncaBadSRC != null ? ncaBadSRC : toNum(r["Bad SRC_TAGGING"]),
+    ncaUnidentified: ncaUnidentified != null ? ncaUnidentified : toNum(r["Unidentified Imei_TAGGING"]),
   };
 }
 
@@ -3441,7 +3462,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v126</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v127</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
