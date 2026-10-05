@@ -1,3 +1,7 @@
+// Dashboard.tsx — v128
+//   v128: Out Store (SDS/DS) nggak pakai OM/koordinat toko lagi (kerjanya keliling) —
+//        cek jarak-ke-toko & "GPS Toko N/A" dimatikan buat Out Store, kartu/baris GPS Toko N/A
+//        Out Store disembunyiin. Pencapaian vs target open booth: nunggu sumber datanya.
 // Dashboard.tsx — v127
 // Changelog:
 //   v127: fix extractPencapaianFields() — ncaGAR/ncaNCA/ncaGoodSRC/ncaBadSRC/ncaUnidentified
@@ -575,7 +579,10 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     // coordinate (from OM + Outlet Master, joined via Sales Code in the
     // merger tool). Falls back to comparing check-in vs check-out to each
     // other only when no outlet reference is available in this data.
-    const outlet = getOutletCoord(r);
+    // Out Store (SDS/DS) kerjanya keliling, nggak terikat 1 toko → OM/koordinat
+    // toko TIDAK dipakai buat mereka (nggak ada cek jarak-ke-toko, nggak ada GPS Toko N/A).
+    const isOutStore = classifyPromotorType(getPosition(r)) === "Out Store Promotor";
+    const outlet = isOutStore ? null : getOutletCoord(r);
     const distToStoreIn = outlet && hasIn ? haversineMeters({ lat: latIn, lon: lonIn }, outlet) : null;
     const distToStoreOut = outlet && hasOut ? haversineMeters({ lat: latOut, lon: lonOut }, outlet) : null;
     const usingStoreRef = !!outlet;
@@ -585,7 +592,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
     const farFromStore = usingStoreRef
       ? (distToStoreIn !== null && distToStoreIn > moveThresholdM) || (distToStoreOut !== null && distToStoreOut > moveThresholdM)
       : false;
-    const noOutletData = !usingStoreRef && hasIn;
+    const noOutletData = !isOutStore && !usingStoreRef && hasIn;
     const maxStoreDist = usingStoreRef ? Math.max(distToStoreIn ?? 0, distToStoreOut ?? 0) : null;
 
     const durHr = toNum(r["Time Duration Adj (Hours)_ABSENSI"] ?? r["Time Duration (Hours)_ABSENSI"]);
@@ -789,7 +796,9 @@ function processTimestamp(rows, storeThresholdM) {
     const tenureMonths = monthsBetween(joinDate, first["Date_TIMESTAMP"]);
     const statusCheck = checkStatusAnomaly(status, first["Date_TIMESTAMP"], endDate);
 
-    const outlet = getOutletCoord(first);
+    // Out Store: OM/koordinat toko nggak dipakai (kerja keliling) — lihat processAbsensi.
+    const isOutStore = classifyPromotorType(position) === "Out Store Promotor";
+    const outlet = isOutStore ? null : getOutletCoord(first);
     const checks = groupRows.map((r) => {
       let lat = toNum(r["Latitude In_TIMESTAMP"]);
       let lon = toNum(r["Longitude In_TIMESTAMP"]);
@@ -830,7 +839,7 @@ function processTimestamp(rows, storeThresholdM) {
     // No outlet reference at all for this employee (didn't match via Sales
     // Code -> OM -> Outlet Master) — report that plainly instead of
     // silently skipping the store-distance check.
-    const noOutletData = !outlet && checks.some((c) => c.lat != null);
+    const noOutletData = !isOutStore && !outlet && checks.some((c) => c.lat != null);
 
     return {
       date: first["Date_TIMESTAMP"] || "-",
@@ -2156,7 +2165,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
                 <div className="divide-y divide-gray-100">
                   {[
                     { title: "Zona Waktu — Not Comply (<50% hari)", source: "Timestamp", value: data.zone.notComply, of: data.zone.total, unit: "promotor" },
-                    { title: "GPS Toko N/A", source: "Timestamp & Absensi", value: data.toko.naCount, of: data.toko.totalToko, unit: "promotor" },
+                    ...(label === "Out Store Promotor" ? [] : [{ title: "GPS Toko N/A", source: "Timestamp & Absensi", value: data.toko.naCount, of: data.toko.totalToko, unit: "promotor" }]),
                     { title: "Durasi Bermasalah", source: "Absensi", value: data.durasi.count, of: data.durasi.total, unit: "promotor" },
                   ].map((row) => (
                     <div key={row.title} className="px-3 py-2">
@@ -3041,9 +3050,6 @@ function DashboardPage(props) {
               <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={outStoreTs.anomalyCounts.zone} tone="indigo"
                 onClick={() => openDetail("Out Store — Timestamp — Absensi <3x/hari", outStoreTs.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
                 exportRows={outStoreTs.flagged.filter((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-absensi-kurang-3x" />
-              <StatCard icon={MapPin} label="#Toko GPS N/A" value={outStoreTs.anomalyCounts.noOutletData} tone="pink"
-                onClick={() => openDetail("Out Store — Timestamp — GPS Toko N/A", outStoreTs.flagged.filter((v) => v.noOutletData), TIMESTAMP_COLUMNS)}
-                exportRows={outStoreTs.flagged.filter((v) => v.noOutletData)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-gps-toko-na" />
             </div>
           ) : <div className="text-xs text-gray-400 text-center py-10 border border-dashed border-gray-200 rounded-xl">Tidak ada data</div>}
         </div>
@@ -3128,9 +3134,6 @@ function DashboardPage(props) {
           <div className="text-[11px] text-gray-500 mb-2">{outStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {outStoreAb ? (
             <div className="grid grid-cols-2 gap-2.5">
-              <StatCard icon={MapPin} label="#Toko GPS N/A" value={outStoreAb.anomalyCounts.gpsNoOutlet} tone="pink"
-                onClick={() => openDetail("Out Store — Absensi — GPS Toko N/A", outStoreAb.flagged.filter((s) => s.noOutletData), ABSENSI_COLUMNS)}
-                exportRows={outStoreAb.flagged.filter((s) => s.noOutletData)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-gps-toko-na" />
               <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={outStoreAb.anomalyCounts.duration} tone="indigo"
                 onClick={() => openDetail("Out Store — Absensi — Durasi Bermasalah", outStoreAb.flagged.filter((s) => s.durationIssue), ABSENSI_COLUMNS)}
                 exportRows={outStoreAb.flagged.filter((s) => s.durationIssue)} exportColumns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-durasi-bermasalah" />
@@ -3462,7 +3465,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v127</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v128</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
