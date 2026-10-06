@@ -1,3 +1,6 @@
+// Dashboard.tsx — v129
+//   v129: tambah Top 3 NAMA promotor di tiap kotak "Capaian NCA vs Target" & "Aktivitas Lapangan vs GAR"
+//        (kotak hasil bagus = capaian tertinggi; kotak hasil kurang = paling jauh di bawah target).
 // Dashboard.tsx — v128
 //   v128: Out Store (SDS/DS) nggak pakai OM/koordinat toko lagi (kerjanya keliling) —
 //        cek jarak-ke-toko & "GPS Toko N/A" dimatikan buat Out Store, kartu/baris GPS Toko N/A
@@ -995,12 +998,32 @@ function computeInsights(timestampResult, absensiResult) {
 // berbasis pola kerja doang. Cuma promotor yang punya DUA-DUANYA data
 // (Tagging & NCA lengkap) yang dinilai — kalau cuma punya salah satu,
 // di-skip (nggak masuk hitungan) biar hasilnya adil/nggak setengah-setengah.
+function TopList({ title, items, unit, showDays }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="mt-2.5 pt-2 border-t border-black/5">
+      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">{title}</div>
+      <ol className="space-y-0.5">
+        {items.map((it, i) => (
+          <li key={it.id + i} className="flex items-baseline justify-between gap-2 text-[12px] text-gray-800">
+            <span className="min-w-0 truncate"><b>{i + 1}.</b> {it.name}{it.sub ? <span className="text-gray-400 text-[10px]"> · {it.sub}</span> : null}</span>
+            <span className="shrink-0 text-gray-600">{it.value.toLocaleString("id-ID")}/{it.target}{unit ? " " + unit : ""}{showDays ? ` · ${it.days} hr` : ""}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function computePencapaianSummary(timestampResult, absensiResult) {
   const allRows = [...(timestampResult?.all || []), ...(absensiResult?.all || [])];
   const perPerson = new Map();
   allRows.forEach((r) => {
     if (!r.employee_id) return;
-    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, pencapaian: null };
+    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, pencapaian: null, id: r.employee_id, name: null, region: null, cluster: null };
+    if (!existing.name && r.employee_name && r.employee_name !== "-") existing.name = r.employee_name;
+    if (!existing.region && r.region && r.region !== "-") existing.region = r.region;
+    if (!existing.cluster && r.cluster && r.cluster !== "-") existing.cluster = r.cluster;
     if (existing.tenureMonths == null && r.tenureMonths != null) existing.tenureMonths = r.tenureMonths;
     if (r.pencapaian && (r.pencapaian.pencapaianTotal != null || r.pencapaian.ncaGAR != null)) {
       existing.pencapaian = Object.assign({}, existing.pencapaian || {}, r.pencapaian);
@@ -1048,6 +1071,8 @@ function computePencapaianSummary(timestampResult, absensiResult) {
   // 150 — SEMUA tingkat udah punya target pasti, jadi SEMUA promotor dinilai,
   // nggak ada lagi kategori "Baru Bergabung" khusus buat metrik ini).
   const capaianNCA = { tercapai: 0, belumTercapai: 0 };
+  const listTercapai = [];
+  const listBelum = [];
   let totalDinilaiNCA = 0;
   perPerson.forEach((e) => {
     const p = e.pencapaian;
@@ -1055,11 +1080,15 @@ function computePencapaianSummary(timestampResult, absensiResult) {
     const target = getTargetNCA(e.tenureMonths);
     if (target == null) return;
     totalDinilaiNCA++;
-    if (p.ncaNCA >= target) capaianNCA.tercapai++;
-    else capaianNCA.belumTercapai++;
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), value: p.ncaNCA, target, ratio: p.ncaNCA / target };
+    if (p.ncaNCA >= target) { capaianNCA.tercapai++; listTercapai.push(item); }
+    else { capaianNCA.belumTercapai++; listBelum.push(item); }
   });
+  // Top 3: Tercapai = capaian tertinggi; Belum Tercapai = paling jauh di bawah target.
+  const topTercapai = listTercapai.sort((a, b) => b.ratio - a.ratio || b.value - a.value).slice(0, 3);
+  const topBelum = listBelum.sort((a, b) => a.ratio - b.ratio || a.value - b.value).slice(0, 3);
 
-  return { totalDinilai, buckets, totalDinilaiNCA, capaianNCA };
+  return { totalDinilai, buckets, totalDinilaiNCA, capaianNCA, topTercapai, topBelum };
 }
 
 // Aktivitas Lapangan vs GAR — beda lagi dari 2 metrik di atas: ini nge-cross-
@@ -1079,7 +1108,10 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
   const perPerson = new Map();
   allRows.forEach((r) => {
     if (!r.employee_id) return;
-    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, ncaGAR: null, activeDays: new Set() };
+    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, ncaGAR: null, activeDays: new Set(), id: r.employee_id, name: null, region: null, cluster: null };
+    if (!existing.name && r.employee_name && r.employee_name !== "-") existing.name = r.employee_name;
+    if (!existing.region && r.region && r.region !== "-") existing.region = r.region;
+    if (!existing.cluster && r.cluster && r.cluster !== "-") existing.cluster = r.cluster;
     if (existing.tenureMonths == null && r.tenureMonths != null) existing.tenureMonths = r.tenureMonths;
     if (existing.ncaGAR == null && r.pencapaian && r.pencapaian.ncaGAR != null) existing.ncaGAR = r.pencapaian.ncaGAR;
     if (r.date) existing.activeDays.add(r.date);
@@ -1087,6 +1119,7 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
   });
 
   const buckets = { aktivitasTinggiGarTinggi: 0, aktivitasTinggiGarRendah: 0, aktivitasRendahGarTinggi: 0, aktivitasRendahGarRendah: 0 };
+  const lists = { aktivitasTinggiGarTinggi: [], aktivitasTinggiGarRendah: [], aktivitasRendahGarTinggi: [], aktivitasRendahGarRendah: [] };
   let totalDinilai = 0;
 
   perPerson.forEach((e) => {
@@ -1096,13 +1129,22 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
     totalDinilai++;
     const aktivitasTinggi = e.activeDays.size >= AKTIVITAS_TINGGI_THRESHOLD_HARI;
     const garTinggi = e.ncaGAR >= garTarget;
-    if (aktivitasTinggi && garTinggi) buckets.aktivitasTinggiGarTinggi++;
-    else if (aktivitasTinggi && !garTinggi) buckets.aktivitasTinggiGarRendah++;
-    else if (!aktivitasTinggi && garTinggi) buckets.aktivitasRendahGarTinggi++;
-    else buckets.aktivitasRendahGarRendah++;
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget };
+    const key = aktivitasTinggi
+      ? (garTinggi ? "aktivitasTinggiGarTinggi" : "aktivitasTinggiGarRendah")
+      : (garTinggi ? "aktivitasRendahGarTinggi" : "aktivitasRendahGarRendah");
+    buckets[key]++;
+    lists[key].push(item);
   });
 
-  return { totalDinilai, buckets };
+  // Top 3 per kotak: yang GAR-nya Tinggi = GAR tertinggi; yang GAR-nya Rendah = paling jauh di bawah target.
+  const tops = {};
+  Object.keys(lists).forEach((k) => {
+    const high = k.endsWith("GarTinggi");
+    tops[k] = lists[k].sort((a, b) => (high ? b.ratio - a.ratio : a.ratio - b.ratio) || (high ? b.days - a.days : a.days - b.days)).slice(0, 3);
+  });
+
+  return { totalDinilai, buckets, tops };
 }
 
 // Ringkasan angka-angka Overview, dihitung ULANG di sini (independen dari
@@ -2932,7 +2974,7 @@ function DashboardPage(props) {
               })()}
 
               {pencapaianSummary.totalDinilaiNCA > 0 && (() => {
-                    const { totalDinilaiNCA, capaianNCA } = pencapaianSummary;
+                    const { totalDinilaiNCA, capaianNCA, topTercapai, topBelum } = pencapaianSummary;
                     const pctNCA = (n) => totalDinilaiNCA ? ((n / totalDinilaiNCA) * 100).toFixed(1).replace(".", ",") : "0,0";
                     return (
                       <div className="mt-5 pt-4 border-t border-gray-100">
@@ -2952,6 +2994,7 @@ function DashboardPage(props) {
                               </span>
                             </div>
                             <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA sudah memenuhi atau melebihi target sesuai masa kerja. Direkomendasikan dipertahankan.</div>
+                            <TopList title="Top 3 capaian tertinggi (NCA/target)" items={topTercapai} />
                           </div>
                           <div className="border rounded-lg p-3.5 border-red-200 bg-red-50">
                             <div className="flex items-baseline justify-between mb-1.5">
@@ -2961,6 +3004,7 @@ function DashboardPage(props) {
                               </span>
                             </div>
                             <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA masih di bawah target sesuai masa kerja. Direkomendasikan pembinaan dan pemantauan lebih lanjut.</div>
+                            <TopList title="Top 3 paling jauh di bawah target (NCA/target)" items={topBelum} />
                           </div>
                         </div>
                       </div>
@@ -2970,23 +3014,23 @@ function DashboardPage(props) {
                   {(() => {
                     const aktivitasVsGar = computeAktivitasVsGAR(timestampResult, absensiResult);
                     if (aktivitasVsGar.totalDinilai === 0) return null;
-                    const { totalDinilai, buckets: b2 } = aktivitasVsGar;
+                    const { totalDinilai, buckets: b2, tops: tops2 } = aktivitasVsGar;
                     const pctAG = (n) => totalDinilai ? ((n / totalDinilai) * 100).toFixed(1).replace(".", ",") : "0,0";
                     const cardsAG = [
                       {
-                        label: "Aktivitas Tinggi & GAR Tinggi", count: b2.aktivitasTinggiGarTinggi, accent: "border-teal-200 bg-teal-50", textAccent: "text-teal-700",
+                        label: "Aktivitas Tinggi & GAR Tinggi", count: b2.aktivitasTinggiGarTinggi, top: tops2.aktivitasTinggiGarTinggi, topTitle: "Top 3 GAR tertinggi (GAR/target · hari aktif)", accent: "border-teal-200 bg-teal-50", textAccent: "text-teal-700",
                         rekomendasi: "Rajin bekerja di lapangan dan hasilnya sesuai. Penempatan sudah tepat — pertahankan.",
                       },
                       {
-                        label: "Aktivitas Tinggi, GAR Rendah", count: b2.aktivitasTinggiGarRendah, accent: "border-amber-200 bg-amber-50", textAccent: "text-amber-700",
+                        label: "Aktivitas Tinggi, GAR Rendah", count: b2.aktivitasTinggiGarRendah, top: tops2.aktivitasTinggiGarRendah, topTitle: "Top 3 GAR paling jauh di bawah target (GAR/target · hari aktif)", accent: "border-amber-200 bg-amber-50", textAccent: "text-amber-700",
                         rekomendasi: "Rajin bekerja tapi hasilnya kurang. Sinyal kemungkinan penempatan lokasi kurang tepat, atau perlu evaluasi pendekatan kerja.",
                       },
                       {
-                        label: "Aktivitas Rendah, GAR Tinggi", count: b2.aktivitasRendahGarTinggi, accent: "border-sky-200 bg-sky-50", textAccent: "text-sky-700",
+                        label: "Aktivitas Rendah, GAR Tinggi", count: b2.aktivitasRendahGarTinggi, top: tops2.aktivitasRendahGarTinggi, topTitle: "Top 3 GAR tertinggi (GAR/target · hari aktif)", accent: "border-sky-200 bg-sky-50", textAccent: "text-sky-700",
                         rekomendasi: "Jarang tercatat aktif tapi hasilnya tetap tercapai. Perlu dicek apakah datanya lengkap, atau memang kerjanya efisien.",
                       },
                       {
-                        label: "Aktivitas Rendah & GAR Rendah", count: b2.aktivitasRendahGarRendah, accent: "border-red-200 bg-red-50", textAccent: "text-red-700",
+                        label: "Aktivitas Rendah & GAR Rendah", count: b2.aktivitasRendahGarRendah, top: tops2.aktivitasRendahGarRendah, topTitle: "Top 3 GAR paling jauh di bawah target (GAR/target · hari aktif)", accent: "border-red-200 bg-red-50", textAccent: "text-red-700",
                         rekomendasi: "Jarang aktif dan hasil juga kurang. Perlu perhatian penuh — evaluasi menyeluruh.",
                       },
                     ];
@@ -3009,6 +3053,7 @@ function DashboardPage(props) {
                                 </span>
                               </div>
                               <div className="text-[12px] text-gray-600 leading-relaxed">{c.rekomendasi}</div>
+                              <TopList title={c.topTitle} items={c.top} showDays />
                             </div>
                           ))}
                         </div>
@@ -3465,7 +3510,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v128</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v129</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
