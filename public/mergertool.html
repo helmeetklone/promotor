@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- mergertool.html — v8
+<!-- mergertool.html — v9
+     v9: slot baru opsional "Outlet Info / RO Player" — kolom RO Player per Outlet ID di-mapping ke
+         promotor lewat Outlet Code dari file OM (kolom output baru: "Outlet Player" = Player / Non Player).
+     v8
      v8: fix join GAR/NCA ke master — SELAMA INI selalu dicocokin ke "Employee ID"
          (format TRAD...) apa pun kolom ID asli file-nya, padahal file GAR (flat)
          & NCA pakai kolom "NIK" (kode SAP pendek, mis. "31420247") dan file
@@ -163,7 +166,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v8</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v9</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -223,6 +226,7 @@ const SLOTS = [
   { key: "absensi", label: "Absensi", file: "Absensi.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "ABSENSI", accent: "#FF6B6B" },
   { key: "timestamp", label: "Timestamp", file: "Timestamp.xlsx / .json / .ndjson", idCol: "Employee No", suffix: "TIMESTAMP", accent: "#58D68D" },
   { key: "om", label: "OM / Outlet Master", file: "Visit Activity Frontliner export — Frontliner ID, Outlet ID/Name, Check-In Latitude/Longitude", accent: "#38BDF8" },
+  { key: "player", label: "Outlet Info / RO Player (opsional)", file: "Membership Outlet (sheet \"Outlet Info\") — kolom Outlet ID + RO Player, di-mapping ke promotor lewat Outlet ID dari file OM", accent: "#A3E635", optional: true },
   { key: "tagging", label: "GAR (opsional)", file: "data_GAR_by_Promotor.xlsx — GAR per promotor (1 baris per NIK, tanpa breakdown brand)", accent: "#F4B942", optional: true },
   { key: "nca", label: "NCA (opsional)", file: "NCA_Promotor.xlsx — GAR & NCA per promotor (breakdown per brand XL/AXIS/SMART + bulan)", accent: "#D97706", optional: true },
 ];
@@ -258,7 +262,7 @@ const CATEGORY_MAP = {
   "Date_ABSENSI": "timing", "Creation Date_ABSENSI": "timing",
   "Date_TIMESTAMP": "timing", "Date In_TIMESTAMP": "timing", "Creation Date_TIMESTAMP": "timing",
   "Created Date_DOP": "timing", "Join Date_DOP": "timing",
-  "Outlet Code": "outlet", "Outlet Name": "outlet", "Outlet Latitude": "outlet", "Outlet Longitude": "outlet",
+  "Outlet Code": "outlet", "Outlet Name": "outlet", "Outlet Latitude": "outlet", "Outlet Longitude": "outlet", "Outlet Player": "outlet",
   "City_ABSENSI": "wilayah", "Kecamatan_ABSENSI": "wilayah", "Kelurahan_ABSENSI": "wilayah", "Province_ABSENSI": "wilayah",
   "City_TIMESTAMP": "wilayah", "Kecamatan_TIMESTAMP": "wilayah", "Kelurahan_TIMESTAMP": "wilayah", "Province_TIMESTAMP": "wilayah",
   "Region_DOP": "region", "Cluster_DOP": "region", "Sub Cluster_DOP": "region",
@@ -601,6 +605,45 @@ function processOM(rows) {
     })
     .filter((r) => r["Sales Code"]);
   return { data, resolvedKeys: { salesCodeKey, outletCodeKey, outletNameKey, latKey, lonKey, combinedKey } };
+}
+
+// Normalisasi kode outlet biar cocok antar file: trim, buang ".0" sisa
+// konversi angka Excel, uppercase.
+function normOutletKey(v) {
+  if (v == null) return "";
+  return String(v).trim().replace(/\.0+$/, "").toUpperCase();
+}
+
+// File "Outlet Info" (Membership Outlet) — ambil Outlet ID + kolom "RO Player".
+// Hasilnya: Map outletCode(normalized) -> "Player" | "Non Player" | null (kosong).
+// Kalau 1 outlet muncul di banyak baris, "Player" menang (cukup 1 baris Player).
+function processPlayer(rows) {
+  if (rows.length === 0) return { map: new Map(), resolvedKeys: {} };
+  const keys = Object.keys(rows[0]);
+  const idKey = findColumn(keys, [
+    (k) => k === "outlet id" || k === "outlet code" || k === "id outlet" || k === "ro id" || k === "ro code" || k === "organization code",
+    (k) => (k.includes("outlet") || k.includes("ro ")) && (k.includes("id") || k.includes("code")),
+    (k) => k.includes("organization") && k.includes("code"),
+  ]);
+  const playerKey = findColumn(keys, [
+    (k) => k === "ro player",
+    (k) => k.includes("player") && !k.includes("census"),
+  ]);
+  const map = new Map();
+  if (idKey && playerKey) {
+    rows.forEach((r) => {
+      const code = normOutletKey(r[idKey]);
+      if (!code) return;
+      const raw = String(r[playerKey] ?? "").trim().toLowerCase();
+      let val = null;
+      if (["yes", "y", "ya", "true", "1", "player"].includes(raw)) val = "Player";
+      else if (["no", "n", "tidak", "false", "0", "non player", "non-player", "bukan"].includes(raw)) val = "Non Player";
+      else if (raw) val = String(r[playerKey]).trim();
+      const prev = map.get(code);
+      if (prev === undefined || prev === null || (val === "Player" && prev !== "Player")) map.set(code, val);
+    });
+  }
+  return { map, resolvedKeys: { idKey, playerKey } };
 }
 
 // Outlet Master: RO ID / RO Name / Latitude / Longitude (header names vary,
@@ -1096,6 +1139,28 @@ function process() {
           const outletInfo = m["Sales Code"] ? salesCodeToOutlet.get(m["Sales Code"]) : null;
           return outletInfo ? Object.assign({}, m, outletInfo) : m;
         });
+      }
+
+      // Outlet Info / RO Player (opsional) — status outlet Player/Non Player,
+      // di-mapping ke promotor lewat Outlet Code (dari file OM di atas).
+      const playerRows = state.parsed.player || [];
+      if (playerRows.length > 0) {
+        const pr = processPlayer(playerRows);
+        if (!pr.resolvedKeys.idKey || !pr.resolvedKeys.playerKey) {
+          showWarn("File Outlet Info: kolom " + (!pr.resolvedKeys.idKey ? "Outlet ID/Code " : "") + (!pr.resolvedKeys.playerKey ? "RO Player " : "") + "tidak ketemu. Cek \"Lihat nama kolom terdeteksi\" di slot Outlet Info.");
+        } else {
+          let withOutlet = 0, matched = 0;
+          master = master.map((m) => {
+            const code = normOutletKey(m["Outlet Code"]);
+            if (!code) return m;
+            withOutlet++;
+            if (!pr.map.has(code)) return m;
+            matched++;
+            return Object.assign({}, m, { "Outlet Player": pr.map.get(code) });
+          });
+          if (!(state.parsed.om || []).length) showWarn("Outlet Info butuh file OM juga (buat nyambungin outlet ke promotor).");
+          else showWarn("Outlet Info: " + matched.toLocaleString("id-ID") + " dari " + withOutlet.toLocaleString("id-ID") + " promotor yang punya outlet berhasil dapat status Player/Non Player.");
+        }
       }
 
       // Tagging & NCA (opsional) — data pencapaian per promotor, digabung ke
