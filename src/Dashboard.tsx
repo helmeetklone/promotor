@@ -1,3 +1,6 @@
+// Dashboard.tsx — v130
+//   v130: Tipe Outlet (Player / Non Player, dari kolom "Outlet Player" hasil mergertool v9) muncul
+//        di kolom detail Timestamp & Absensi + badge di Top 3 NCA/GAR. Out Store dikosongin (nggak pakai OM).
 // Dashboard.tsx — v129
 //   v129: tambah Top 3 NAMA promotor di tiap kotak "Capaian NCA vs Target" & "Aktivitas Lapangan vs GAR"
 //        (kotak hasil bagus = capaian tertinggi; kotak hasil kurang = paling jauh di bawah target).
@@ -500,6 +503,7 @@ const TIMESTAMP_COLUMNS = [
   { key: "distinctZoneCount", label: "Zona" },
   { key: "coordsList", label: "Koordinat Check-in (lat, lon)" },
   { key: "outletName", label: "Outlet", render: (v) => v.outletName || (v.rawOutletCode ? `(${v.rawOutletCode}) — nama tidak ditemukan` : "-") },
+  { key: "outletPlayer", label: "Tipe Outlet", render: (v) => v.outletPlayer || "-" },
   { key: "distToStoreList", label: "Jarak ke Toko per Check-in (m)", render: (v) => v.distToStoreList || "-" },
   { key: "flags", label: "Flag", render: describeFlagsTimestamp },
 ];
@@ -526,6 +530,7 @@ const ABSENSI_COLUMNS = [
   { key: "coordIn", label: "Koordinat Check-in (lat, lon)" },
   { key: "coordOut", label: "Koordinat Check-out (lat, lon)" },
   { key: "outletName", label: "Outlet", render: (r) => r.outletName || (r.rawOutletCode ? `(${r.rawOutletCode}) — nama tidak ditemukan` : "-") },
+  { key: "outletPlayer", label: "Tipe Outlet", render: (r) => r.outletPlayer || "-" },
   { key: "distToStoreIn", label: "Jarak Check-in ke Toko (m)", render: (r) => r.distToStoreIn !== null && r.distToStoreIn !== undefined ? r.distToStoreIn.toFixed(0) : "-" },
   { key: "distToStoreOut", label: "Jarak Check-out ke Toko (m)", render: (r) => r.distToStoreOut !== null && r.distToStoreOut !== undefined ? r.distToStoreOut.toFixed(0) : "-" },
   { key: "moveM", label: "Jarak In-Out (m)", render: (r) => r.moveM !== null ? r.moveM.toFixed(0) : "-" },
@@ -629,6 +634,7 @@ function processAbsensi(rows, moveThresholdM, shortHr, longHr) {
       longShift,
       moveM: inOutDistM,
       outletName: outlet ? (r["Outlet Name"] || "-") : null,
+      outletPlayer: isOutStore ? null : (r["Outlet Player"] || null), // Player / Non Player (dari file Outlet Info)
       rawOutletCode: r["Outlet Code"] || null,
       distToStoreIn,
       distToStoreOut,
@@ -860,6 +866,7 @@ function processTimestamp(rows, storeThresholdM) {
       distinctZoneCount: distinctZones.size,
       coordsList,
       outletName: outlet ? (first["Outlet Name"] || "-") : null,
+      outletPlayer: isOutStore ? null : (first["Outlet Player"] || null),
       rawOutletCode: first["Outlet Code"] || null,
       distToStoreList,
       maxStoreDist,
@@ -1006,7 +1013,7 @@ function TopList({ title, items, unit, showDays }) {
       <ol className="space-y-0.5">
         {items.map((it, i) => (
           <li key={it.id + i} className="flex items-baseline justify-between gap-2 text-[12px] text-gray-800">
-            <span className="min-w-0 truncate"><b>{i + 1}.</b> {it.name}{it.sub ? <span className="text-gray-400 text-[10px]"> · {it.sub}</span> : null}</span>
+            <span className="min-w-0 truncate"><b>{i + 1}.</b> {it.name}{it.player ? <span className={`ml-1 px-1 rounded text-[9px] font-semibold ${it.player === "Player" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{it.player}</span> : null}{it.sub ? <span className="text-gray-400 text-[10px]"> · {it.sub}</span> : null}</span>
             <span className="shrink-0 text-gray-600">{it.value.toLocaleString("id-ID")}/{it.target}{unit ? " " + unit : ""}{showDays ? ` · ${it.days} hr` : ""}</span>
           </li>
         ))}
@@ -1020,8 +1027,9 @@ function computePencapaianSummary(timestampResult, absensiResult) {
   const perPerson = new Map();
   allRows.forEach((r) => {
     if (!r.employee_id) return;
-    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, pencapaian: null, id: r.employee_id, name: null, region: null, cluster: null };
+    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, pencapaian: null, id: r.employee_id, name: null, region: null, cluster: null, outletPlayer: null };
     if (!existing.name && r.employee_name && r.employee_name !== "-") existing.name = r.employee_name;
+    if (!existing.outletPlayer && r.outletPlayer) existing.outletPlayer = r.outletPlayer;
     if (!existing.region && r.region && r.region !== "-") existing.region = r.region;
     if (!existing.cluster && r.cluster && r.cluster !== "-") existing.cluster = r.cluster;
     if (existing.tenureMonths == null && r.tenureMonths != null) existing.tenureMonths = r.tenureMonths;
@@ -1080,7 +1088,7 @@ function computePencapaianSummary(timestampResult, absensiResult) {
     const target = getTargetNCA(e.tenureMonths);
     if (target == null) return;
     totalDinilaiNCA++;
-    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), value: p.ncaNCA, target, ratio: p.ncaNCA / target };
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: p.ncaNCA, target, ratio: p.ncaNCA / target };
     if (p.ncaNCA >= target) { capaianNCA.tercapai++; listTercapai.push(item); }
     else { capaianNCA.belumTercapai++; listBelum.push(item); }
   });
@@ -1108,7 +1116,8 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
   const perPerson = new Map();
   allRows.forEach((r) => {
     if (!r.employee_id) return;
-    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, ncaGAR: null, activeDays: new Set(), id: r.employee_id, name: null, region: null, cluster: null };
+    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, ncaGAR: null, activeDays: new Set(), id: r.employee_id, name: null, region: null, cluster: null, outletPlayer: null };
+    if (!existing.outletPlayer && r.outletPlayer) existing.outletPlayer = r.outletPlayer;
     if (!existing.name && r.employee_name && r.employee_name !== "-") existing.name = r.employee_name;
     if (!existing.region && r.region && r.region !== "-") existing.region = r.region;
     if (!existing.cluster && r.cluster && r.cluster !== "-") existing.cluster = r.cluster;
@@ -1129,7 +1138,7 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
     totalDinilai++;
     const aktivitasTinggi = e.activeDays.size >= AKTIVITAS_TINGGI_THRESHOLD_HARI;
     const garTinggi = e.ncaGAR >= garTarget;
-    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget };
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget };
     const key = aktivitasTinggi
       ? (garTinggi ? "aktivitasTinggiGarTinggi" : "aktivitasTinggiGarRendah")
       : (garTinggi ? "aktivitasRendahGarTinggi" : "aktivitasRendahGarRendah");
@@ -3510,7 +3519,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v129</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v130</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
