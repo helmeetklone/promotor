@@ -1,3 +1,7 @@
+// Dashboard.tsx — v131
+//   v131: fix angka >= 1.000 salah baca (CSV mergertool lama nulis "1.008" format Indonesia, dashboard
+//        baca jadi 1,008) — bikin promotor GAR 1.008/150 nyasar ke "GAR Rendah" & hilang dari Top 3 GAR tertinggi.
+//        Sekarang metrik GAR/NCA/SRC/Pencapaian dibaca pakai toCount() (titik 3-digit = pemisah ribuan).
 // Dashboard.tsx — v130
 //   v130: Tipe Outlet (Player / Non Player, dari kolom "Outlet Player" hasil mergertool v9) muncul
 //        di kolom detail Timestamp & Absensi + badge di Top 3 NCA/GAR. Out Store dikosongin (nggak pakai OM).
@@ -417,22 +421,37 @@ function getTargetLabel(tenureMonths) {
 // Target" & "Aktivitas vs GAR" nggak pernah muncul. Sekarang: field "_NCA"
 // (lebih detail, breakdown per brand) tetap diutamakan kalau ada, tapi kalau
 // nggak ada, fallback ke field flat "_TAGGING" dari file GAR.
+// Angka pencapaian (GAR/NCA/SRC/Pencapaian) dari CSV hasil mergertool lama bisa
+// berformat Indonesia: ribuan pakai titik ("1.008" = seribu delapan), desimal
+// pakai koma. toNum() biasa salah baca "1.008" jadi 1,008 (satu koma nol-nol-
+// delapan) — akibatnya promotor dengan GAR >= 1000 salah masuk "GAR Rendah".
+// Khusus metrik hitungan ini, pola "<1-3 digit>(.<3 digit>)+" selalu dibaca
+// sebagai pemisah ribuan.
+function toCount(v) {
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) return toNum(s.replace(/\./g, "").replace(",", "."));
+    if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) return toNum(s.replace(/,/g, ""));
+  }
+  return toNum(v);
+}
+
 function extractPencapaianFields(r) {
-  const ncaGAR = toNum(r["GAR Total (Bulan Berjalan)_NCA"]);
-  const ncaNCA = toNum(r["NCA Total (Bulan Berjalan)_NCA"]);
-  const ncaGoodSRC = toNum(r["Good SRC Total (Bulan Berjalan)_NCA"]);
-  const ncaBadSRC = toNum(r["Bad SRC Total (Bulan Berjalan)_NCA"]);
-  const ncaUnidentified = toNum(r["Unidentified Imei Total (Bulan Berjalan)_NCA"]);
+  const ncaGAR = toCount(r["GAR Total (Bulan Berjalan)_NCA"]);
+  const ncaNCA = toCount(r["NCA Total (Bulan Berjalan)_NCA"]);
+  const ncaGoodSRC = toCount(r["Good SRC Total (Bulan Berjalan)_NCA"]);
+  const ncaBadSRC = toCount(r["Bad SRC Total (Bulan Berjalan)_NCA"]);
+  const ncaUnidentified = toCount(r["Unidentified Imei Total (Bulan Berjalan)_NCA"]);
   return {
-    pencapaianXL: toNum(r["Pencapaian XL (Bulan Berjalan)_TAGGING"]),
-    pencapaianAXIS: toNum(r["Pencapaian AXIS (Bulan Berjalan)_TAGGING"]),
-    pencapaianSMART: toNum(r["Pencapaian SMART (Bulan Berjalan)_TAGGING"]),
-    pencapaianTotal: toNum(r["Pencapaian Total (Bulan Berjalan)_TAGGING"]),
-    ncaGAR: ncaGAR != null ? ncaGAR : toNum(r["GAR_TAGGING"]),
-    ncaNCA: ncaNCA != null ? ncaNCA : toNum(r["NCA_TAGGING"]),
-    ncaGoodSRC: ncaGoodSRC != null ? ncaGoodSRC : toNum(r["Good SRC_TAGGING"]),
-    ncaBadSRC: ncaBadSRC != null ? ncaBadSRC : toNum(r["Bad SRC_TAGGING"]),
-    ncaUnidentified: ncaUnidentified != null ? ncaUnidentified : toNum(r["Unidentified Imei_TAGGING"]),
+    pencapaianXL: toCount(r["Pencapaian XL (Bulan Berjalan)_TAGGING"]),
+    pencapaianAXIS: toCount(r["Pencapaian AXIS (Bulan Berjalan)_TAGGING"]),
+    pencapaianSMART: toCount(r["Pencapaian SMART (Bulan Berjalan)_TAGGING"]),
+    pencapaianTotal: toCount(r["Pencapaian Total (Bulan Berjalan)_TAGGING"]),
+    ncaGAR: ncaGAR != null ? ncaGAR : toCount(r["GAR_TAGGING"]),
+    ncaNCA: ncaNCA != null ? ncaNCA : toCount(r["NCA_TAGGING"]),
+    ncaGoodSRC: ncaGoodSRC != null ? ncaGoodSRC : toCount(r["Good SRC_TAGGING"]),
+    ncaBadSRC: ncaBadSRC != null ? ncaBadSRC : toCount(r["Bad SRC_TAGGING"]),
+    ncaUnidentified: ncaUnidentified != null ? ncaUnidentified : toCount(r["Unidentified Imei_TAGGING"]),
   };
 }
 
@@ -3519,7 +3538,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v130</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v131</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
