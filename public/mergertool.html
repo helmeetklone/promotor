@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- mergertool.html — v9
+<!-- mergertool.html — v10
+     v10: input nerima .xlsb (dan .xlsm) juga — SheetJS udah bisa baca, tinggal dibuka di file picker.
+     v9
      v9: slot baru opsional "Outlet Info / RO Player" — kolom RO Player per Outlet ID di-mapping ke
          promotor lewat Outlet Code dari file OM (kolom output baru: "Outlet Player" = Player / Non Player).
      v8
@@ -166,7 +168,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v9</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v10</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -175,7 +177,7 @@
 <main>
   <div id="uploadSection">
     <h2>1. Upload file sumber</h2>
-    <p class="hint">Format .xlsx, .json, atau .ndjson (file gede? convert dulu di <code>xlsx-to-json.html</code>). Employee ID otomatis distandarkan sebagai kunci join.<br>
+    <p class="hint">Format .xlsx, .xlsb, .xls, .json, atau .ndjson (file gede? convert dulu di <code>xlsx-to-json.html</code>). Employee ID otomatis distandarkan sebagai kunci join.<br>
     <b>DOP, File_HR, Absensi, Timestamp, OM/Outlet Master &mdash; WAJIB diisi semua.</b> Slot <b>OM/Outlet Master</b> diisi dari 1 file (biasanya export "Visit Activity Frontliner") yang sekalian punya kode/nama toko DAN koordinat GPS-nya — nggak perlu file terpisah lagi.<br>
     <b>GAR &amp; NCA &mdash; opsional.</b> Slot <b>GAR</b> = file rekap per-promotor yang flat, 1 baris per NIK, TANPA breakdown per brand (nama file biasanya <code>data_GAR_by_Promotor_&lt;bulan&gt;.xlsx</code>). Slot <b>NCA</b> = file yang breakdown per brand XL/AXIS/SMART + per bulan (nama file biasanya <code>NCA_Promotor_&lt;bulan&gt;.xlsx</code>). Kalau salah taruh nggak apa-apa, sistem tetap coba baca ID-nya (NIK), tapi lebih baik sesuai biar kolom hasil merge-nya rapi.</p>
     <div class="slots" id="slotsContainer"></div>
@@ -939,7 +941,7 @@ function renderSlots() {
     const headerList = el("ul", { class: "header-list", id: "headerlist-" + slot.key }, []);
     const sheetPicker = el("div", { id: "sheetpicker-" + slot.key, style: { display: "none", marginTop: "6px", marginBottom: "6px" } }, []);
     const label = el("label", { class: "file-label" }, ["\u2601 Pilih file"]);
-    const input = el("input", { type: "file", accept: ".xlsx,.xls,.json,.ndjson" });
+    const input = el("input", { type: "file", accept: ".xlsx,.xlsb,.xlsm,.xls,.json,.ndjson" });
     input.addEventListener("change", (e) => handleFile(slot, e.target.files[0]));
     label.appendChild(input);
 
