@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- mergertool.html — v10
+<!-- mergertool.html — v11
+     v11: fix CSV export — angka dulu ditulis format Indonesia ("1.008", "112,64") sehingga angka >= 1.000
+         kebaca 1,008 di dashboard. Sekarang angka ditulis polos ("1008", "112.64118"). Tampilan tabel di layar tetap sama.
+     v10
      v10: input nerima .xlsb (dan .xlsm) juga — SheetJS udah bisa baca, tinggal dibuka di file picker.
      v9
      v9: slot baru opsional "Outlet Info / RO Player" — kolom RO Player per Outlet ID di-mapping ke
@@ -168,7 +171,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v10</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v11</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -1436,7 +1439,7 @@ function downloadCsv() {
   withButtonBusy(document.getElementById("downloadCsvBtn"), "⏳ Menyiapkan file...", () => {
     const lines = [r.columns.map(csvEscape).join(",")];
     getFilteredRows().forEach((row) => {
-      lines.push(r.columns.map((c) => csvEscape(formatCell(row[c]))).join(","));
+      lines.push(r.columns.map((c) => csvEscape(typeof row[c] === "number" ? String(row[c]) : formatCell(row[c]))).join(","));
     });
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
