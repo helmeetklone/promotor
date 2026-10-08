@@ -1,3 +1,6 @@
+// Dashboard.tsx — v133
+//   v133: halaman Upload sekarang nampilin DAFTAR file yang terupload (nama + jumlah baris) dengan tombol ✕
+//        buat hapus per file, "Hapus semua", dan label "kemungkinan dobel" kalau nama & jumlah baris sama.
 // Dashboard.tsx — v132
 //   v132: nama di Top 3 (Capaian NCA vs Target & Aktivitas vs GAR) bisa diklik → popup riwayat aktivitas
 //        promotor itu (tanggal, sumber Absensi/Timestamp, outlet, tipe outlet, aktivitas, catatan anomali).
@@ -1334,10 +1337,17 @@ function InsightsCard({ insights }) {
 
 // ───────────────────────── shared UI bits ─────────────────────────
 
-function UploadBox({ onFiles, label, fileNames }) {
+function UploadBox({ onFiles, label, files, onRemove, onClearAll }) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
-  const hasFiles = fileNames && fileNames.length > 0;
+  const hasFiles = files && files.length > 0;
+  // Tandai file yang kemungkinan dobel (nama sama + jumlah baris sama).
+  const dupIds = new Set();
+  const seen = new Map();
+  (files || []).forEach((f) => {
+    const k = f.name + "|" + f.rows.length;
+    if (seen.has(k)) dupIds.add(f.id); else seen.set(k, f.id);
+  });
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -1351,9 +1361,23 @@ function UploadBox({ onFiles, label, fileNames }) {
       {hasFiles ? (
         <>
           <CheckCircle2 className="w-6 h-6 text-teal-700 mb-2" />
-          <p className="text-teal-700 text-sm font-medium">{fileNames.length} file terupload</p>
-          <p className="text-gray-500 text-xs mt-1 max-w-full truncate px-4">{fileNames.join(", ")}</p>
-          <p className="text-gray-400 text-[11px] mt-1">Klik atau drop lagi untuk tambah file</p>
+          <p className="text-teal-700 text-sm font-medium">{files.length} file terupload</p>
+          <ul className="mt-2 w-full max-w-md space-y-1 text-left" onClick={(e) => e.stopPropagation()}>
+            {files.map((f) => (
+              <li key={f.id} className="flex items-center justify-between gap-2 bg-white border border-teal-100 rounded-lg px-2.5 py-1.5 text-xs">
+                <span className="min-w-0 truncate text-gray-700">
+                  {f.name} <span className="text-gray-400">· {f.rows.length.toLocaleString("id-ID")} baris</span>
+                  {dupIds.has(f.id) && <span className="ml-1.5 px-1 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold">kemungkinan dobel</span>}
+                </span>
+                <button type="button" onClick={() => onRemove(f.id)} title="Hapus file ini"
+                  className="shrink-0 text-gray-400 hover:text-red-600 font-bold px-1.5">✕</button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 flex items-center gap-3 text-[11px]" onClick={(e) => e.stopPropagation()}>
+            <span className="text-gray-400">Klik area ini atau drop lagi untuk tambah file</span>
+            <button type="button" onClick={onClearAll} className="text-red-600 hover:text-red-800 font-medium">Hapus semua</button>
+          </div>
         </>
       ) : (
         <>
@@ -1363,7 +1387,11 @@ function UploadBox({ onFiles, label, fileNames }) {
         </>
       )}
       <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls,.json,.ndjson" multiple className="hidden"
-        onChange={(e) => e.target.files.length && onFiles(Array.from(e.target.files))} />
+        onChange={(e) => {
+          const picked = e.target.files && e.target.files.length ? Array.from(e.target.files) : [];
+          e.target.value = ""; // biar file yang sama bisa dipilih lagi setelah dihapus
+          if (picked.length) onFiles(picked);
+        }} />
     </div>
   );
 }
@@ -1979,12 +2007,12 @@ function DetailModal({ detail, onClose }) {
 
 // ───────────────────────── Upload Page ─────────────────────────
 
-function UploadPage({ fileNames, onFiles, onGoDashboard, canGo }) {
+function UploadPage({ files, onFiles, onRemove, onClearAll, onGoDashboard, canGo }) {
   return (
     <div className="space-y-6">
       <div>
         <div className="text-sm font-semibold text-teal-700 mb-2">Upload data hasil merge</div>
-        <UploadBox onFiles={onFiles} label="Hasil dari Data Merger (Absensi + Timestamp digabung)" fileNames={fileNames} />
+        <UploadBox onFiles={onFiles} label="Hasil dari Data Merger (Absensi + Timestamp digabung)" files={files} onRemove={onRemove} onClearAll={onClearAll} />
       </div>
       <button
         onClick={onGoDashboard}
@@ -3369,8 +3397,14 @@ export default function Dashboard() {
   }, [page]);
   const [showGlossary, setShowGlossary] = useState(false);
 
-  const [rawRows, setRawRows] = useState(null);
-  const [fileNames, setFileNames] = useState([]);
+  // Tiap file disimpan terpisah (id, nama, baris) biar bisa dihapus satu-satu.
+  const [loadedFiles, setLoadedFiles] = useState([]);
+  const rawRows = useMemo(() => {
+    if (loadedFiles.length === 0) return null;
+    const out = [];
+    loadedFiles.forEach((f) => { for (let i = 0; i < f.rows.length; i++) out.push(f.rows[i]); });
+    return out;
+  }, [loadedFiles]);
 
   const [moveThresholdM, setMoveThresholdM] = useState(100);
   const [shortHr, setShortHr] = useState(4);
@@ -3378,10 +3412,12 @@ export default function Dashboard() {
 
   const onFiles = useCallback(async (files) => {
     const parsedPerFile = await Promise.all(files.map((f) => parseAnyFile(f)));
-    const combined = parsedPerFile.flat();
-    setRawRows((prev) => (prev ? prev.concat(combined) : combined));
-    setFileNames((prev) => [...prev, ...files.map((f) => f.name)]);
+    const stamp = Date.now();
+    const added = files.map((f, i) => ({ id: stamp + "-" + i + "-" + Math.random().toString(36).slice(2, 7), name: f.name, rows: parsedPerFile[i] }));
+    setLoadedFiles((prev) => prev.concat(added));
   }, []);
+  const onRemoveFile = useCallback((id) => setLoadedFiles((prev) => prev.filter((f) => f.id !== id)), []);
+  const onClearFiles = useCallback(() => setLoadedFiles([]), []);
 
   const { absensi: absensiDataAll, timestamp: timestampDataAll } = useMemo(
     () => (rawRows ? splitByRecordType(rawRows) : { absensi: null, timestamp: null }),
@@ -3490,8 +3526,10 @@ export default function Dashboard() {
 
         {page === "upload" ? (
           <UploadPage
-            fileNames={fileNames}
+            files={loadedFiles}
             onFiles={onFiles}
+            onRemove={onRemoveFile}
+            onClearAll={onClearFiles}
             onGoDashboard={() => {
               // Ngitung dashboard (processTimestamp/processAbsensi/dst) itu
               // BERAT di dataset gede (ratusan ribu baris) dan jalan blocking
@@ -3572,7 +3610,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v132</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v133</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
