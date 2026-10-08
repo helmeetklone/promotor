@@ -1,3 +1,6 @@
+// Dashboard.tsx — v132
+//   v132: nama di Top 3 (Capaian NCA vs Target & Aktivitas vs GAR) bisa diklik → popup riwayat aktivitas
+//        promotor itu (tanggal, sumber Absensi/Timestamp, outlet, tipe outlet, aktivitas, catatan anomali).
 // Dashboard.tsx — v131
 //   v131: fix angka >= 1.000 salah baca (CSV mergertool lama nulis "1.008" format Indonesia, dashboard
 //        baca jadi 1,008) — bikin promotor GAR 1.008/150 nyasar ke "GAR Rendah" & hilang dari Top 3 GAR tertinggi.
@@ -1024,16 +1027,41 @@ function computeInsights(timestampResult, absensiResult) {
 // berbasis pola kerja doang. Cuma promotor yang punya DUA-DUANYA data
 // (Tagging & NCA lengkap) yang dinilai — kalau cuma punya salah satu,
 // di-skip (nggak masuk hitungan) biar hasilnya adil/nggak setengah-setengah.
-function TopList({ title, items, unit, showDays }) {
+// Riwayat aktivitas 1 promotor (gabungan Absensi + Timestamp) buat popup detail
+// waktu nama di Top 3 diklik.
+const PERSON_ACTIVITY_COLUMNS = [
+  { key: "date", label: "Tanggal" },
+  { key: "sumber", label: "Sumber" },
+  { key: "outletName", label: "Outlet", render: (r) => r.outletName || (r.rawOutletCode ? `(${r.rawOutletCode})` : "-") },
+  { key: "outletPlayer", label: "Tipe Outlet", render: (r) => r.outletPlayer || "-" },
+  { key: "aktivitas", label: "Aktivitas" },
+  { key: "flags", label: "Catatan Anomali", render: (r) => r.flags || "-" },
+];
+function buildPersonRows(employeeId, timestampResult, absensiResult) {
+  const ab = (absensiResult?.all || []).filter((s) => s.employee_id === employeeId).map((s) => ({
+    date: s.date, sumber: "Absensi", outletName: s.outletName, rawOutletCode: s.rawOutletCode, outletPlayer: s.outletPlayer,
+    aktivitas: s.durHr != null ? `${s.durHr.toFixed(1).replace(".", ",")} jam` : "-", flags: describeFlagsAbsensi(s),
+  }));
+  const ts = (timestampResult?.all || []).filter((v) => v.employee_id === employeeId).map((v) => ({
+    date: v.date, sumber: "Timestamp", outletName: v.outletName, rawOutletCode: v.rawOutletCode, outletPlayer: v.outletPlayer,
+    aktivitas: `${v.checkinCount} check-in, ${v.distinctZoneCount} zona`, flags: describeFlagsTimestamp(v),
+  }));
+  return [...ab, ...ts].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+function TopList({ title, items, unit, showDays, onItemClick }) {
   if (!items || items.length === 0) return null;
   return (
     <div className="mt-2.5 pt-2 border-t border-black/5">
-      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">{title}</div>
+      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">{title}{onItemClick ? " · klik nama untuk detail" : ""}</div>
       <ol className="space-y-0.5">
         {items.map((it, i) => (
-          <li key={it.id + i} className="flex items-baseline justify-between gap-2 text-[12px] text-gray-800">
-            <span className="min-w-0 truncate"><b>{i + 1}.</b> {it.name}{it.player ? <span className={`ml-1 px-1 rounded text-[9px] font-semibold ${it.player === "Player" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{it.player}</span> : null}{it.sub ? <span className="text-gray-400 text-[10px]"> · {it.sub}</span> : null}</span>
-            <span className="shrink-0 text-gray-600">{it.value.toLocaleString("id-ID")}/{it.target}{unit ? " " + unit : ""}{showDays ? ` · ${it.days} hr` : ""}</span>
+          <li key={it.id + i}>
+            <button type="button" onClick={onItemClick ? () => onItemClick(it) : undefined} disabled={!onItemClick}
+              className={`w-full flex items-baseline justify-between gap-2 text-left text-[12px] text-gray-800 rounded px-1 -mx-1 ${onItemClick ? "hover:bg-black/5 cursor-pointer" : "cursor-default"}`}>
+              <span className="min-w-0 truncate"><b>{i + 1}.</b> <span className={onItemClick ? "underline decoration-dotted underline-offset-2" : ""}>{it.name}</span>{it.player ? <span className={`ml-1 px-1 rounded text-[9px] font-semibold ${it.player === "Player" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{it.player}</span> : null}{it.sub ? <span className="text-gray-400 text-[10px]"> · {it.sub}</span> : null}</span>
+              <span className="shrink-0 text-gray-600">{it.value.toLocaleString("id-ID")}/{it.target}{unit ? " " + unit : ""}{showDays ? ` · ${it.days} hr` : ""}</span>
+            </button>
           </li>
         ))}
       </ol>
@@ -2451,6 +2479,12 @@ function DashboardPage(props) {
   const [detail, setDetail] = useState(null);
   const openDetail = useCallback((title, rows, columns) => setDetail({ title, rows, columns }), []);
   const closeDetail = useCallback(() => setDetail(null), []);
+  // Klik nama di Top 3 → popup riwayat aktivitas promotor itu (Absensi + Timestamp).
+  const openPerson = (it, metric) => {
+    const rows = buildPersonRows(it.id, timestampResult, absensiResult);
+    const info = [`${metric} ${it.value.toLocaleString("id-ID")}/${it.target}`, it.days != null ? `${it.days} hari aktif` : null, it.player, it.sub].filter(Boolean).join(" · ");
+    openDetail(`${it.name} — ${info}`, rows, PERSON_ACTIVITY_COLUMNS);
+  };
 
   const timestampResult = useMemo(() => timestampData ? processTimestamp(timestampData, moveThresholdM) : null, [timestampData, moveThresholdM]);
   const absensiResult = useMemo(() => absensiData ? processAbsensi(absensiData, moveThresholdM, shortHr, longHr) : null, [absensiData, moveThresholdM, shortHr, longHr]);
@@ -3022,7 +3056,7 @@ function DashboardPage(props) {
                               </span>
                             </div>
                             <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA sudah memenuhi atau melebihi target sesuai masa kerja. Direkomendasikan dipertahankan.</div>
-                            <TopList title="Top 3 capaian tertinggi (NCA/target)" items={topTercapai} />
+                            <TopList title="Top 3 capaian tertinggi (NCA/target)" items={topTercapai} onItemClick={(it) => openPerson(it, "NCA")} />
                           </div>
                           <div className="border rounded-lg p-3.5 border-red-200 bg-red-50">
                             <div className="flex items-baseline justify-between mb-1.5">
@@ -3032,7 +3066,7 @@ function DashboardPage(props) {
                               </span>
                             </div>
                             <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA masih di bawah target sesuai masa kerja. Direkomendasikan pembinaan dan pemantauan lebih lanjut.</div>
-                            <TopList title="Top 3 paling jauh di bawah target (NCA/target)" items={topBelum} />
+                            <TopList title="Top 3 paling jauh di bawah target (NCA/target)" items={topBelum} onItemClick={(it) => openPerson(it, "NCA")} />
                           </div>
                         </div>
                       </div>
@@ -3081,7 +3115,7 @@ function DashboardPage(props) {
                                 </span>
                               </div>
                               <div className="text-[12px] text-gray-600 leading-relaxed">{c.rekomendasi}</div>
-                              <TopList title={c.topTitle} items={c.top} showDays />
+                              <TopList title={c.topTitle} items={c.top} showDays onItemClick={(it) => openPerson(it, "GAR")} />
                             </div>
                           ))}
                         </div>
@@ -3538,7 +3572,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v131</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v132</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
