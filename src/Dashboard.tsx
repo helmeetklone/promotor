@@ -1,3 +1,6 @@
+// Dashboard.tsx — v134
+//   v134: popup detail Top 3 sekarang punya panel ringkasan di atas tabel (GAR, NCA vs target, Good/Bad SRC,
+//        Unidentified IMEI, masa kerja, hari aktif, tipe outlet, wilayah) + catatan kalau NIK punya >1 baris di file GAR.
 // Dashboard.tsx — v133
 //   v133: halaman Upload sekarang nampilin DAFTAR file yang terupload (nama + jumlah baris) dengan tombol ✕
 //        buat hapus per file, "Hapus semua", dan label "kemungkinan dobel" kalau nama & jumlah baris sama.
@@ -458,6 +461,7 @@ function extractPencapaianFields(r) {
     ncaGoodSRC: ncaGoodSRC != null ? ncaGoodSRC : toCount(r["Good SRC_TAGGING"]),
     ncaBadSRC: ncaBadSRC != null ? ncaBadSRC : toCount(r["Bad SRC_TAGGING"]),
     ncaUnidentified: ncaUnidentified != null ? ncaUnidentified : toCount(r["Unidentified Imei_TAGGING"]),
+    garRows: toCount(r["Baris GAR_TAGGING"]), // >1 = NIK ini punya beberapa baris di file GAR (angka sudah dijumlah mergertool v12)
   };
 }
 
@@ -1138,7 +1142,7 @@ function computePencapaianSummary(timestampResult, absensiResult) {
     const target = getTargetNCA(e.tenureMonths);
     if (target == null) return;
     totalDinilaiNCA++;
-    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: p.ncaNCA, target, ratio: p.ncaNCA / target };
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: p.ncaNCA, target, ratio: p.ncaNCA / target, gar: p.ncaGAR, nca: p.ncaNCA, good: p.ncaGoodSRC, bad: p.ncaBadSRC, unid: p.ncaUnidentified, tenure: e.tenureMonths, garRows: p.garRows };
     if (p.ncaNCA >= target) { capaianNCA.tercapai++; listTercapai.push(item); }
     else { capaianNCA.belumTercapai++; listBelum.push(item); }
   });
@@ -1172,7 +1176,7 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
     if (!existing.region && r.region && r.region !== "-") existing.region = r.region;
     if (!existing.cluster && r.cluster && r.cluster !== "-") existing.cluster = r.cluster;
     if (existing.tenureMonths == null && r.tenureMonths != null) existing.tenureMonths = r.tenureMonths;
-    if (existing.ncaGAR == null && r.pencapaian && r.pencapaian.ncaGAR != null) existing.ncaGAR = r.pencapaian.ncaGAR;
+    if (existing.ncaGAR == null && r.pencapaian && r.pencapaian.ncaGAR != null) { existing.ncaGAR = r.pencapaian.ncaGAR; existing.p = r.pencapaian; }
     if (r.date) existing.activeDays.add(r.date);
     perPerson.set(r.employee_id, existing);
   });
@@ -1188,7 +1192,7 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
     totalDinilai++;
     const aktivitasTinggi = e.activeDays.size >= AKTIVITAS_TINGGI_THRESHOLD_HARI;
     const garTinggi = e.ncaGAR >= garTarget;
-    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget };
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget, gar: e.ncaGAR, nca: e.p?.ncaNCA, good: e.p?.ncaGoodSRC, bad: e.p?.ncaBadSRC, unid: e.p?.ncaUnidentified, tenure: e.tenureMonths, garRows: e.p?.garRows };
     const key = aktivitasTinggi
       ? (garTinggi ? "aktivitasTinggiGarTinggi" : "aktivitasTinggiGarRendah")
       : (garTinggi ? "aktivitasRendahGarTinggi" : "aktivitasRendahGarRendah");
@@ -1939,6 +1943,20 @@ function DetailModal({ detail, onClose }) {
             </button>
           </div>
         </div>
+        {detail.summary && (
+          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
+              {detail.summary.items.map((it) => (
+                <div key={it.label} className="min-w-0">
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500">{it.label}</div>
+                  <div className="text-[13px] font-semibold text-gray-900 truncate">{it.value}</div>
+                </div>
+              ))}
+            </div>
+            {detail.summary.note && <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">{detail.summary.note}</div>}
+            <div className="mt-2 text-[10px] text-gray-400">Tabel di bawah = riwayat aktivitas (Absensi & Timestamp) promotor ini.</div>
+          </div>
+        )}
         {/(Comply|Campuran)/.test(detail.title) && (
           <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-800">
             <ul className="list-disc list-inside space-y-0.5">
@@ -2505,13 +2523,27 @@ function DashboardPage(props) {
   } = props;
 
   const [detail, setDetail] = useState(null);
-  const openDetail = useCallback((title, rows, columns) => setDetail({ title, rows, columns }), []);
+  const openDetail = useCallback((title, rows, columns, summary) => setDetail({ title, rows, columns, summary }), []);
   const closeDetail = useCallback(() => setDetail(null), []);
   // Klik nama di Top 3 → popup riwayat aktivitas promotor itu (Absensi + Timestamp).
   const openPerson = (it, metric) => {
     const rows = buildPersonRows(it.id, timestampResult, absensiResult);
     const info = [`${metric} ${it.value.toLocaleString("id-ID")}/${it.target}`, it.days != null ? `${it.days} hari aktif` : null, it.player, it.sub].filter(Boolean).join(" · ");
-    openDetail(`${it.name} — ${info}`, rows, PERSON_ACTIVITY_COLUMNS);
+    const fmt = (v) => (v == null ? "-" : v.toLocaleString("id-ID"));
+    const tenureTxt = it.tenure == null ? "-" : it.tenure < 1 ? "< 1 bulan" : `${Math.floor(it.tenure)} bulan`;
+    const summary = [
+      { label: "GAR", value: `${fmt(it.gar)} / target ${it.target}` },
+      { label: "NCA", value: `${fmt(it.nca)} / target ${it.target}` },
+      { label: "Good SRC", value: fmt(it.good) },
+      { label: "Bad SRC", value: fmt(it.bad) },
+      { label: "Unidentified IMEI", value: fmt(it.unid) },
+      { label: "Masa kerja", value: tenureTxt },
+      ...(it.days != null ? [{ label: "Hari aktif", value: `${it.days} hari` }] : []),
+      { label: "Tipe outlet", value: it.player || "-" },
+      { label: "Wilayah", value: it.sub || "-" },
+    ];
+    const note = it.garRows > 1 ? `NIK ini punya ${it.garRows} baris di file GAR — angka GAR/NCA di atas adalah JUMLAH semua barisnya. Cek ke file NCA kalau ragu.` : null;
+    openDetail(`${it.name} — ${info}`, rows, PERSON_ACTIVITY_COLUMNS, { items: summary, note });
   };
 
   const timestampResult = useMemo(() => timestampData ? processTimestamp(timestampData, moveThresholdM) : null, [timestampData, moveThresholdM]);
@@ -3610,7 +3642,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v133</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v134</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
