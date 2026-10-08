@@ -1,4 +1,6 @@
-// Dashboard.tsx — v135
+// Dashboard.tsx — v136
+//   v136: baris "Cek data" di popup bisa diklik → tampil rincian temuan (angka, rumus, selisih, saran).
+// (v135 di bawah)
 //   v135: (1) tanggal di semua tabel detail jadi "1 Sep 2026" (WIB, tanpa jam/Z); (2) panel baru "Cek Kualitas
 //        Data GAR & NCA" — dashboard cek sendiri rumus NCA = Fresh IMEI + Good SRC & GAR = NCA + Bad SRC +
 //        Unidentified IMEI (terbukti 100% di file asli), angka >= 10x target, dan NIK ganda di file GAR; hasil
@@ -1974,10 +1976,12 @@ const PAGE_SIZE = 10;
 function DetailModal({ detail, onClose }) {
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
+  const [showCek, setShowCek] = useState(false);
 
   React.useEffect(() => {
     setPage(1);
     setQ("");
+    setShowCek(false);
   }, [detail]);
 
   const filteredRows = useMemo(() => {
@@ -2033,11 +2037,32 @@ function DetailModal({ detail, onClose }) {
               {detail.summary.items.map((it) => (
                 <div key={it.label} className="min-w-0">
                   <div className="text-[10px] uppercase tracking-wide text-gray-500">{it.label}</div>
-                  <div className="text-[13px] font-semibold text-gray-900 truncate">{it.value}</div>
+                  {it.clickable ? (
+                    <button type="button" onClick={() => setShowCek((v) => !v)} className="text-[13px] font-semibold text-amber-700 underline decoration-dotted hover:text-amber-900 text-left">
+                      {it.value} {showCek ? "▲" : "▼ klik untuk detail"}
+                    </button>
+                  ) : (
+                    <div className="text-[13px] font-semibold text-gray-900 truncate">{it.value}</div>
+                  )}
                 </div>
               ))}
             </div>
-            {detail.summary.note && <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">{detail.summary.note}</div>}
+            {detail.summary.note && !detail.summary.findings && <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">{detail.summary.note}</div>}
+            {detail.summary.findings && (showCek || true) && (
+              <div className="mt-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2 space-y-2">
+                {!showCek ? (
+                  <div>{detail.summary.note} <button type="button" className="underline" onClick={() => setShowCek(true)}>Lihat rincian</button></div>
+                ) : (
+                  detail.summary.findings.map((f, i) => (
+                    <div key={i}>
+                      <div className="font-semibold">{i + 1}. {f.title}</div>
+                      <div>{f.detail}</div>
+                      <div className="text-amber-700">Saran: {f.saran}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
             <div className="mt-2 text-[10px] text-gray-400">Tabel di bawah = riwayat aktivitas (Absensi & Timestamp) promotor ini.</div>
           </div>
         )}
@@ -2628,9 +2653,16 @@ function DashboardPage(props) {
       { label: "Wilayah", value: it.sub || "-" },
     ];
     const issues = cekDataPerson(it);
-    summary.push({ label: "Cek data", value: issues.length ? `⚠ ${issues.length} temuan` : "✓ Konsisten" });
+    summary.push({ label: "Cek data", value: issues.length ? `⚠ ${issues.length} temuan` : "✓ Konsisten", clickable: issues.length > 0 });
     const note = issues.length ? "Temuan cek data: " + issues.map((k) => CEK_ATURAN[k]).join("; ") + "." : null;
-    openDetail(`${it.name} — ${info}`, rows, PERSON_ACTIVITY_COLUMNS, { items: summary, note });
+    const f = (v) => (v == null ? "-" : v.toLocaleString("id-ID"));
+    const findings = issues.map((k) => {
+      if (k === "ncaFresh") return { title: CEK_ATURAN[k], detail: `NCA ${f(it.nca)} seharusnya = Fresh IMEI ${f(it.fresh)} + Good SRC ${f(it.good)} = ${f((it.fresh || 0) + (it.good || 0))}. Selisih ${f(Math.abs(it.nca - ((it.fresh || 0) + (it.good || 0))))}.`, saran: "Cek baris NIK ini di file NCA vs file GAR; kemungkinan beda periode/file." };
+      if (k === "garNca") return { title: CEK_ATURAN[k], detail: `GAR ${f(it.gar)} seharusnya = NCA ${f(it.nca)} + Bad SRC ${f(it.bad)} + Unidentified IMEI ${f(it.unid)} = ${f((it.nca || 0) + (it.bad || 0) + (it.unid || 0))}. Selisih ${f(Math.abs(it.gar - ((it.nca || 0) + (it.bad || 0) + (it.unid || 0))))}.`, saran: "Cek apakah file GAR dan NCA dari periode yang sama." };
+      if (k === "ekstrem") return { title: CEK_ATURAN[k], detail: `GAR ${f(it.gar)} = ${it.target ? (it.gar / it.target).toFixed(1).replace(".", ",") : "-"}× target (${it.target}). Rumus GAR/NCA konsisten, tapi angkanya jauh di atas wajar untuk satu orang.`, saran: "Konfirmasi ke atasan/area: apakah benar (mis. event/bulk activation) atau NIK dipakai bersama." };
+      return { title: CEK_ATURAN[k], detail: `NIK ini muncul di ${it.garRows || "beberapa"} baris pada file GAR, angkanya dijumlahkan oleh merger. Total di file NCA bisa berbeda.`, saran: "Bandingkan dengan file NCA (acuan utama) untuk NIK ini." };
+    });
+    openDetail(`${it.name} — ${info}`, rows, PERSON_ACTIVITY_COLUMNS, { items: summary, note, findings: findings.length ? findings : null });
   };
 
   const timestampResult = useMemo(() => timestampData ? processTimestamp(timestampData, moveThresholdM) : null, [timestampData, moveThresholdM]);
@@ -3764,7 +3796,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v135</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v136</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
