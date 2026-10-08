@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- mergertool.html — v11
+<!-- mergertool.html — v12
+     v12: NIK dengan >1 baris di file GAR flat sekarang DIJUMLAH (GAR/NCA/Fresh Imei/Good/Bad/Unidentified), bukan
+         ambil baris pertama. Dicek ke file NCA (1 baris/NIK): dari 548 NIK ganda, baris pertama cocok cuma 1,
+         penjumlahan cocok 189. Kolom baru "Baris GAR_TAGGING" = jumlah baris asal. File NCA tetap acuan paling akurat.
+     v11
      v11: fix CSV export — angka dulu ditulis format Indonesia ("1.008", "112,64") sehingga angka >= 1.000
          kebaca 1,008 di dashboard. Sekarang angka ditulis polos ("1008", "112.64118"). Tampilan tabel di layar tetap sama.
      v10
@@ -171,7 +175,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v11</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v12</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -287,7 +291,7 @@ CATEGORY_COLORS.pencapaian = "#F4B942";
   "Pencapaian XL (Kumulatif)", "Pencapaian AXIS (Kumulatif)", "Pencapaian SMART (Kumulatif)", "Pencapaian Total (Kumulatif)",
   // Kolom dari format flat asli (mis. "data_GAR_by_Promotor_Aug26.xlsx").
   "Cluster", "City", "Name", "Position", "Join Date", "Tenure",
-  "GAR", "NCA", "Fresh Imei", "Good SRC", "Bad SRC", "Unidentified Imei",
+  "GAR", "NCA", "Fresh Imei", "Good SRC", "Bad SRC", "Unidentified Imei", "Baris GAR",
 ].forEach((col) => { CATEGORY_MAP[col + "_TAGGING"] = "pencapaian"; });
 [
   "Region", "Cluster", "City", "Name", "Position", "Tenure",
@@ -1198,8 +1202,24 @@ function process() {
           showWarn("Kolom \"NIK\" tidak ketemu di file NCA. Cek \"Lihat nama kolom terdeteksi\".");
         }
 
+        // File GAR flat bisa punya >1 baris untuk NIK yang sama (mis. 1 orang
+        // punya 2 catatan employment). Dulu yang dipakai cuma baris PERTAMA —
+        // dicek ke file NCA (1 baris/NIK), baris pertama hampir selalu SALAH
+        // untuk NIK ganda. Sekarang kolom hitungan (GAR/NCA/Fresh Imei/Good/Bad/
+        // Unidentified) DIJUMLAH, dan jumlah barisnya dicatat di "Baris GAR_TAGGING".
+        const METRIC_COLS = ["GAR_TAGGING", "NCA_TAGGING", "Fresh Imei_TAGGING", "Good SRC_TAGGING", "Bad SRC_TAGGING", "Unidentified Imei_TAGGING"];
         const taggingMap = new Map();
-        taggingSrc.data.forEach((r) => { if (!taggingMap.has(r["Employee ID"])) taggingMap.set(r["Employee ID"], r); });
+        taggingSrc.data.forEach((r) => {
+          const id = r["Employee ID"];
+          const prev = taggingMap.get(id);
+          if (!prev) { taggingMap.set(id, Object.assign({}, r, { "Baris GAR_TAGGING": 1 })); return; }
+          prev["Baris GAR_TAGGING"] += 1;
+          Object.keys(r).forEach((k) => {
+            if (!METRIC_COLS.includes(k.trim())) return;
+            const a = toNum(prev[k]), b = toNum(r[k]);
+            prev[k] = a == null && b == null ? prev[k] : (a || 0) + (b || 0);
+          });
+        });
         const ncaMap = new Map();
         ncaSrc.data.forEach((r) => { if (!ncaMap.has(r["Employee ID"])) ncaMap.set(r["Employee ID"], r); });
 
