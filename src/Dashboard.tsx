@@ -1,3 +1,8 @@
+// Dashboard.tsx — v135
+//   v135: (1) tanggal di semua tabel detail jadi "1 Sep 2026" (WIB, tanpa jam/Z); (2) panel baru "Cek Kualitas
+//        Data GAR & NCA" — dashboard cek sendiri rumus NCA = Fresh IMEI + Good SRC & GAR = NCA + Bad SRC +
+//        Unidentified IMEI (terbukti 100% di file asli), angka >= 10x target, dan NIK ganda di file GAR; hasil
+//        juga muncul sebagai baris "Cek data" di popup Top 3.
 // Dashboard.tsx — v134
 //   v134: popup detail Top 3 sekarang punya panel ringkasan di atas tabel (GAR, NCA vs target, Good/Bad SRC,
 //        Unidentified IMEI, masa kerja, hari aktif, tipe outlet, wilayah) + catatan kalau NIK punya >1 baris di file GAR.
@@ -430,6 +435,23 @@ function getTargetLabel(tenureMonths) {
 // Target" & "Aktivitas vs GAR" nggak pernah muncul. Sekarang: field "_NCA"
 // (lebih detail, breakdown per brand) tetap diutamakan kalau ada, tapi kalau
 // nggak ada, fallback ke field flat "_TAGGING" dari file GAR.
+// Tanggal biar gampang dibaca: "1 Sep 2026" (zona WIB). Data tanggal dari Excel
+// sering ke-baca sebagai UTC dengan selisih beberapa detik (mis. 16:59:48Z =
+// sebenarnya 00:00 WIB hari berikutnya), jadi dibulatkan ke jam terdekat dulu.
+const BULAN_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+function fmtTanggal(v) {
+  if (v == null || v === "" || v === "-") return "-";
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) {
+    const [y, m, d] = v.trim().split("-").map(Number);
+    return `${d} ${BULAN_ID[m - 1]} ${y}`;
+  }
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const HOUR = 3600000;
+  const wib = new Date(Math.round((d.getTime() + 7 * HOUR) / HOUR) * HOUR);
+  return `${wib.getUTCDate()} ${BULAN_ID[wib.getUTCMonth()]} ${wib.getUTCFullYear()}`;
+}
+
 // Angka pencapaian (GAR/NCA/SRC/Pencapaian) dari CSV hasil mergertool lama bisa
 // berformat Indonesia: ribuan pakai titik ("1.008" = seribu delapan), desimal
 // pakai koma. toNum() biasa salah baca "1.008" jadi 1,008 (satu koma nol-nol-
@@ -451,6 +473,7 @@ function extractPencapaianFields(r) {
   const ncaGoodSRC = toCount(r["Good SRC Total (Bulan Berjalan)_NCA"]);
   const ncaBadSRC = toCount(r["Bad SRC Total (Bulan Berjalan)_NCA"]);
   const ncaUnidentified = toCount(r["Unidentified Imei Total (Bulan Berjalan)_NCA"]);
+  const ncaFresh = toCount(r["Fresh Imei Total (Bulan Berjalan)_NCA"]);
   return {
     pencapaianXL: toCount(r["Pencapaian XL (Bulan Berjalan)_TAGGING"]),
     pencapaianAXIS: toCount(r["Pencapaian AXIS (Bulan Berjalan)_TAGGING"]),
@@ -461,6 +484,7 @@ function extractPencapaianFields(r) {
     ncaGoodSRC: ncaGoodSRC != null ? ncaGoodSRC : toCount(r["Good SRC_TAGGING"]),
     ncaBadSRC: ncaBadSRC != null ? ncaBadSRC : toCount(r["Bad SRC_TAGGING"]),
     ncaUnidentified: ncaUnidentified != null ? ncaUnidentified : toCount(r["Unidentified Imei_TAGGING"]),
+    ncaFresh: ncaFresh != null ? ncaFresh : toCount(r["Fresh Imei_TAGGING"]),
     garRows: toCount(r["Baris GAR_TAGGING"]), // >1 = NIK ini punya beberapa baris di file GAR (angka sudah dijumlah mergertool v12)
   };
 }
@@ -511,7 +535,7 @@ const describeFlagsAbsensi = (s) =>
     .filter(Boolean).join(", ");
 
 const TIMESTAMP_COLUMNS = [
-  { key: "date", label: "Tgl" },
+  { key: "date", label: "Tgl", render: (r) => fmtTanggal(r.date) },
   { key: "employee_name", label: "Nama" },
   { key: "region", label: "Region" },
   { key: "cluster", label: "Cluster" },
@@ -538,7 +562,7 @@ const TIMESTAMP_COLUMNS = [
 ];
 
 const ABSENSI_COLUMNS = [
-  { key: "date", label: "Tgl" },
+  { key: "date", label: "Tgl", render: (r) => fmtTanggal(r.date) },
   { key: "employee_name", label: "Nama" },
   { key: "region", label: "Region" },
   { key: "cluster", label: "Cluster" },
@@ -1034,10 +1058,70 @@ function computeInsights(timestampResult, absensiResult) {
 // berbasis pola kerja doang. Cuma promotor yang punya DUA-DUANYA data
 // (Tagging & NCA lengkap) yang dinilai — kalau cuma punya salah satu,
 // di-skip (nggak masuk hitungan) biar hasilnya adil/nggak setengah-setengah.
+// ── Cek kualitas data GAR/NCA ──
+// Dua rumus ini terbukti berlaku 100% di file GAR & NCA asli (8.267 + 8.125 baris dicek):
+//   NCA = Fresh IMEI + Good SRC
+//   GAR = NCA + Bad SRC + Unidentified IMEI
+// Kalau angka promotor melanggar rumus → datanya patut dicurigai (salah ketik,
+// kolom bergeser, atau gabungan sumber yang beda bulan). Ditambah: angka sangat
+// tinggi (>= 10x target) & NIK yang punya banyak baris di file GAR.
+const CEK_ATURAN = {
+  ncaFresh: "NCA ≠ Fresh IMEI + Good SRC",
+  garNca: "GAR ≠ NCA + Bad SRC + Unidentified IMEI",
+  ekstrem: "Angka sangat tinggi (GAR ≥ 10× target)",
+  nikGanda: "NIK punya beberapa baris di file GAR (angka dijumlah)",
+};
+function cekDataPerson({ gar, nca, fresh, good, bad, unid, target, garRows }) {
+  const out = [];
+  if (nca != null && fresh != null && good != null && nca !== fresh + good) out.push("ncaFresh");
+  if (gar != null && nca != null && bad != null && unid != null && gar !== nca + bad + unid) out.push("garNca");
+  if (gar != null && target && gar >= 10 * target) out.push("ekstrem");
+  if (garRows != null && garRows > 1) out.push("nikGanda");
+  return out;
+}
+function computeCekDataGAR(timestampResult, absensiResult) {
+  const allRows = [...(timestampResult?.all || []), ...(absensiResult?.all || [])];
+  const per = new Map();
+  allRows.forEach((r) => {
+    if (!r.employee_id) return;
+    const e = per.get(r.employee_id) || { id: r.employee_id, name: null, region: null, cluster: null, tenure: null, p: null };
+    if (!e.name && r.employee_name && r.employee_name !== "-") e.name = r.employee_name;
+    if (!e.region && r.region && r.region !== "-") e.region = r.region;
+    if (!e.cluster && r.cluster && r.cluster !== "-") e.cluster = r.cluster;
+    if (e.tenure == null && r.tenureMonths != null) e.tenure = r.tenureMonths;
+    if (!e.p && r.pencapaian && r.pencapaian.ncaGAR != null) e.p = r.pencapaian;
+    per.set(r.employee_id, e);
+  });
+  const rows = [];
+  const counts = { ncaFresh: 0, garNca: 0, ekstrem: 0, nikGanda: 0 };
+  let total = 0;
+  per.forEach((e) => {
+    if (!e.p) return;
+    total++;
+    const target = e.tenure != null ? getTargetNCA(e.tenure) : null;
+    const issues = cekDataPerson({ gar: e.p.ncaGAR, nca: e.p.ncaNCA, fresh: e.p.ncaFresh, good: e.p.ncaGoodSRC, bad: e.p.ncaBadSRC, unid: e.p.ncaUnidentified, target, garRows: e.p.garRows });
+    issues.forEach((k) => counts[k]++);
+    if (issues.length) rows.push({
+      employee_name: e.name || e.id, wilayah: [e.cluster, e.region].filter(Boolean).join(" · "), gar: e.p.ncaGAR, nca: e.p.ncaNCA,
+      fresh: e.p.ncaFresh, good: e.p.ncaGoodSRC, bad: e.p.ncaBadSRC, unid: e.p.ncaUnidentified, target, issues,
+      temuan: issues.map((k) => CEK_ATURAN[k]).join("; "),
+    });
+  });
+  return { total, counts, rows };
+}
+const CEK_DATA_COLUMNS = [
+  { key: "employee_name", label: "Nama" },
+  { key: "wilayah", label: "Cluster · Region" },
+  { key: "gar", label: "GAR" }, { key: "nca", label: "NCA" }, { key: "fresh", label: "Fresh IMEI" },
+  { key: "good", label: "Good SRC" }, { key: "bad", label: "Bad SRC" }, { key: "unid", label: "Unident." },
+  { key: "target", label: "Target" },
+  { key: "temuan", label: "Temuan" },
+];
+
 // Riwayat aktivitas 1 promotor (gabungan Absensi + Timestamp) buat popup detail
 // waktu nama di Top 3 diklik.
 const PERSON_ACTIVITY_COLUMNS = [
-  { key: "date", label: "Tanggal" },
+  { key: "date", label: "Tanggal", render: (r) => fmtTanggal(r.date) },
   { key: "sumber", label: "Sumber" },
   { key: "outletName", label: "Outlet", render: (r) => r.outletName || (r.rawOutletCode ? `(${r.rawOutletCode})` : "-") },
   { key: "outletPlayer", label: "Tipe Outlet", render: (r) => r.outletPlayer || "-" },
@@ -1142,7 +1226,7 @@ function computePencapaianSummary(timestampResult, absensiResult) {
     const target = getTargetNCA(e.tenureMonths);
     if (target == null) return;
     totalDinilaiNCA++;
-    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: p.ncaNCA, target, ratio: p.ncaNCA / target, gar: p.ncaGAR, nca: p.ncaNCA, good: p.ncaGoodSRC, bad: p.ncaBadSRC, unid: p.ncaUnidentified, tenure: e.tenureMonths, garRows: p.garRows };
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: p.ncaNCA, target, ratio: p.ncaNCA / target, gar: p.ncaGAR, nca: p.ncaNCA, fresh: p.ncaFresh, good: p.ncaGoodSRC, bad: p.ncaBadSRC, unid: p.ncaUnidentified, tenure: e.tenureMonths, garRows: p.garRows };
     if (p.ncaNCA >= target) { capaianNCA.tercapai++; listTercapai.push(item); }
     else { capaianNCA.belumTercapai++; listBelum.push(item); }
   });
@@ -1192,7 +1276,7 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
     totalDinilai++;
     const aktivitasTinggi = e.activeDays.size >= AKTIVITAS_TINGGI_THRESHOLD_HARI;
     const garTinggi = e.ncaGAR >= garTarget;
-    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget, gar: e.ncaGAR, nca: e.p?.ncaNCA, good: e.p?.ncaGoodSRC, bad: e.p?.ncaBadSRC, unid: e.p?.ncaUnidentified, tenure: e.tenureMonths, garRows: e.p?.garRows };
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget, gar: e.ncaGAR, nca: e.p?.ncaNCA, fresh: e.p?.ncaFresh, good: e.p?.ncaGoodSRC, bad: e.p?.ncaBadSRC, unid: e.p?.ncaUnidentified, tenure: e.tenureMonths, garRows: e.p?.garRows };
     const key = aktivitasTinggi
       ? (garTinggi ? "aktivitasTinggiGarTinggi" : "aktivitasTinggiGarRendah")
       : (garTinggi ? "aktivitasRendahGarTinggi" : "aktivitasRendahGarRendah");
@@ -2252,7 +2336,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
   const mixedColumns = [
     { key: "_source", label: "Sumber" },
-    { key: "date", label: "Tgl" },
+    { key: "date", label: "Tgl", render: (r) => fmtTanggal(r.date) },
     { key: "employee_name", label: "Nama" },
     { key: "region", label: "Region" },
     { key: "cluster", label: "Cluster" },
@@ -2534,6 +2618,7 @@ function DashboardPage(props) {
     const summary = [
       { label: "GAR", value: `${fmt(it.gar)} / target ${it.target}` },
       { label: "NCA", value: `${fmt(it.nca)} / target ${it.target}` },
+      { label: "Fresh IMEI", value: fmt(it.fresh) },
       { label: "Good SRC", value: fmt(it.good) },
       { label: "Bad SRC", value: fmt(it.bad) },
       { label: "Unidentified IMEI", value: fmt(it.unid) },
@@ -2542,7 +2627,9 @@ function DashboardPage(props) {
       { label: "Tipe outlet", value: it.player || "-" },
       { label: "Wilayah", value: it.sub || "-" },
     ];
-    const note = it.garRows > 1 ? `NIK ini punya ${it.garRows} baris di file GAR — angka GAR/NCA di atas adalah JUMLAH semua barisnya. Cek ke file NCA kalau ragu.` : null;
+    const issues = cekDataPerson(it);
+    summary.push({ label: "Cek data", value: issues.length ? `⚠ ${issues.length} temuan` : "✓ Konsisten" });
+    const note = issues.length ? "Temuan cek data: " + issues.map((k) => CEK_ATURAN[k]).join("; ") + "." : null;
     openDetail(`${it.name} — ${info}`, rows, PERSON_ACTIVITY_COLUMNS, { items: summary, note });
   };
 
@@ -3182,6 +3269,41 @@ function DashboardPage(props) {
                       </div>
                     );
                   })()}
+
+                  {(() => {
+                    const cek = computeCekDataGAR(timestampResult, absensiResult);
+                    if (cek.total === 0) return null;
+                    const bermasalah = cek.rows.length;
+                    const openRule = (k) => openDetail(`Cek data GAR/NCA — ${CEK_ATURAN[k]}`, cek.rows.filter((r) => r.issues.includes(k)), CEK_DATA_COLUMNS);
+                    return (
+                      <div className="mt-5 pt-4 border-t border-gray-100">
+                        <div className="text-sm font-bold text-gray-800 mb-1">Cek Kualitas Data GAR &amp; NCA</div>
+                        <div className="text-[11px] text-gray-500 mb-3">
+                          Dashboard memeriksa sendiri apakah angka tiap promotor masuk akal, pakai dua rumus yang berlaku di file sumber:
+                          <b> NCA = Fresh IMEI + Good SRC</b> dan <b>GAR = NCA + Bad SRC + Unidentified IMEI</b>. Angka yang melanggar rumus patut dicek ke sumbernya.
+                        </div>
+                        <div className="text-sm text-gray-700 mb-3">
+                          Promotor diperiksa: <b>{cek.total.toLocaleString("id-ID")}</b> orang ·{" "}
+                          {bermasalah === 0 ? <b className="text-teal-700">semua konsisten ✓</b> : <b className="text-amber-700">{bermasalah.toLocaleString("id-ID")} orang ada temuan</b>}
+                          {bermasalah > 0 && (
+                            <button type="button" className="ml-3 text-xs text-indigo-700 underline" onClick={() => openDetail("Cek data GAR/NCA — semua temuan", cek.rows, CEK_DATA_COLUMNS)}>Lihat semua temuan</button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {Object.keys(CEK_ATURAN).map((k) => (
+                            <button key={k} type="button" disabled={cek.counts[k] === 0} onClick={() => openRule(k)}
+                              className={`text-left border rounded-lg p-3 ${cek.counts[k] === 0 ? "border-gray-200 bg-white cursor-default" : "border-amber-200 bg-amber-50 hover:bg-amber-100 cursor-pointer"}`}>
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="text-[12px] font-semibold text-gray-800">{CEK_ATURAN[k]}</span>
+                                <span className="text-xs text-gray-500 shrink-0"><b className="text-base text-gray-900">{cek.counts[k].toLocaleString("id-ID")}</b> orang</span>
+                              </div>
+                              <div className="text-[11px] text-gray-500 mt-0.5">{cek.counts[k] === 0 ? "Tidak ada temuan ✓" : "Klik untuk lihat daftarnya"}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               );
             })()}
@@ -3642,7 +3764,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v134</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v135</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
