@@ -1,4 +1,6 @@
-// Dashboard.tsx — v136
+// Dashboard.tsx — v137
+//   v137: tipe promotor (In Store / Out Store) tampil di popup Top 3, di daftar Top 3 (badge), dan di tabel Cek Data.
+// (v136 di bawah)
 //   v136: baris "Cek data" di popup bisa diklik → tampil rincian temuan (angka, rumus, selisih, saran).
 // (v135 di bawah)
 //   v135: (1) tanggal di semua tabel detail jadi "1 Sep 2026" (WIB, tanpa jam/Z); (2) panel baru "Cek Kualitas
@@ -1086,8 +1088,9 @@ function computeCekDataGAR(timestampResult, absensiResult) {
   const per = new Map();
   allRows.forEach((r) => {
     if (!r.employee_id) return;
-    const e = per.get(r.employee_id) || { id: r.employee_id, name: null, region: null, cluster: null, tenure: null, p: null };
+    const e = per.get(r.employee_id) || { id: r.employee_id, name: null, region: null, cluster: null, tenure: null, p: null, promotorType: null };
     if (!e.name && r.employee_name && r.employee_name !== "-") e.name = r.employee_name;
+    if (!e.promotorType && r.promotorType) e.promotorType = r.promotorType;
     if (!e.region && r.region && r.region !== "-") e.region = r.region;
     if (!e.cluster && r.cluster && r.cluster !== "-") e.cluster = r.cluster;
     if (e.tenure == null && r.tenureMonths != null) e.tenure = r.tenureMonths;
@@ -1104,15 +1107,20 @@ function computeCekDataGAR(timestampResult, absensiResult) {
     const issues = cekDataPerson({ gar: e.p.ncaGAR, nca: e.p.ncaNCA, fresh: e.p.ncaFresh, good: e.p.ncaGoodSRC, bad: e.p.ncaBadSRC, unid: e.p.ncaUnidentified, target, garRows: e.p.garRows });
     issues.forEach((k) => counts[k]++);
     if (issues.length) rows.push({
-      employee_name: e.name || e.id, wilayah: [e.cluster, e.region].filter(Boolean).join(" · "), gar: e.p.ncaGAR, nca: e.p.ncaNCA,
+      employee_name: e.name || e.id, tipePromotor: tipePromotorLabel(e.promotorType), wilayah: [e.cluster, e.region].filter(Boolean).join(" · "), gar: e.p.ncaGAR, nca: e.p.ncaNCA,
       fresh: e.p.ncaFresh, good: e.p.ncaGoodSRC, bad: e.p.ncaBadSRC, unid: e.p.ncaUnidentified, target, issues,
       temuan: issues.map((k) => CEK_ATURAN[k]).join("; "),
     });
   });
   return { total, counts, rows };
 }
+function tipePromotorLabel(t) {
+  return t === "In Store Promotor" ? "In Store" : t === "Out Store Promotor" ? "Out Store" : "-";
+}
+
 const CEK_DATA_COLUMNS = [
   { key: "employee_name", label: "Nama" },
+  { key: "tipePromotor", label: "Tipe Promotor" },
   { key: "wilayah", label: "Cluster · Region" },
   { key: "gar", label: "GAR" }, { key: "nca", label: "NCA" }, { key: "fresh", label: "Fresh IMEI" },
   { key: "good", label: "Good SRC" }, { key: "bad", label: "Bad SRC" }, { key: "unid", label: "Unident." },
@@ -1152,7 +1160,7 @@ function TopList({ title, items, unit, showDays, onItemClick }) {
           <li key={it.id + i}>
             <button type="button" onClick={onItemClick ? () => onItemClick(it) : undefined} disabled={!onItemClick}
               className={`w-full flex items-baseline justify-between gap-2 text-left text-[12px] text-gray-800 rounded px-1 -mx-1 ${onItemClick ? "hover:bg-black/5 cursor-pointer" : "cursor-default"}`}>
-              <span className="min-w-0 truncate"><b>{i + 1}.</b> <span className={onItemClick ? "underline decoration-dotted underline-offset-2" : ""}>{it.name}</span>{it.player ? <span className={`ml-1 px-1 rounded text-[9px] font-semibold ${it.player === "Player" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{it.player}</span> : null}{it.sub ? <span className="text-gray-400 text-[10px]"> · {it.sub}</span> : null}</span>
+              <span className="min-w-0 truncate"><b>{i + 1}.</b> <span className={onItemClick ? "underline decoration-dotted underline-offset-2" : ""}>{it.name}</span>{it.promotorType ? <span className={`ml-1 px-1 rounded text-[9px] font-semibold ${it.promotorType === "In Store Promotor" ? "bg-sky-100 text-sky-700" : "bg-orange-100 text-orange-700"}`}>{tipePromotorLabel(it.promotorType)}</span> : null}{it.player ? <span className={`ml-1 px-1 rounded text-[9px] font-semibold ${it.player === "Player" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{it.player}</span> : null}{it.sub ? <span className="text-gray-400 text-[10px]"> · {it.sub}</span> : null}</span>
               <span className="shrink-0 text-gray-600">{it.value.toLocaleString("id-ID")}/{it.target}{unit ? " " + unit : ""}{showDays ? ` · ${it.days} hr` : ""}</span>
             </button>
           </li>
@@ -1167,9 +1175,10 @@ function computePencapaianSummary(timestampResult, absensiResult) {
   const perPerson = new Map();
   allRows.forEach((r) => {
     if (!r.employee_id) return;
-    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, pencapaian: null, id: r.employee_id, name: null, region: null, cluster: null, outletPlayer: null };
+    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, pencapaian: null, id: r.employee_id, name: null, region: null, cluster: null, outletPlayer: null, promotorType: null };
     if (!existing.name && r.employee_name && r.employee_name !== "-") existing.name = r.employee_name;
     if (!existing.outletPlayer && r.outletPlayer) existing.outletPlayer = r.outletPlayer;
+    if (!existing.promotorType && r.promotorType) existing.promotorType = r.promotorType;
     if (!existing.region && r.region && r.region !== "-") existing.region = r.region;
     if (!existing.cluster && r.cluster && r.cluster !== "-") existing.cluster = r.cluster;
     if (existing.tenureMonths == null && r.tenureMonths != null) existing.tenureMonths = r.tenureMonths;
@@ -1228,7 +1237,7 @@ function computePencapaianSummary(timestampResult, absensiResult) {
     const target = getTargetNCA(e.tenureMonths);
     if (target == null) return;
     totalDinilaiNCA++;
-    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: p.ncaNCA, target, ratio: p.ncaNCA / target, gar: p.ncaGAR, nca: p.ncaNCA, fresh: p.ncaFresh, good: p.ncaGoodSRC, bad: p.ncaBadSRC, unid: p.ncaUnidentified, tenure: e.tenureMonths, garRows: p.garRows };
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: p.ncaNCA, target, ratio: p.ncaNCA / target, gar: p.ncaGAR, nca: p.ncaNCA, fresh: p.ncaFresh, good: p.ncaGoodSRC, bad: p.ncaBadSRC, unid: p.ncaUnidentified, tenure: e.tenureMonths, garRows: p.garRows, promotorType: e.promotorType };
     if (p.ncaNCA >= target) { capaianNCA.tercapai++; listTercapai.push(item); }
     else { capaianNCA.belumTercapai++; listBelum.push(item); }
   });
@@ -1256,8 +1265,9 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
   const perPerson = new Map();
   allRows.forEach((r) => {
     if (!r.employee_id) return;
-    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, ncaGAR: null, activeDays: new Set(), id: r.employee_id, name: null, region: null, cluster: null, outletPlayer: null };
+    const existing = perPerson.get(r.employee_id) || { tenureMonths: null, ncaGAR: null, activeDays: new Set(), id: r.employee_id, name: null, region: null, cluster: null, outletPlayer: null, promotorType: null };
     if (!existing.outletPlayer && r.outletPlayer) existing.outletPlayer = r.outletPlayer;
+    if (!existing.promotorType && r.promotorType) existing.promotorType = r.promotorType;
     if (!existing.name && r.employee_name && r.employee_name !== "-") existing.name = r.employee_name;
     if (!existing.region && r.region && r.region !== "-") existing.region = r.region;
     if (!existing.cluster && r.cluster && r.cluster !== "-") existing.cluster = r.cluster;
@@ -1278,7 +1288,7 @@ function computeAktivitasVsGAR(timestampResult, absensiResult) {
     totalDinilai++;
     const aktivitasTinggi = e.activeDays.size >= AKTIVITAS_TINGGI_THRESHOLD_HARI;
     const garTinggi = e.ncaGAR >= garTarget;
-    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget, gar: e.ncaGAR, nca: e.p?.ncaNCA, fresh: e.p?.ncaFresh, good: e.p?.ncaGoodSRC, bad: e.p?.ncaBadSRC, unid: e.p?.ncaUnidentified, tenure: e.tenureMonths, garRows: e.p?.garRows };
+    const item = { id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), player: e.outletPlayer, value: e.ncaGAR, target: garTarget, days: e.activeDays.size, ratio: e.ncaGAR / garTarget, gar: e.ncaGAR, nca: e.p?.ncaNCA, fresh: e.p?.ncaFresh, good: e.p?.ncaGoodSRC, bad: e.p?.ncaBadSRC, unid: e.p?.ncaUnidentified, tenure: e.tenureMonths, garRows: e.p?.garRows, promotorType: e.promotorType };
     const key = aktivitasTinggi
       ? (garTinggi ? "aktivitasTinggiGarTinggi" : "aktivitasTinggiGarRendah")
       : (garTinggi ? "aktivitasRendahGarTinggi" : "aktivitasRendahGarRendah");
@@ -2637,7 +2647,7 @@ function DashboardPage(props) {
   // Klik nama di Top 3 → popup riwayat aktivitas promotor itu (Absensi + Timestamp).
   const openPerson = (it, metric) => {
     const rows = buildPersonRows(it.id, timestampResult, absensiResult);
-    const info = [`${metric} ${it.value.toLocaleString("id-ID")}/${it.target}`, it.days != null ? `${it.days} hari aktif` : null, it.player, it.sub].filter(Boolean).join(" · ");
+    const info = [`${metric} ${it.value.toLocaleString("id-ID")}/${it.target}`, it.days != null ? `${it.days} hari aktif` : null, it.promotorType ? tipePromotorLabel(it.promotorType) : null, it.player, it.sub].filter(Boolean).join(" · ");
     const fmt = (v) => (v == null ? "-" : v.toLocaleString("id-ID"));
     const tenureTxt = it.tenure == null ? "-" : it.tenure < 1 ? "< 1 bulan" : `${Math.floor(it.tenure)} bulan`;
     const summary = [
@@ -2649,6 +2659,7 @@ function DashboardPage(props) {
       { label: "Unidentified IMEI", value: fmt(it.unid) },
       { label: "Masa kerja", value: tenureTxt },
       ...(it.days != null ? [{ label: "Hari aktif", value: `${it.days} hari` }] : []),
+      { label: "Tipe promotor", value: tipePromotorLabel(it.promotorType) },
       { label: "Tipe outlet", value: it.player || "-" },
       { label: "Wilayah", value: it.sub || "-" },
     ];
@@ -3796,7 +3807,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v136</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v137</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
