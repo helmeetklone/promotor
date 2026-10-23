@@ -1,7 +1,6 @@
 // Dashboard.tsx — v138
-//   v138: bahasa UI dibersihkan untuk manajer non-teknis — judul section lebih plain language,
-//        penjelasan 1 baris di bawah setiap metrik utama, istilah teknis (GAR/NCA/SRC) tetap ada
-//        tapi selalu diiringi arti sehari-hari, Top 3 & kategori anomaly lebih mudah dibaca.
+//   v138: tab baru "Overview" (default) vs "Detail" — ringkasan buat presentasi: kartu KPI (NCA vs target, % promotor capai target,
+//         % anomali), NCA per Region (bar), Top 5 promotor (klik → detail). Tab "Detail" = tampilan lengkap lama.
 // (v137 di bawah)
 //   v137: tipe promotor (In Store / Out Store) tampil di popup Top 3, di daftar Top 3 (badge), dan di tabel Cek Data.
 // (v136 di bawah)
@@ -32,7 +31,7 @@
 //        (kotak hasil bagus = capaian tertinggi; kotak hasil kurang = paling jauh di bawah target).
 // Dashboard.tsx — v128
 //   v128: Out Store (SDS/DS) nggak pakai OM/koordinat toko lagi (kerjanya keliling) —
-//        cek jarak-ke-toko & "Koordinat toko kosong" dimatikan buat Out Store, kartu/baris GPS Toko N/A
+//        cek jarak-ke-toko & "GPS Toko N/A" dimatikan buat Out Store, kartu/baris GPS Toko N/A
 //        Out Store disembunyiin. Pencapaian vs target open booth: nunggu sumber datanya.
 // Dashboard.tsx — v127
 // Changelog:
@@ -81,11 +80,11 @@
 //   v18: (1) jarak dalam meter ditampilin langsung di teks flag "GPS Jauh dari Toko (Xm)";
 //        (2) kalau data Outlet nggak ada sama sekali, dilabelin jelas "No Outlet Data" —
 //        bukan diklaim "GPS Jauh" berdasar in-vs-out fallback yang nggak valid dibandingin toko
-//   v19: label dipendekin jadi "Koordinat toko kosong" (dari "No Outlet Data") — biar nggak disalahartikan
+//   v19: label dipendekin jadi "GPS Toko N/A" (dari "No Outlet Data") — biar nggak disalahartikan
 //        seolah outlet/ID-nya nggak ada, padahal cuma koordinat toko-nya yang belum ketemu
 //   v20: BUG FIX — kartu "GPS Bermasalah" Absensi kemarin gabungin 3 hal beda jadi 1 angka
 //        (GPS jauh + GPS kosong + GPS Toko N/A), bikin kelihatan bengkak. Sekarang dipecah
-//        jadi 3 kartu terpisah. Timestamp juga ditambahin kartu "Koordinat toko kosong" biar konsisten.
+//        jadi 3 kartu terpisah. Timestamp juga ditambahin kartu "GPS Toko N/A" biar konsisten.
 //   v21: rename istilah + ganti metrik jadi lebih actionable:
 //        - "#Absensi <3x/hari" (dulu "Zona Kurang dari 3") — tetap hit-count
 //        - GPS Identik sekarang pakai satuan "Hits", subtitle "X Promotor"
@@ -529,17 +528,17 @@ function checkStatusAnomaly(status, recordDateVal, endDateVal) {
 }
 
 const describeFlagsTimestamp = (v) =>
-  [v.zoneNotCompliant && `Check-in <3 zona (${v.distinctZoneCount}/3)`, v.gpsIdentical && "GPS titik sama",
-   v.farFromStore && `GPS jauh dari toko (${v.maxStoreDist !== null ? v.maxStoreDist.toFixed(0) : "-"}m)`,
-   v.noOutletData && "Koordinat toko kosong",
-   v.noCoord && "GPS tidak tercatat", v.statusAnomaly && "Status Non-Active"]
+  [v.zoneNotCompliant && `Zona Kurang (${v.distinctZoneCount}/3)`, v.gpsIdentical && "GPS Identik",
+   v.farFromStore && `GPS Jauh dari Toko (${v.maxStoreDist !== null ? v.maxStoreDist.toFixed(0) : "-"}m)`,
+   v.noOutletData && "GPS Toko N/A",
+   v.noCoord && "No-GPS", v.statusAnomaly && "Status Non-Active"]
     .filter(Boolean).join(", ");
 
 const describeFlagsAbsensi = (s) =>
-  [s.gpsIssue && (s.noCoord ? "GPS tidak tercatat" : `GPS jauh dari toko (${s.maxStoreDist !== null ? s.maxStoreDist.toFixed(0) : "-"}m)`),
-   s.noOutletData && "Koordinat toko kosong",
+  [s.gpsIssue && (s.noCoord ? "No-GPS" : `GPS Jauh dari Toko (${s.maxStoreDist !== null ? s.maxStoreDist.toFixed(0) : "-"}m)`),
+   s.noOutletData && "GPS Toko N/A",
    s.statusAnomaly && "Status Non-Active",
-   s.durationIssue && (s.noClockOut ? "Lupa check-out" : s.shortShift ? "Durasi terlalu pendek" : "Durasi terlalu panjang")]
+   s.durationIssue && (s.noClockOut ? "No-Clockout" : s.shortShift ? "Durasi Pendek" : "Durasi Panjang")]
     .filter(Boolean).join(", ");
 
 const TIMESTAMP_COLUMNS = [
@@ -1074,10 +1073,10 @@ function computeInsights(timestampResult, absensiResult) {
 // kolom bergeser, atau gabungan sumber yang beda bulan). Ditambah: angka sangat
 // tinggi (>= 10x target) & NIK yang punya banyak baris di file GAR.
 const CEK_ATURAN = {
-  ncaFresh: "NCA tidak cocok dengan Fresh + Good SRC",
-  garNca: "GAR tidak cocok dengan NCA + Bad + Unidentified",
-  ekstrem: "Angka sangat tinggi (≥10× target) — perlu konfirmasi",
-  nikGanda: "NIK muncul di beberapa baris file GAR (angka dijumlah)",
+  ncaFresh: "NCA ≠ Fresh IMEI + Good SRC",
+  garNca: "GAR ≠ NCA + Bad SRC + Unidentified IMEI",
+  ekstrem: "Angka sangat tinggi (GAR ≥ 10× target)",
+  nikGanda: "NIK punya beberapa baris di file GAR (angka dijumlah)",
 };
 function cekDataPerson({ gar, nca, fresh, good, bad, unid, target, garRows }) {
   const out = [];
@@ -1126,7 +1125,7 @@ const CEK_DATA_COLUMNS = [
   { key: "employee_name", label: "Nama" },
   { key: "tipePromotor", label: "Tipe Promotor" },
   { key: "wilayah", label: "Cluster · Region" },
-  { key: "gar", label: "GAR (aktivasi)" }, { key: "nca", label: "NCA (valid)" }, { key: "fresh", label: "Fresh IMEI" },
+  { key: "gar", label: "GAR" }, { key: "nca", label: "NCA" }, { key: "fresh", label: "Fresh IMEI" },
   { key: "good", label: "Good SRC" }, { key: "bad", label: "Bad SRC" }, { key: "unid", label: "Unident." },
   { key: "target", label: "Target" },
   { key: "temuan", label: "Temuan" },
@@ -1642,7 +1641,7 @@ function GlossaryModal({ open, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-          <div className="text-sm font-semibold text-gray-900">📖 Kamus Istilah (untuk Manajer)</div>
+          <div className="text-sm font-semibold text-gray-900">📖 Kamus Istilah Dashboard</div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
             <X className="w-4 h-4" />
           </button>
@@ -1660,20 +1659,20 @@ function GlossaryModal({ open, onClose }) {
           </Section>
 
           <Section title="6 Kategori Anomali">
-            <Term name="1. Check-in kurang dari 3 zona waktu">
+            <Term name="1. Zona Waktu (< 3)">
               Tiap check-in Timestamp dikelompokkan ke 1 dari 5 zona jam (Pagi 07–10, Siang 11–14, Sore 15–18, Malam 1 19–22, Malam 2 23–00).
               <b> Comply</b> per hari = tercapai minimal 3 zona BERTURUT-TURUT tanpa lompat (boleh mulai dari zona mana saja). Contoh: Pagi+Siang+Sore lolos, tapi Pagi+Sore+Malam 1 GAGAL (lompat Siang) walau sama-sama 3 zona berbeda. Kategori ini murni soal pola waktu — jarak GPS tidak jadi parameter.
               Per orang diklasifikasi berdasarkan persentase hari comply: <i>Comply</i> (≥50% hari kerjanya comply) / <i>Not Comply</i> (&lt;50%).
             </Term>
-            <Term name="2. GPS titik sama (identik)">
+            <Term name="2. GPS Identik">
               2+ check-in Timestamp di hari yang sama dengan koordinat lat/lon PERSIS SAMA (exact match, tanpa pembulatan).
             </Term>
-            <Term name="3. GPS jauh dari toko">
+            <Term name="3. GPS Jauh dari Toko">
               Jarak Haversine dari check-in (Timestamp) atau check-in/check-out (Absensi) ke koordinat Outlet, dibanding threshold GPS (m) yang bisa diatur.
               Koordinat Outlet didapat dari rantai Employee → Sales Code → OM → Outlet Code → Outlet Master.
               <b> Khusus Out Store Promotor: kategori ini tidak ditampilkan di breakdown Total Anomali.</b>
             </Term>
-            <Term name="4. Koordinat toko tidak tersedia">
+            <Term name="4. GPS Toko N/A">
               Rantai pencarian koordinat toko (lihat #3) GAGAL — bukan berarti GPS-nya jauh, datanya memang belum lengkap.
               Dihitung sebagai jumlah TOKO unik, bukan jumlah promotor.
             </Term>
@@ -1690,12 +1689,12 @@ function GlossaryModal({ open, onClose }) {
             </Term>
           </Section>
 
-          <Section title="Total Temuan yang Perlu Dicek">
+          <Section title="Total Anomali (Terindikasi)">
             <div>Promotor dengan <b>minimal 3 kejadian anomali</b>, gabungan dari ke-6 kategori di atas &amp; kedua sumber data.</div>
             <div>Kenapa 3, bukan 1: kalau cuma butuh 1 kejadian, hampir semua orang bakal kena di periode data yang panjang (1x kesenggol itu wajar). Threshold 3 lebih tajam — cuma nangkep pola berulang.</div>
           </Section>
 
-          <Section title="Kedisiplinan Pola Kerja (Efektivitas & Efisiensi)">
+          <Section title="Proxy Efisiensi & Efektivitas Lapangan">
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[12px] text-amber-800">
               ⚠ Ini <b>BUKAN</b> efektivitas penjualan/pencapaian — data target &amp; realisasi belum tersedia. Ini cuma <i>proxy</i> (pendekatan sementara) dari pola kerja yang tercatat.
             </div>
@@ -1707,7 +1706,7 @@ function GlossaryModal({ open, onClose }) {
             </Term>
             <div>Dihitung di 2 level, formula SAMA PERSIS, cuma pembaginya beda:</div>
             <ul className="list-disc list-inside ml-2">
-              <li><b>Per tipe</b> (In Store/Out Store, gabungan semua orang di tipe itu) — muncul di kartu "Kedisiplinan Pola Kerja", bisa diklik buat lihat rata-rata per Region/Cluster.</li>
+              <li><b>Per tipe</b> (In Store/Out Store, gabungan semua orang di tipe itu) — muncul di kartu "Proxy Efisiensi &amp; Efektivitas Lapangan", bisa diklik buat lihat rata-rata per Region/Cluster.</li>
               <li><b>Per individu</b> (1 orang) — muncul sebagai kolom "Efektivitas (Individu)" &amp; "Efisiensi (Individu)" di tabel detail. Angkanya SAMA di semua baris tanggal milik orang itu (dihitung sekali dari gabungan semua harinya, bukan dihitung ulang per hari — baris detail tanggal/zona/flag tetap data mentah per hari, cuma 2 kolom ini yang nempel angka ringkasan orangnya).</li>
             </ul>
             <div className="text-[12px] text-gray-500">Contoh: periode data 15 hari, seseorang tercatat 12 hari (9 di antaranya polanya sesuai standar) → Efektivitas = 12/15 = 80%, Efisiensi = 9/12 = 75%.</div>
@@ -1743,16 +1742,16 @@ function GlossaryModal({ open, onClose }) {
               skor gabungan dari 2 rasio kualitas (NCA): (1) NCA/GAR — seberapa banyak GAR yang berhasil jadi registrasi berkualitas; (2) Good SRC/(Good SRC+Bad SRC+Unidentified Imei) — proporsi sumber registrasi yang baik. Skor rata-rata dari 2 rasio itu ≥50% = Efisien.
             </Term>
             <div>4 kombinasi status: Efektif &amp; Efisien (pertahankan, jadi acuan), Efektif tapi Tidak Efisien (perbaiki kualitas registrasi), Tidak Efektif tapi Efisien (tingkatkan volume/intensitas), Tidak Efektif &amp; Tidak Efisien (perlu pembinaan menyeluruh) — masing-masing dengan rekomendasi tindak lanjut yang tampil otomatis di dashboard.</div>
-            <Term name="Capaian Penjualan Valid (NCA) vs Target">
-              Angka penjualan valid (NCA) dibanding target bulanan. Target otomatis: baru (&lt;1 bln) = 75, 1–3 bln = 120, ≥3 bln = 150. Semua promotor dinilai — tidak ada pengecualian "baru bergabung".
+            <Term name="Capaian NCA vs Target (metrik terpisah)">
+              metrik "NCA" mentah (dari file NCA, BUKAN "Pencapaian" dari Tagging) dibandingkan target per bulan berdasarkan masa kerja: &lt;1 bulan = 75, 1–&lt;3 bulan = 120, ≥3 bulan = 150. Semua tingkat masa kerja sudah punya target pasti, jadi SEMUA promotor dinilai (nggak ada pengecualian "Baru Bergabung" buat metrik ini). Muncul juga sebagai kolom "Target NCA/Bulan" di tabel detail.
             </Term>
-            <Term name="Keaktifan di Lapangan vs Hasil Aktivasi (GAR)">
-              Membandingkan frekuensi kehadiran (hari aktif) dengan hasil aktivasi (GAR). <b>Rajin tapi hasil rendah</b> bisa sinyal lokasi kurang tepat. Aktivitas Tinggi = ≥20 hari kerja/bulan. GAR Tinggi = memenuhi target sesuai masa kerja.
+            <Term name="Aktivitas Lapangan vs GAR (metrik terpisah)">
+              cross-reference seberapa sering promotor tercatat aktif (jumlah hari ada kejadian Timestamp/Absensi, sepanjang periode data yang di-upload) dengan hasil GAR (dari NCA, Bulan Berjalan) — buat nemuin promotor yang rajin kerja tapi hasil kurang (sinyal kemungkinan salah penempatan lokasi), atau sebaliknya. Aktivitas Tinggi = kerja ≥20 hari/bulan (angka tetap, standar umum hari kerja). GAR Tinggi = memenuhi target NCA sesuai masa kerja (75/120/150) — beda skala dari Aktivitas dengan sengaja, karena jumlah hari kerja tersedia dalam 1 bulan nggak berubah sesuai masa kerja, sedangkan target penjualan wajar beda per level pengalaman.
             </Term>
           </Section>
 
           <Section title="Export ke PPT">
-            <div>Tombol di pojok kanan atas halaman dashboard — generate deck ringkasan 11 slide (metodologi &amp; parameter, data overview per tipe, Kedisiplinan Pola Kerja per tipe, insight otomatis, kesimpulan &amp; rekomendasi) langsung dari data yang lagi di-load, pakai identitas brand kantor (logo &amp; warna resmi). Semua angka di deck dihitung otomatis dari data live — bukan diketik manual.</div>
+            <div>Tombol di pojok kanan atas halaman dashboard — generate deck ringkasan 11 slide (metodologi &amp; parameter, data overview per tipe, Proxy Efisiensi &amp; Efektivitas per tipe, insight otomatis, kesimpulan &amp; rekomendasi) langsung dari data yang lagi di-load, pakai identitas brand kantor (logo &amp; warna resmi). Semua angka di deck dihitung otomatis dari data live — bukan diketik manual.</div>
           </Section>
 
           <Section title="Catatan">
@@ -2249,7 +2248,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
     const CATEGORY_DEFS = [
       { key: "zona", label: "Zona Waktu (< 3)" },
-      { key: "gpsNA", label: "Koordinat toko kosong" },
+      { key: "gpsNA", label: "GPS Toko N/A" },
       { key: "durasi", label: "Durasi Bermasalah" },
     ];
     const buildCategorySummary = (promotorType) => {
@@ -2327,7 +2326,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       });
       return { notComply, total: comply + notComply };
     };
-    // FIX (sebelumnya bug): "Koordinat toko kosong" awalnya nyoba ngitung KODE TOKO dari
+    // FIX (sebelumnya bug): "GPS Toko N/A" awalnya nyoba ngitung KODE TOKO dari
     // baris yang di-flag noOutletData — padahal baris itu di-flag JUSTRU karena
     // kode tokonya kosong, jadi hasilnya selalu 0 berapa pun kejadian aslinya.
     // Sekarang dihitung per ORANG (employee_id), konsisten sama zoneNotComplyByType/
@@ -2398,8 +2397,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
           {/* 2. Total Anomali (Terindikasi) */}
           <div className="mt-4 pt-4 border-t border-emerald-200/50">
-            <div className="text-base font-bold text-gray-900 mb-1">Total Temuan yang Perlu Dicek</div>
-            <div className="text-[11px] text-gray-500 mb-2">Bukan vonis — titik awal investigasi. Klik angka untuk lihat rincian per kategori.</div>
+            <div className="text-base font-bold text-gray-900 mb-1">Total Anomali (Terindikasi)</div>
             <div className="text-[11px] text-gray-500 mb-2">Promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp &amp; Absensi).</div>
             <div className="grid grid-cols-2 gap-4">
               <Num
@@ -2432,9 +2430,9 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
                 <div className={`text-xs font-bold px-3 py-2 ${accent} bg-gray-50 border-b ${border}`}>{label}</div>
                 <div className="divide-y divide-gray-100">
                   {[
-                    { title: "Pola waktu tidak sesuai (<50% hari comply)", source: "Timestamp", value: data.zone.notComply, of: data.zone.total, unit: "promotor" },
-                    ...(label === "Out Store Promotor" ? [] : [{ title: "Koordinat toko kosong", source: "Timestamp & Absensi", value: data.toko.naCount, of: data.toko.totalToko, unit: "promotor" }]),
-                    { title: "Durasi kerja tidak wajar", source: "Absensi", value: data.durasi.count, of: data.durasi.total, unit: "promotor" },
+                    { title: "Zona Waktu — Not Comply (<50% hari)", source: "Timestamp", value: data.zone.notComply, of: data.zone.total, unit: "promotor" },
+                    ...(label === "Out Store Promotor" ? [] : [{ title: "GPS Toko N/A", source: "Timestamp & Absensi", value: data.toko.naCount, of: data.toko.totalToko, unit: "promotor" }]),
+                    { title: "Durasi Bermasalah", source: "Absensi", value: data.durasi.count, of: data.durasi.total, unit: "promotor" },
                   ].map((row) => (
                     <div key={row.title} className="px-3 py-2">
                       <div className="text-[12px] text-gray-700">
@@ -2640,12 +2638,214 @@ function computeTypeView(result, promotorType, isTimestamp) {
   };
 }
 
+// ═══════ Overview (v138) — ringkasan visual buat presentasi ═══════
+function fmtRingkas(n) {
+  if (n == null || !isFinite(n)) return "-";
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n / 1e6).toFixed(1).replace(".", ",") + " jt";
+  if (a >= 1e4) return (n / 1e3).toFixed(1).replace(".", ",") + " rb";
+  return Math.round(n).toLocaleString("id-ID");
+}
+const fmtPct = (v, d = 0) => (v == null || !isFinite(v) ? "-" : v.toFixed(d).replace(".", ",") + "%");
+
+function computeOverview(timestampResult, absensiResult) {
+  const allRows = [...(timestampResult?.all || []), ...(absensiResult?.all || [])];
+  const per = new Map();
+  let minDate = null, maxDate = null;
+  allRows.forEach((r) => {
+    if (r.date) {
+      const d = String(r.date).slice(0, 10);
+      if (!minDate || d < minDate) minDate = d;
+      if (!maxDate || d > maxDate) maxDate = d;
+    }
+    if (!r.employee_id) return;
+    const e = per.get(r.employee_id) || { id: r.employee_id, name: null, region: null, cluster: null, tenure: null, p: null, player: null, promotorType: null, days: new Set() };
+    if (!e.name && r.employee_name && r.employee_name !== "-") e.name = r.employee_name;
+    if (!e.region && r.region && r.region !== "-") e.region = r.region;
+    if (!e.cluster && r.cluster && r.cluster !== "-") e.cluster = r.cluster;
+    if (e.tenure == null && r.tenureMonths != null) e.tenure = r.tenureMonths;
+    if (!e.player && r.outletPlayer) e.player = r.outletPlayer;
+    if (!e.promotorType && r.promotorType) e.promotorType = r.promotorType;
+    if (!e.p && r.pencapaian && r.pencapaian.ncaNCA != null) e.p = r.pencapaian;
+    if (r.date) e.days.add(String(r.date).slice(0, 10));
+    per.set(r.employee_id, e);
+  });
+  const items = [];
+  per.forEach((e) => {
+    if (!e.p || e.tenure == null) return;
+    const target = getTargetNCA(e.tenure);
+    if (target == null) return;
+    const p = e.p;
+    items.push({
+      id: e.id, name: e.name || e.id, sub: [e.cluster, e.region].filter(Boolean).join(" · "), region: e.region || "Tanpa Region",
+      player: e.player, value: p.ncaNCA, target, ratio: p.ncaNCA / target, days: e.days.size,
+      gar: p.ncaGAR, nca: p.ncaNCA, fresh: p.ncaFresh, good: p.ncaGoodSRC, bad: p.ncaBadSRC, unid: p.ncaUnidentified,
+      tenure: e.tenure, garRows: p.garRows, promotorType: e.promotorType,
+      ekstrem: p.ncaGAR != null && p.ncaGAR >= 10 * target,
+    });
+  });
+  const summarize = (list) => {
+    const n = list.length;
+    const nca = list.reduce((a, b) => a + (b.nca || 0), 0);
+    const tgt = list.reduce((a, b) => a + b.target, 0);
+    const capai = list.filter((x) => x.nca >= x.target).length;
+    const nol = list.filter((x) => !x.nca).length;
+    return { n, nca, tgt, pct: tgt ? (nca / tgt) * 100 : null, capai, pctCapai: n ? (capai / n) * 100 : null, nol };
+  };
+  const byTipe = (t) => (t === "all" ? items : items.filter((x) => x.promotorType === t));
+  const regionRows = (t) => {
+    const m = new Map();
+    byTipe(t).forEach((x) => {
+      const r = m.get(x.region) || { region: x.region, nca: 0, tgt: 0, n: 0 };
+      r.nca += x.nca || 0; r.tgt += x.target; r.n++;
+      m.set(x.region, r);
+    });
+    return [...m.values()].map((r) => ({ ...r, pct: r.tgt ? (r.nca / r.tgt) * 100 : 0 })).sort((a, b) => b.tgt - a.tgt);
+  };
+  const top = (t, n = 5) => [...byTipe(t)].sort((a, b) => b.ratio - a.ratio || b.value - a.value).slice(0, n);
+  return {
+    total: items.length, minDate, maxDate,
+    all: summarize(items), inStore: summarize(byTipe("In Store Promotor")), outStore: summarize(byTipe("Out Store Promotor")),
+    regionRows, top, ekstremCount: items.filter((x) => x.ekstrem).length,
+  };
+}
+
+function ProgressBar({ pct, color = "bg-blue-500", h = "h-2.5" }) {
+  const w = Math.max(0, Math.min(100, pct || 0));
+  return (
+    <div className={`w-full ${h} bg-gray-100 rounded-full overflow-hidden`}>
+      <div className={`${h} ${color} rounded-full transition-all`} style={{ width: `${w}%` }} />
+    </div>
+  );
+}
+
+function OverviewView({ ov, sum, onPerson }) {
+  const [tipe, setTipe] = useState("all");
+  if (!ov || ov.total === 0) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-6 text-sm text-gray-500">
+        Data NCA/GAR belum ada di CSV yang di-upload, jadi Overview belum bisa ditampilkan. Gabungkan file GAR/NCA lewat merger tool, lalu upload ulang. Tab "Detail" tetap bisa dipakai.
+      </div>
+    );
+  }
+  const tipeLabel = { all: "Semua", "In Store Promotor": "In Store", "Out Store Promotor": "Out Store" };
+  const sel = tipe === "all" ? ov.all : tipe === "In Store Promotor" ? ov.inStore : ov.outStore;
+  const regions = ov.regionRows(tipe).slice(0, 8);
+  const topList = ov.top(tipe, 5);
+  const barColor = (pct) => (pct >= 100 ? "bg-emerald-500" : pct >= 70 ? "bg-blue-500" : pct >= 40 ? "bg-indigo-400" : "bg-amber-400");
+  const periode = ov.minDate && ov.maxDate ? `${fmtTanggal(ov.minDate)} – ${fmtTanggal(ov.maxDate)}` : "-";
+  return (
+    <div className="max-w-5xl mx-auto">
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold text-gray-900">Ringkasan Kinerja Promotor</h2>
+        <div className="text-sm text-gray-500">Gambaran singkat pencapaian NCA dan kedisiplinan data. Klik nama promotor untuk lihat detail.</div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700">Periode data: <b>{periode}</b></div>
+        <div className="flex bg-gray-100 rounded-lg p-0.5">
+          {Object.keys(tipeLabel).map((k) => (
+            <button key={k} type="button" onClick={() => setTipe(k)}
+              className={`px-3 py-1 text-sm rounded-md ${tipe === k ? "bg-white shadow text-indigo-700 font-semibold" : "text-gray-600"}`}>{tipeLabel[k]}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <div className="text-[11px] tracking-wide uppercase font-semibold text-gray-500">New Customer Acq. (NCA)</div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-4xl font-extrabold text-gray-900">{fmtRingkas(sel.nca)}</span>
+            <span className="text-sm text-gray-500">/ {fmtRingkas(sel.tgt)} target</span>
+          </div>
+          <div className="mt-3"><ProgressBar pct={sel.pct} color={barColor(sel.pct)} /></div>
+          <div className="mt-2 text-sm text-gray-600">{fmtPct(sel.pct)} dari target · {sel.n.toLocaleString("id-ID")} promotor dinilai</div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <div className="text-[11px] tracking-wide uppercase font-semibold text-gray-500">Promotor Capai Target</div>
+          <div className="mt-2 text-4xl font-extrabold text-gray-900">{fmtPct(sel.pctCapai)}</div>
+          <div className="mt-3"><ProgressBar pct={sel.pctCapai} color="bg-emerald-500" /></div>
+          <div className="mt-2 text-sm text-gray-600">{sel.capai.toLocaleString("id-ID")} dari {sel.n.toLocaleString("id-ID")} promotor</div>
+          <div className="text-xs text-gray-400 mt-0.5">{sel.nol.toLocaleString("id-ID")} promotor belum punya NCA (0)</div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <div className="text-[11px] tracking-wide uppercase font-semibold text-gray-500">Promotor dengan Anomali</div>
+          {[
+            { l: "In Store", pct: sum?.pctIn, n: sum?.anomaliInStoreCount, tot: sum?.inStore, t: "In Store Promotor" },
+            { l: "Out Store", pct: sum?.pctOut, n: sum?.anomaliOutStoreCount, tot: sum?.outStore, t: "Out Store Promotor" },
+          ].filter((r) => tipe === "all" || r.t === tipe).map((r) => (
+            <div key={r.l} className="mt-3">
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-gray-700">{r.l}</span>
+                <span className="text-2xl font-extrabold text-gray-900">{fmtPct(r.pct, 1)}</span>
+              </div>
+              <ProgressBar pct={r.pct} color={r.pct > 20 ? "bg-red-400" : "bg-amber-400"} h="h-2" />
+              <div className="text-xs text-gray-400 mt-0.5">{(r.n ?? 0).toLocaleString("id-ID")} dari {(r.tot ?? 0).toLocaleString("id-ID")} promotor (≥3 kejadian)</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <div className="text-lg font-bold text-gray-900 mb-1">NCA per Region</div>
+          <div className="text-xs text-gray-400 mb-3">Total NCA dibanding total target promotor di region itu. Hijau = capai, kuning = masih jauh.</div>
+          <div className="space-y-3">
+            {regions.map((r) => (
+              <div key={r.region}>
+                <div className="flex items-baseline justify-between text-sm">
+                  <span className="font-medium text-gray-800 truncate pr-2">{r.region}</span>
+                  <span className="shrink-0 text-gray-700"><b>{fmtRingkas(r.nca)}</b> <span className="text-gray-400">/ {fmtRingkas(r.tgt)}</span></span>
+                </div>
+                <ProgressBar pct={r.pct} color={barColor(r.pct)} h="h-2.5" />
+                <div className="text-[11px] text-gray-400">{fmtPct(r.pct)} · {r.n.toLocaleString("id-ID")} promotor</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <div className="text-lg font-bold text-gray-900 mb-1">Top 5 Promotor</div>
+          <div className="text-xs text-gray-400 mb-3">Urut capaian NCA terhadap target. Klik nama untuk detail.</div>
+          <div className="divide-y divide-gray-100">
+            {topList.map((it, i) => {
+              const initials = String(it.name).split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+              return (
+                <button key={it.id} type="button" onClick={() => onPerson(it, "NCA")} className="w-full flex items-center gap-3 py-3 text-left hover:bg-gray-50 rounded-lg px-1">
+                  <div className="w-10 h-10 shrink-0 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-sm font-bold text-gray-600">{initials}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-gray-900 truncate">{i + 1}. {it.name}{it.ekstrem ? <span className="ml-1 text-amber-600" title="Angka sangat tinggi, perlu dicek">⚠</span> : null}</div>
+                    <div className="text-xs text-gray-500 truncate">{it.sub || "-"}{it.promotorType ? ` · ${tipePromotorLabel(it.promotorType)}` : ""}{it.player ? ` · ${it.player}` : ""}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-lg font-bold text-emerald-600">{fmtRingkas(it.nca)}</div>
+                    <div className="text-[11px] text-gray-400">target {it.target}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {topList.some((x) => x.ekstrem) && (
+            <div className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">⚠ = angka ≥10× target. Rumus konsisten, tapi perlu dikonfirmasi (lihat panel "Cek Kualitas Data" di tab Detail).</div>
+          )}
+        </div>
+      </div>
+      {ov.ekstremCount > 0 && (
+        <div className="mt-3 text-[11px] text-gray-400">{ov.ekstremCount} promotor bernilai ≥10× target ikut dihitung di total. Cek di tab Detail → Cek Kualitas Data.</div>
+      )}
+    </div>
+  );
+}
+
 function DashboardPage(props) {
   const {
     timestampData,
     absensiData, moveThresholdM, setMoveThresholdM, shortHr, setShortHr, longHr, setLongHr,
   } = props;
 
+  const [view, setView] = useState("overview");
   const [detail, setDetail] = useState(null);
   const openDetail = useCallback((title, rows, columns, summary) => setDetail({ title, rows, columns, summary }), []);
   const closeDetail = useCallback(() => setDetail(null), []);
@@ -2656,8 +2856,8 @@ function DashboardPage(props) {
     const fmt = (v) => (v == null ? "-" : v.toLocaleString("id-ID"));
     const tenureTxt = it.tenure == null ? "-" : it.tenure < 1 ? "< 1 bulan" : `${Math.floor(it.tenure)} bulan`;
     const summary = [
-      { label: "GAR (hasil aktivasi)", value: `${fmt(it.gar)} / target ${it.target}` },
-      { label: "NCA (penjualan valid)", value: `${fmt(it.nca)} / target ${it.target}` },
+      { label: "GAR", value: `${fmt(it.gar)} / target ${it.target}` },
+      { label: "NCA", value: `${fmt(it.nca)} / target ${it.target}` },
       { label: "Fresh IMEI", value: fmt(it.fresh) },
       { label: "Good SRC", value: fmt(it.good) },
       { label: "Bad SRC", value: fmt(it.bad) },
@@ -2684,6 +2884,8 @@ function DashboardPage(props) {
   const timestampResult = useMemo(() => timestampData ? processTimestamp(timestampData, moveThresholdM) : null, [timestampData, moveThresholdM]);
   const absensiResult = useMemo(() => absensiData ? processAbsensi(absensiData, moveThresholdM, shortHr, longHr) : null, [absensiData, moveThresholdM, shortHr, longHr]);
   const insights = useMemo(() => computeInsights(timestampResult, absensiResult), [timestampResult, absensiResult]);
+  const overview = useMemo(() => computeOverview(timestampResult, absensiResult), [timestampResult, absensiResult]);
+  const overviewSum = useMemo(() => computeExportSummary(timestampResult, absensiResult), [timestampResult, absensiResult]);
 
   // Views baru: dipecah per TIPE PROMOTOR (bukan per sumber data lagi).
   // Masing-masing tetap punya sub-bagian Timestamp & Absensi di dalamnya,
@@ -2744,7 +2946,7 @@ function DashboardPage(props) {
         s.addShape("ellipse", { x: 9.9, y: -2.0, w: 6.2, h: 6.2, fill: { color: "3B2CC4" }, line: { type: "none" } });
         s.addShape("ellipse", { x: 11.6, y: -0.6, w: 3.4, h: 3.4, fill: { color: BRAND_PINK }, line: { type: "none" } });
         s.addText("DASHBOARD ANOMALI LAPANGAN", { x: 0.9, y: 2.5, w: 10, h: 0.4, fontFace: FONT_BODY, fontSize: 13, bold: true, color: ICE, charSpacing: 3, margin: 0 });
-        s.addText("Ringkasan Kedisiplinan & Kualitas Data Promotor", { x: 0.9, y: 2.95, w: 11, h: 1.3, fontFace: FONT_HEAD, fontSize: 34, bold: true, color: WHITE, margin: 0, lineSpacingMultiple: 1.05 });
+        s.addText("Ringkasan Kedisiplinan & Integritas Data Promotor", { x: 0.9, y: 2.95, w: 11, h: 1.3, fontFace: FONT_HEAD, fontSize: 34, bold: true, color: WHITE, margin: 0, lineSpacingMultiple: 1.05 });
         s.addText(`Dihasilkan otomatis dari dashboard  •  ${today}`, { x: 0.9, y: 4.1, w: 10.5, h: 0.5, fontFace: FONT_BODY, fontSize: 14, italic: true, color: ICE, margin: 0 });
         logo(s, true);
       }
@@ -2916,7 +3118,7 @@ function DashboardPage(props) {
         // computeCategoryDetailByType yang berdiri sendiri) sebelum fungsi ini dipanggil.
         const cats = [
           { t: "Zona Waktu (< 3)", d: detail.zona },
-          { t: "Koordinat toko kosong", d: detail.gpsNA },
+          { t: "GPS Toko N/A", d: detail.gpsNA },
           { t: "Durasi Bermasalah", d: detail.durasi },
         ];
         const ccW = 2.75, ccGap = 0.2, ccX0 = 4.15, ccY = 2.35, ccH = 2.5;
@@ -3068,8 +3270,30 @@ function DashboardPage(props) {
     }
   }, [timestampResult, absensiResult, insights, inStoreTs, inStoreAb, outStoreTs, outStoreAb]);
 
+  const viewToggle = (
+    <div className="flex items-center justify-between gap-3 mb-3">
+      <div className="flex bg-gray-100 rounded-lg p-0.5">
+        {[["overview", "Overview"], ["detail", "Detail"]].map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setView(k)}
+            className={`px-4 py-1.5 text-sm rounded-md ${view === k ? "bg-white shadow text-indigo-700 font-semibold" : "text-gray-600"}`}>{l}</button>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (view === "overview") {
+    return (
+      <div>
+        {viewToggle}
+        <OverviewView ov={overview} sum={overviewSum} onPerson={openPerson} />
+        <DetailModal detail={detail} onClose={closeDetail} />
+      </div>
+    );
+  }
+
   return (
     <div>
+      {viewToggle}
       <div className="flex items-center justify-end gap-3 mb-2">
         {pptStatus === "done" && <span className="text-xs text-emerald-600">✅ PPT ke-download</span>}
         {pptStatus === "error" && <span className="text-xs text-red-600">❌ Gagal generate PPT</span>}
@@ -3105,11 +3329,10 @@ function DashboardPage(props) {
 
       {/* ═══════ Proxy Efisiensi & Efektivitas Lapangan ═══════ */}
       <div className="bg-gradient-to-r from-indigo-50 to-white border border-indigo-200 rounded-xl p-5 mb-5">
-        <div className="text-[11px] uppercase tracking-wide text-indigo-700 font-semibold mb-1">Kedisiplinan Pola Kerja</div>
+        <div className="text-[11px] uppercase tracking-wide text-indigo-700 font-semibold mb-1">Proxy Efisiensi &amp; Efektivitas Lapangan</div>
         <div className="text-[11px] text-gray-500 mb-4">
-          Mengukur seberapa rutin dan rapi promotor tercatat hadir &amp; mengikuti pola kerja standar — <b>bukan</b> angka penjualan.
-          <span className="text-gray-400"> (Efektivitas = % hari tercatat hadir · Efisiensi = % hari yang polanya sesuai standar)</span>
-          <br/>Klik kartu di bawah untuk melihat rincian per Region.
+          Ini BUKAN efektivitas penjualan/pencapaian (data pencapaian belum tersedia) — ini indikator kedisiplinan dari pola kerja yang tercatat.
+          Klik kartu di bawah buat lihat rinciannya per Region.
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
@@ -3236,8 +3459,7 @@ function DashboardPage(props) {
                     const pctNCA = (n) => totalDinilaiNCA ? ((n / totalDinilaiNCA) * 100).toFixed(1).replace(".", ",") : "0,0";
                     return (
                       <div className="mt-5 pt-4 border-t border-gray-100">
-                        <div className="text-sm font-bold text-gray-800 mb-1">Capaian Penjualan Valid (NCA) vs Target</div>
-                        <div className="text-[11px] text-gray-500 mb-2">NCA = penjualan yang dianggap valid (Fresh IMEI + Good SRC). Target: 75 / 120 / 150 per bulan sesuai masa kerja.</div>
+                        <div className="text-sm font-bold text-gray-800 mb-1">Capaian NCA vs Target</div>
                         <div className="text-[11px] text-gray-500 mb-3">
                           Metrik "NCA" (dari file NCA) dibandingkan target per bulan berdasarkan masa kerja: &lt;1 bulan = 75, 1–&lt;3 bulan = 120, ≥3 bulan = 150. Semua tingkat masa kerja sudah punya target, jadi semua promotor dinilai.
                         </div>
@@ -3252,8 +3474,8 @@ function DashboardPage(props) {
                                 <b className="text-base text-gray-900">{capaianNCA.tercapai.toLocaleString("id-ID")}</b> orang ({pctNCA(capaianNCA.tercapai)}%)
                               </span>
                             </div>
-                            <div className="text-[12px] text-gray-600 leading-relaxed">Penjualan valid (NCA) sudah memenuhi/melebihi target. Pertahankan performa ini.</div>
-                            <TopList title="Top 3 capaian tertinggi (paling bagus vs target)" items={topTercapai} onItemClick={(it) => openPerson(it, "NCA")} />
+                            <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA sudah memenuhi atau melebihi target sesuai masa kerja. Direkomendasikan dipertahankan.</div>
+                            <TopList title="Top 3 capaian tertinggi (NCA/target)" items={topTercapai} onItemClick={(it) => openPerson(it, "NCA")} />
                           </div>
                           <div className="border rounded-lg p-3.5 border-red-200 bg-red-50">
                             <div className="flex items-baseline justify-between mb-1.5">
@@ -3262,8 +3484,8 @@ function DashboardPage(props) {
                                 <b className="text-base text-gray-900">{capaianNCA.belumTercapai.toLocaleString("id-ID")}</b> orang ({pctNCA(capaianNCA.belumTercapai)}%)
                               </span>
                             </div>
-                            <div className="text-[12px] text-gray-600 leading-relaxed">Penjualan valid (NCA) masih di bawah target. Perlu pembinaan dan pemantauan lebih lanjut.</div>
-                            <TopList title="Top 3 paling jauh di bawah target (perlu perhatian)" items={topBelum} onItemClick={(it) => openPerson(it, "NCA")} />
+                            <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA masih di bawah target sesuai masa kerja. Direkomendasikan pembinaan dan pemantauan lebih lanjut.</div>
+                            <TopList title="Top 3 paling jauh di bawah target (NCA/target)" items={topBelum} onItemClick={(it) => openPerson(it, "NCA")} />
                           </div>
                         </div>
                       </div>
@@ -3277,26 +3499,25 @@ function DashboardPage(props) {
                     const pctAG = (n) => totalDinilai ? ((n / totalDinilai) * 100).toFixed(1).replace(".", ",") : "0,0";
                     const cardsAG = [
                       {
-                        label: "Rajin & Hasil Tinggi", count: b2.aktivitasTinggiGarTinggi, top: tops2.aktivitasTinggiGarTinggi, topTitle: "Top 3 hasil aktivasi (GAR) tertinggi", accent: "border-teal-200 bg-teal-50", textAccent: "text-teal-700",
+                        label: "Aktivitas Tinggi & GAR Tinggi", count: b2.aktivitasTinggiGarTinggi, top: tops2.aktivitasTinggiGarTinggi, topTitle: "Top 3 GAR tertinggi (GAR/target · hari aktif)", accent: "border-teal-200 bg-teal-50", textAccent: "text-teal-700",
                         rekomendasi: "Rajin bekerja di lapangan dan hasilnya sesuai. Penempatan sudah tepat — pertahankan.",
                       },
                       {
-                        label: "Rajin tapi Hasil Rendah", count: b2.aktivitasTinggiGarRendah, top: tops2.aktivitasTinggiGarRendah, topTitle: "Top 3 hasil aktivasi (GAR) paling jauh di bawah target", accent: "border-amber-200 bg-amber-50", textAccent: "text-amber-700",
+                        label: "Aktivitas Tinggi, GAR Rendah", count: b2.aktivitasTinggiGarRendah, top: tops2.aktivitasTinggiGarRendah, topTitle: "Top 3 GAR paling jauh di bawah target (GAR/target · hari aktif)", accent: "border-amber-200 bg-amber-50", textAccent: "text-amber-700",
                         rekomendasi: "Rajin bekerja tapi hasilnya kurang. Sinyal kemungkinan penempatan lokasi kurang tepat, atau perlu evaluasi pendekatan kerja.",
                       },
                       {
-                        label: "Jarang aktif, Hasil Tinggi", count: b2.aktivitasRendahGarTinggi, top: tops2.aktivitasRendahGarTinggi, topTitle: "Top 3 GAR tertinggi (GAR/target · hari aktif)", accent: "border-sky-200 bg-sky-50", textAccent: "text-sky-700",
+                        label: "Aktivitas Rendah, GAR Tinggi", count: b2.aktivitasRendahGarTinggi, top: tops2.aktivitasRendahGarTinggi, topTitle: "Top 3 GAR tertinggi (GAR/target · hari aktif)", accent: "border-sky-200 bg-sky-50", textAccent: "text-sky-700",
                         rekomendasi: "Jarang tercatat aktif tapi hasilnya tetap tercapai. Perlu dicek apakah datanya lengkap, atau memang kerjanya efisien.",
                       },
                       {
-                        label: "Jarang aktif & Hasil Rendah", count: b2.aktivitasRendahGarRendah, top: tops2.aktivitasRendahGarRendah, topTitle: "Top 3 GAR paling jauh di bawah target (GAR/target · hari aktif)", accent: "border-red-200 bg-red-50", textAccent: "text-red-700",
+                        label: "Aktivitas Rendah & GAR Rendah", count: b2.aktivitasRendahGarRendah, top: tops2.aktivitasRendahGarRendah, topTitle: "Top 3 GAR paling jauh di bawah target (GAR/target · hari aktif)", accent: "border-red-200 bg-red-50", textAccent: "text-red-700",
                         rekomendasi: "Jarang aktif dan hasil juga kurang. Perlu perhatian penuh — evaluasi menyeluruh.",
                       },
                     ];
                     return (
                       <div className="mt-5 pt-4 border-t border-gray-100">
-                        <div className="text-sm font-bold text-gray-800 mb-1">Keaktifan di Lapangan vs Hasil Aktivasi (GAR)</div>
-                        <div className="text-[11px] text-gray-500 mb-2">Membandingkan seberapa sering promotor tercatat aktif (hari kerja) dengan hasil aktivasi/registrasi (GAR). Membantu temukan yang rajin tapi hasil rendah, atau sebaliknya.</div>
+                        <div className="text-sm font-bold text-gray-800 mb-1">Aktivitas Lapangan vs GAR</div>
                         <div className="text-[11px] text-gray-500 mb-3">
                           Membandingkan seberapa sering promotor tercatat aktif (jumlah hari ada kejadian Timestamp/Absensi, sepanjang periode data) dengan hasil GAR (dari NCA, Bulan Berjalan) — untuk melihat apakah aktivitas di lapangan sejalan dengan hasil, atau ada indikasi penempatan kurang tepat. Aktivitas Tinggi = kerja ≥{AKTIVITAS_TINGGI_THRESHOLD_HARI} hari/bulan. GAR Tinggi = memenuhi target sesuai masa kerja (75/120/150).
                         </div>
@@ -3328,8 +3549,7 @@ function DashboardPage(props) {
                     const openRule = (k) => openDetail(`Cek data GAR/NCA — ${CEK_ATURAN[k]}`, cek.rows.filter((r) => r.issues.includes(k)), CEK_DATA_COLUMNS);
                     return (
                       <div className="mt-5 pt-4 border-t border-gray-100">
-                        <div className="text-sm font-bold text-gray-800 mb-1">Cek Kualitas Data (GAR &amp; NCA)</div>
-                        <div className="text-[11px] text-gray-500 mb-2">Dashboard memeriksa sendiri apakah angka GAR/NCA masuk akal (rumus, angka ekstrem, NIK ganda). Klik temuan untuk detail.</div>
+                        <div className="text-sm font-bold text-gray-800 mb-1">Cek Kualitas Data GAR &amp; NCA</div>
                         <div className="text-[11px] text-gray-500 mb-3">
                           Dashboard memeriksa sendiri apakah angka tiap promotor masuk akal, pakai dua rumus yang berlaku di file sumber:
                           <b> NCA = Fresh IMEI + Good SRC</b> dan <b>GAR = NCA + Bad SRC + Unidentified IMEI</b>. Angka yang melanggar rumus patut dicek ke sumbernya.
@@ -3371,7 +3591,7 @@ function DashboardPage(props) {
           <div className="text-[11px] text-gray-500 mb-2">{inStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreTs?.total.toLocaleString("id-ID") ?? 0} aktivitas</div>
           {inStoreTs ? (
             <div className="grid grid-cols-2 gap-2.5">
-              <StatCard icon={AlertTriangle} label="Check-in <3 zona/hari" value={inStoreTs.anomalyCounts.zone} tone="indigo"
+              <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={inStoreTs.anomalyCounts.zone} tone="indigo"
                 onClick={() => openDetail("In Store — Timestamp — Absensi <3x/hari", inStoreTs.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
                 exportRows={inStoreTs.flagged.filter((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-absensi-kurang-3x" />
               <StatCard icon={MapPin} label="#Toko GPS N/A" value={inStoreTs.anomalyCounts.noOutletData} tone="pink"
@@ -3388,7 +3608,7 @@ function DashboardPage(props) {
           <div className="text-[11px] text-gray-500 mb-2">{outStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreTs?.total.toLocaleString("id-ID") ?? 0} aktivitas</div>
           {outStoreTs ? (
             <div className="grid grid-cols-2 gap-2.5">
-              <StatCard icon={AlertTriangle} label="Check-in <3 zona/hari" value={outStoreTs.anomalyCounts.zone} tone="indigo"
+              <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={outStoreTs.anomalyCounts.zone} tone="indigo"
                 onClick={() => openDetail("Out Store — Timestamp — Absensi <3x/hari", outStoreTs.flagged.filter((v) => v.zoneNotCompliant), TIMESTAMP_COLUMNS)}
                 exportRows={outStoreTs.flagged.filter((v) => v.zoneNotCompliant)} exportColumns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-absensi-kurang-3x" />
             </div>
@@ -3396,7 +3616,7 @@ function DashboardPage(props) {
         </div>
 
         <div className="md:col-start-1 md:pr-5 md:row-start-2 mb-3 md:mb-0">
-          <Panel title="Tren temuan per tanggal — In Store (Timestamp)" height={160} exportData={inStoreTs?.byDate} exportFilename="instore-timestamp-tren-tanggal">
+          <Panel title="Tren Anomali per Tanggal — In Store (Timestamp, by Activity ID)" height={160} exportData={inStoreTs?.byDate} exportFilename="instore-timestamp-tren-tanggal">
             {inStoreTs && (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={inStoreTs.byDate}>
