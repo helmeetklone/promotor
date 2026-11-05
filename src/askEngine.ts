@@ -12,8 +12,9 @@ export type Person = {
   days: number; rows: number; flagRows: number; reasonRows: Record<string, number>;
 };
 export type Dataset = { people: Person[]; regions: string[]; clusters: string[]; hasPenc: boolean; nRows: number; nTs: number; nAb: number; period: { min: string; max: string } | null };
-export type Section = { title?: string; head: string[]; rows: string[][] };
-export type Answer = { text: string; interpretasi?: string; sections?: Section[]; chips?: string[] };
+export type Chart = { labels: string[]; series: { name: string; values: number[] }[]; fmt: "num" | "pct" };
+export type Section = { title?: string; head: string[]; rows: string[][]; chart?: Chart };
+export type Answer = { text: string; interpretasi?: string; sections?: Section[]; chips?: string[]; wantChart?: boolean; unknown?: boolean };
 
 const REASON_LABEL: Record<string, string> = {
   zona: "Absensi <3x / zona tidak berurutan", identik: "GPS identik", koordinat: "Koordinat kosong",
@@ -109,7 +110,7 @@ const tipeLabel = (t: string) => (t === "In Store Promotor" ? "In Store" : t ===
 type Group = { key: string; label: string; people: Person[] };
 type Agg = {
   n: number; nData: number; gar: number; nca: number; fresh: number; good: number; bad: number; unid: number;
-  capai: number; pctCapai: number | null; ach: number | null; anomaliPeople: number; kejadian: number; pctAnomali: number | null; hari: number | null;
+  capai: number; tgt: number; pctCapai: number | null; ach: number | null; anomaliPeople: number; kejadian: number; pctAnomali: number | null; hari: number | null;
 };
 function aggregate(people: Person[], reason: string | null): Agg {
   const withData = people.filter((p) => p.hasPenc);
@@ -122,7 +123,7 @@ function aggregate(people: Person[], reason: string | null): Agg {
   return {
     n: people.length, nData: withData.length, gar: sum((p) => p.gar), nca: sum((p) => p.nca), fresh: sum((p) => p.fresh),
     good: sum((p) => p.good), bad: sum((p) => p.bad), unid: sum((p) => p.unid),
-    capai, pctCapai: nRated.length ? (capai / nRated.length) * 100 : null,
+    capai, tgt, pctCapai: nRated.length ? (capai / nRated.length) * 100 : null,
     ach: tgt ? (nRated.reduce((a, p) => a + p.nca, 0) / tgt) * 100 : null,
     anomaliPeople: flagged.length,
     kejadian: people.reduce((a, p) => a + (reason ? p.reasonRows[reason] || 0 : p.flagRows), 0),
@@ -155,7 +156,7 @@ type Parsed = {
   q: string; metrics: MetricKey[]; dims: Dim[]; order: "desc" | "asc" | null; topN: number | null; avg: boolean;
   count: boolean; ask: "ranking" | "count" | "total" | "profile" | null; reason: string | null;
   tipe: string | null; player: string | null; region: string | null; cluster: string | null;
-  cmp: { op: ">" | "<"; v: number } | null; belumCapai: boolean; masukTop: boolean; note?: string;
+  cmp: { op: ">" | "<"; v: number } | null; belumCapai: boolean; masukTop: boolean; note?: string; wantChart: boolean; group: boolean;
 };
 
 const WORDNUM: Record<string, number> = { satu: 1, dua: 2, tiga: 3, empat: 4, lima: 5, enam: 6, tujuh: 7, delapan: 8, sembilan: 9, sepuluh: 10 };
@@ -191,7 +192,10 @@ function partialMatch(q: string, names: string[]): { name: string; word: string 
 
 function parseQuestion(raw: string, ds: Dataset): Parsed {
   const q = norm(raw);
-  const p: Parsed = { q, metrics: detectMetrics(q), dims: [], order: null, topN: null, avg: false, count: false, ask: null, reason: null, tipe: null, player: null, region: null, cluster: null, cmp: null, belumCapai: false, masukTop: false };
+  const p: Parsed = { q, metrics: detectMetrics(q), dims: [], order: null, topN: null, avg: false, count: false, ask: null, reason: null, tipe: null, player: null, region: null, cluster: null, cmp: null, belumCapai: false, masukTop: false, wantChart: false, group: false };
+
+  p.wantChart = /grafik|chart|diagram|visualis|\bplot\b|\bbar\b/.test(q);
+  p.group = p.wantChart || /\bper\b|tiap|setiap|masing.?masing|\bby\b|bandingkan|perbandingan|dibandingkan/.test(q);
 
   // dimensi
   if (hasWord(q, /\bregion\b|\bregional\b|wilayah|\bregion-?region\b/)) p.dims.push("region");
@@ -273,7 +277,34 @@ export const SUGGESTIONS = [
   "Berapa promotor yang belum capai target NCA?",
   "Siapa 5 promotor dengan GAR tertinggi?",
   "Berapa total promotor In Store dan Out Store?",
+  "Buat grafik NCA vs target per region",
+  "Buat PPT status achieve per region",
 ];
+
+// Soal-soal baku untuk "buat PPT ringkasan" (kalau tidak ada topik & belum ada jawaban yang dikumpulkan).
+export const PPT_PRESET = [
+  "region mana yang achieve bulan ini",
+  "region mana yang promotor beranomalinya paling banyak",
+  "region dan cluster mana yang paling tinggi GAR nya",
+  "siapa 5 promotor dengan NCA tertinggi",
+  "berapa total promotor in store dan out store",
+];
+
+// Deteksi permintaan PPT. topic = bagian pertanyaan setelah kata-kata perintah dibuang ("buat ppt status achieve per region" → "status achieve per region").
+export function pptRequest(raw: string): { topic: string; addLast: boolean } | null {
+  const q = norm(raw);
+  if (!/\b(ppt|pptx|powerpoint|slide|slides|presentasi|deck)\b/.test(q)) return null;
+  const addLast = /\b(tambah(kan|in)?|masuk(kan|in)?|simpan)\b/.test(q);
+  const t = q
+    .replace(/\b(ppt|pptx|powerpoint|slide|slides|presentasi|deck|buat(kan)?|bikin(kan)?|tolong|dong|ya+|generate|download|unduh|export|ekspor|tentang|mengenai|soal|untuk|berisi|isinya|isi|dalam bentuk|jadi|ke dalam|ke|masuk(kan|in)?|tambah(kan|in)?|simpan|dari|hasil|jawaban|tadi|ini|itu|yang|aku|saya|mau|ingin|minta|kasih|grafik|ringkasan|rangkuman|lengkap|overview|umum|semua)\b/g, " ")
+    .replace(/\s+/g, " ").trim();
+  return { topic: t.length >= 3 ? t : "", addLast };
+}
+
+export function periodText(ds: Dataset): string | null {
+  const per = periodInfo(ds);
+  return per ? per.text.replace(/^data /, "") : null;
+}
 
 function groupBy(people: Person[], dim: Dim): Group[] {
   const m = new Map<string, Group>();
@@ -320,14 +351,18 @@ function rankingSection(title: string, dim: Dim, groups: Group[], mk: MetricKey,
     title,
     head: ["#", DIM_LABEL[dim], M.label + (p.avg && (mk === "gar" || mk === "nca") ? " (rata-rata)" : ""), ...extraCols.head],
     rows: shown.map((r, i) => [String(i + 1), r.g.label, M.f(r.v), ...extraCols.cell(r.a, r.g)]),
+    chart: !shown.length ? undefined : mk === "ach"
+      ? { labels: shown.map((r) => r.g.label), series: [{ name: "NCA", values: shown.map((r) => r.a.nca) }, { name: "Target", values: shown.map((r) => r.a.tgt) }], fmt: "num" }
+      : { labels: shown.map((r) => r.g.label), series: [{ name: M.label, values: shown.map((r) => Math.round((r.v as number) * 10) / 10) }], fmt: mk === "pctAnomali" || mk === "pctCapai" ? "pct" : "num" },
   };
   return { sec, top: sorted };
 }
 
 export function answerQuestion(raw: string, ds: Dataset, scope?: string): Answer {
   const a = answerCore(raw, ds, scope);
-  const note = ds.people.length && String(raw || "").trim() ? parseQuestion(raw, ds).note : undefined;
-  if (note) a.interpretasi = a.interpretasi ? note + " " + a.interpretasi : note;
+  const parsed = ds.people.length && String(raw || "").trim() ? parseQuestion(raw, ds) : null;
+  if (parsed?.note) a.interpretasi = a.interpretasi ? parsed.note + " " + a.interpretasi : parsed.note;
+  if (parsed?.wantChart) a.wantChart = true;
   return a;
 }
 
@@ -369,10 +404,10 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
 
   // 3) ranking per dimensi
   const dims = p.dims.length ? p.dims : [];
-  const wantsRank = dims.length > 0 && (p.order !== null || p.topN !== null || /mana|manakah|siapa|urut|ranking|peringkat/.test(q)) && !(p.count && !p.order && !p.topN && !/mana|manakah/.test(q));
+  const wantsRank = dims.length > 0 && (p.order !== null || p.topN !== null || p.group || /mana|manakah|siapa|urut|ranking|peringkat/.test(q)) && !(p.count && !p.order && !p.topN && !p.group && !/mana|manakah/.test(q));
   if (wantsRank && primary) {
     const order = p.order || (METRICS[primary].good === "low" && /parah|buruk/.test(q) ? "desc" : "desc");
-    const limit = Math.max(1, Math.min(p.topN || (dims.includes("promotor") ? 5 : 5), 20));
+    const limit = Math.max(1, Math.min(p.topN || (p.group ? (dims.includes("promotor") ? 10 : 15) : 5), 20));
     const sections: Section[] = [];
     const lines: string[] = [];
     const cl = !!METRICS[primary].countLike;
@@ -400,7 +435,7 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
   const maybe = findPersonLoose(q, ds);
   if (maybe) return maybe.length === 1 ? profileAnswer(maybe[0]) : { text: `Ada ${maybe.length} promotor yang cocok. Maksudmu yang mana?`, sections: [{ head: ["Nama", "Wilayah", "ID"], rows: maybe.slice(0, 8).map((x) => [x.name, `${x.cluster} · ${x.region}`, x.id]) }] };
 
-  return { text: "Maaf, aku belum paham pertanyaan itu. Aku bisa jawab soal GAR, NCA, target, jumlah promotor, dan anomali — per region, cluster, tipe, atau per promotor. Coba salah satu contoh ini:", chips: SUGGESTIONS };
+  return { text: "Maaf, aku belum paham pertanyaan itu. Aku bisa jawab soal GAR, NCA, target, jumlah promotor, dan anomali — per region, cluster, tipe, atau per promotor. Coba salah satu contoh ini:", chips: SUGGESTIONS, unknown: true };
 }
 
 // ── status & proyeksi "achieve target" ──
@@ -480,6 +515,7 @@ function statusAnswer(p: Parsed, people: Person[], ds: Dataset, scopeNote: strin
     if (gs.length > 1) sections.push({
       title: `Status per ${splitDim}`, head: [splitDim === "region" ? "Region" : "Cluster", "NCA", "Target", "Capai", ...(per && !done ? ["Proyeksi"] : []), "Status"],
       rows: gs.slice(0, 15).map(({ g, x }) => [g.label, fmt(x.nca), fmt(x.tgt), pct(x.ach), ...(per && !done ? [pct(x.projPct)] : []), verdict(x, done)]),
+      chart: { labels: gs.slice(0, 15).map(({ g }) => g.label), series: [{ name: "NCA", values: gs.slice(0, 15).map(({ x }) => x.nca) }, { name: "Target", values: gs.slice(0, 15).map(({ x }) => x.tgt) }], fmt: "num" },
     });
   }
   const catatan = [
@@ -506,7 +542,7 @@ function topAnomaliRegions(p: Parsed, people: Person[], ds: Dataset, scopeNote: 
     text: `${uniq.length} ${dim} masuk dalam ${n} promotor dengan anomali terbanyak${rsn}: ${uniq.join(", ") || "-"}.${tie ? " Catatan: ada promotor lain dengan jumlah anomali sama persis di batas peringkat." : ""}${scopeNote}`,
     interpretasi: `Aku artikan "top ${n} anomali" = ${n} promotor dengan jumlah hari/kejadian anomali terbanyak. Kalau maksudmu ${n} ${dim} dengan promotor beranomali terbanyak, lihat tabel kedua.`,
     sections: [
-      { title: `Top ${n} promotor beranomali`, head: ["#", "Promotor", dim === "region" ? "Region" : "Cluster", "Kejadian anomali"], rows: cut.map((x, i) => [String(i + 1), x.name, dim === "region" ? x.region : `${x.cluster} (${x.region})`, fmt(val(x))]) },
+      { title: `Top ${n} promotor beranomali`, head: ["#", "Promotor", dim === "region" ? "Region" : "Cluster", "Kejadian anomali"], rows: cut.map((x, i) => [String(i + 1), x.name, dim === "region" ? x.region : `${x.cluster} (${x.region})`, fmt(val(x))]), chart: cut.length ? { labels: cut.map((x) => x.name), series: [{ name: "Kejadian anomali", values: cut.map(val) }], fmt: "num" } : undefined },
       ranked.sec,
     ],
   };
@@ -544,7 +580,7 @@ function countTotalAnswer(p: Parsed, people: Person[], ds: Dataset, scopeNote: s
   const dimsSplit = /in.?store.*out.?store|out.?store.*in.?store/.test(p.q) && !p.tipe;
   if (dimsSplit) {
     const g = groupBy(pool, "tipe");
-    return { text: `Total ${fmt(pool.length)} promotor${w}.${scopeNote}`, sections: [{ head: ["Tipe", "Promotor", "Beranomali"], rows: g.map((x) => { const ag = aggregate(x.people, null); return [x.label, fmt(ag.n), fmt(ag.anomaliPeople)]; }) }] };
+    return { text: `Total ${fmt(pool.length)} promotor${w}.${scopeNote}`, sections: [{ head: ["Tipe", "Promotor", "Beranomali"], rows: g.map((x) => { const ag = aggregate(x.people, null); return [x.label, fmt(ag.n), fmt(ag.anomaliPeople)]; }), chart: { labels: g.map((x) => x.label), series: [{ name: "Promotor", values: g.map((x) => x.people.length) }, { name: "Beranomali", values: g.map((x) => aggregate(x.people, null).anomaliPeople) }], fmt: "num" } }] };
   }
   const list = (p.metrics.length ? p.metrics : (["promotor"] as MetricKey[]));
   const parts = list.map((mk) => `${METRICS[mk].label}${p.avg && (mk === "gar" || mk === "nca") ? " rata-rata per promotor" : ""}: ${METRICS[mk].f(METRICS[mk].get(a, p.avg))}`);

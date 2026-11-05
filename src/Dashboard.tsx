@@ -1,7 +1,9 @@
 // Dashboard.tsx — v139
 //   v139: tombol "Tanya Data" (pojok kanan bawah) — chat tanya-jawab tanpa AI/API key. Pertanyaan bahasa Indonesia
 //         ("region & cluster mana GAR tertinggi?", "berapa region masuk top 3 anomali?", "berapa promotor belum capai target?")
-//         dijawab lokal dari data yang sedang tampil (ikut filter Region/Cluster/Status). Kode: src/askEngine.ts (mesin) + src/AskBot.tsx (UI).
+//         dijawab lokal dari data yang sedang tampil (ikut filter Region/Cluster/Status). Bisa tampilkan GRAFIK di chat, hitung status/proyeksi
+//         achieve target, dan buat PPT sesuai permintaan ("buat ppt status achieve per region") atau dari jawaban yang dikumpulkan ("+ PPT").
+//         Kode: src/askEngine.ts (mesin) + src/AskBot.tsx (UI) + src/askPpt.ts (PPT).
 // Dashboard.tsx — v138
 //   v138: tab baru "Overview" (default) vs "Detail" — ringkasan buat presentasi: kartu KPI (NCA vs target, % promotor capai target,
 //         % anomali), NCA per Region (bar), Top 5 promotor (klik → detail). Tab "Detail" = tampilan lengkap lama.
@@ -3283,7 +3285,7 @@ function DashboardPage(props) {
             className={`px-4 py-1.5 text-sm rounded-md ${view === k ? "bg-white shadow text-indigo-700 font-semibold" : "text-gray-600"}`}>{l}</button>
         ))}
       </div>
-      <AskBot timestampResult={timestampResult} absensiResult={absensiResult} getTarget={getTargetNCA} scope={scopeLabel || "Nasional"} />
+      <AskBot timestampResult={timestampResult} absensiResult={absensiResult} getTarget={getTargetNCA} scope={scopeLabel || "Nasional"} logos={{ dark: XLSMART_LOGO_TRANSPARENT_B64, light: XLSMART_LOGO_WHITE_B64 }} />
     </div>
   );
 
