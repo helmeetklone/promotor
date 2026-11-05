@@ -1,3 +1,7 @@
+// Dashboard.tsx — v139
+//   v139: tombol "Tanya Data" (pojok kanan bawah) — chat tanya-jawab tanpa AI/API key. Pertanyaan bahasa Indonesia
+//         ("region & cluster mana GAR tertinggi?", "berapa region masuk top 3 anomali?", "berapa promotor belum capai target?")
+//         dijawab lokal dari data yang sedang tampil (ikut filter Region/Cluster/Status). Kode: src/askBot.ts (mesin) + src/AskBot.tsx (UI).
 // Dashboard.tsx — v138
 //   v138: tab baru "Overview" (default) vs "Detail" — ringkasan buat presentasi: kartu KPI (NCA vs target, % promotor capai target,
 //         % anomali), NCA per Region (bar), Top 5 promotor (klik → detail). Tab "Detail" = tampilan lengkap lama.
@@ -158,6 +162,7 @@ import {
   Upload, MapPin, Clock, FileWarning, AlertTriangle, ArrowLeft,
   ChevronDown, ChevronUp, Trophy, ArrowRight, CheckCircle2, X, Lightbulb, Download
 } from "lucide-react";
+import AskBot from "./AskBot";
 
 // ───────────────────────── helpers ─────────────────────────
 
@@ -2842,7 +2847,7 @@ function OverviewView({ ov, sum, onPerson }) {
 function DashboardPage(props) {
   const {
     timestampData,
-    absensiData, moveThresholdM, setMoveThresholdM, shortHr, setShortHr, longHr, setLongHr,
+    absensiData, moveThresholdM, setMoveThresholdM, shortHr, setShortHr, longHr, setLongHr, scopeLabel,
   } = props;
 
   const [view, setView] = useState("overview");
@@ -3278,6 +3283,7 @@ function DashboardPage(props) {
             className={`px-4 py-1.5 text-sm rounded-md ${view === k ? "bg-white shadow text-indigo-700 font-semibold" : "text-gray-600"}`}>{l}</button>
         ))}
       </div>
+      <AskBot timestampResult={timestampResult} absensiResult={absensiResult} getTarget={getTargetNCA} scope={scopeLabel || "Nasional"} />
     </div>
   );
 
@@ -4032,11 +4038,12 @@ export default function Dashboard() {
                 timestampData={timestampData}
                 absensiData={absensiData} moveThresholdM={moveThresholdM} setMoveThresholdM={setMoveThresholdM}
                 shortHr={shortHr} setShortHr={setShortHr} longHr={longHr} setLongHr={setLongHr}
+                scopeLabel={[selectedRegion !== "Semua" && `Region ${selectedRegion}`, selectedCluster !== "Semua" && `Cluster ${selectedCluster}`, selectedStatus !== "Semua" && `Status ${selectedStatus}`].filter(Boolean).join(", ") || "Nasional"}
               />
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v138</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v139</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
