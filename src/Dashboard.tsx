@@ -1,9 +1,16 @@
+// Dashboard.tsx — v142
+//   v142: Tanya Data — SEMUA jenis grafik (batang, kolom, bertumpuk, garis, area, pie, donut, radar, scatter), dipilih lewat kata di
+//         pertanyaan atau dropdown; ikut ke PPT sebagai grafik asli PowerPoint. Tambah tren per hari (garis) & komposisi anomali per jenis (pie).
+// Dashboard.tsx — v141
+//   v141: Tanya Data — grafik di chat + pembuat PPT sesuai permintaan ("buat ppt status achieve per region") atau dari jawaban
+//         yang dikumpulkan ("+ PPT"). Kode PPT: src/askPpt.ts.
+// Dashboard.tsx — v140
+//   v140: Tanya Data — status & proyeksi "achieve target" per region/cluster/nasional; periode berjalan dibaca dari tanggal di data yang di-upload.
 // Dashboard.tsx — v139
 //   v139: tombol "Tanya Data" (pojok kanan bawah) — chat tanya-jawab tanpa AI/API key. Pertanyaan bahasa Indonesia
 //         ("region & cluster mana GAR tertinggi?", "berapa region masuk top 3 anomali?", "berapa promotor belum capai target?")
-//         dijawab lokal dari data yang sedang tampil (ikut filter Region/Cluster/Status). Bisa tampilkan GRAFIK di chat, hitung status/proyeksi
-//         achieve target, dan buat PPT sesuai permintaan ("buat ppt status achieve per region") atau dari jawaban yang dikumpulkan ("+ PPT").
-//         Kode: src/askEngine.ts (mesin) + src/AskBot.tsx (UI) + src/askPpt.ts (PPT).
+//         dijawab lokal dari data yang sedang tampil (ikut filter Region/Cluster/Status). Kode: src/askEngine.ts (mesin) + src/AskBot.tsx (UI).
+//         (Catatan: commit v140–v142 di GitHub awalnya masih berlabel "v139" karena nomor lupa dinaikkan; isinya = changelog v140–v142 di atas.)
 // Dashboard.tsx — v138
 //   v138: tab baru "Overview" (default) vs "Detail" — ringkasan buat presentasi: kartu KPI (NCA vs target, % promotor capai target,
 //         % anomali), NCA per Region (bar), Top 5 promotor (klik → detail). Tab "Detail" = tampilan lengkap lama.
@@ -4045,7 +4052,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v139</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v142</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
