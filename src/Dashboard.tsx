@@ -1,3 +1,6 @@
+// Dashboard.tsx — v143
+//   v143: Tanya Data — permintaan PPT lebih longgar dibaca ("buatin ppt", "bisa bikin ppt gak?", "ppt dari data ini"); kalau topik tidak dikenali,
+//         tetap dibuatkan PPT ringkasan umum (tidak lagi berhenti dengan pesan "belum bisa").
 // Dashboard.tsx — v142
 //   v142: Tanya Data — SEMUA jenis grafik (batang, kolom, bertumpuk, garis, area, pie, donut, radar, scatter), dipilih lewat kata di
 //         pertanyaan atau dropdown; ikut ke PPT sebagai grafik asli PowerPoint. Tambah tren per hari (garis) & komposisi anomali per jenis (pie).
@@ -4052,7 +4055,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v142</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v143</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>

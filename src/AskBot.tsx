@@ -166,7 +166,14 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
         else { items = tried.filter((x) => !x.answer.unknown); skipped = tried.filter((x) => x.answer.unknown).map((x) => x.question); }
       }
       if (!items.length) {
-        botSay(`Aku belum bisa menentukan isi PPT dari "${pr.topic}". Sebutkan topiknya seperti pertanyaan biasa, misalnya:`, { answer: { text: "", chips: ["Buat PPT status achieve per region", "Buat PPT anomali per region", "Buat PPT GAR tertinggi per cluster"] } });
+        // Topik tidak dikenali → jangan menyerah: buat ringkasan umum (PPT tetap jadi), lalu beri contoh permintaan yang lebih spesifik.
+        const fb = PPT_PRESET.map((q) => ({ question: q, answer: safeAnswer(q) })).filter((x) => !x.answer.unknown);
+        if (fb.length) {
+          botSay(`Topik "${pr.topic}" belum kupahami, jadi kubuatkan PPT ringkasan umum dulu. Untuk isi yang spesifik, coba misalnya:`, { answer: { text: "", chips: ["Buat PPT status achieve per region", "Buat PPT anomali per region", "Buat PPT GAR tertinggi per cluster"] } });
+          await makeDeck(fb, "Ringkasan Data Promotor");
+          return;
+        }
+        botSay("Datanya belum cukup untuk membuat PPT.");
         return;
       }
       if (skipped.length) botSay(`Bagian ini belum bisa kupahami dan dilewati: ${skipped.map((x) => `"${x}"`).join(", ")}.`);

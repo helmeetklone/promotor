@@ -359,7 +359,7 @@ export function pptRequest(raw: string): { topic: string; addLast: boolean } | n
   if (!/\b(ppt|pptx|powerpoint|slide|slides|presentasi|deck)\b/.test(q)) return null;
   const addLast = /\b(tambah(kan|in)?|masuk(kan|in)?|simpan)\b/.test(q);
   const t = q
-    .replace(/\b(ppt|pptx|powerpoint|slide|slides|presentasi|deck|buat(kan)?|bikin(kan)?|tolong|dong|ya+|generate|download|unduh|export|ekspor|tentang|mengenai|soal|untuk|berisi|isinya|isi|dalam bentuk|jadi|ke dalam|ke|masuk(kan|in)?|tambah(kan|in)?|simpan|dari|hasil|jawaban|tadi|ini|itu|yang|aku|saya|mau|ingin|minta|kasih|grafik|ringkasan|rangkuman|lengkap|overview|umum|semua)\b/g, " ")
+    .replace(/\b(ppt|pptx|powerpoint|slide|slides|presentasi|deck|buat(kan)?|bikin(kan)?|tolong|dong|ya+|generate|download|unduh|export|ekspor|tentang|mengenai|soal|untuk|berisi|isinya|isi|dalam bentuk|jadi|ke dalam|ke|masuk(kan|in)?|tambah(kan|in)?|simpan|dari|hasil|jawaban|tadi|ini|itu|yang|aku|saya|mau|ingin|minta|kasih|grafik|ringkasan|rangkuman|lengkap|overview|umum|semua|buatin|bikinin|buatkan|bisa|gak|ga|nggak|enggak|tidak|apa|kan|donk|deh|sih|nih|file|data|laporan|report|bentuk|format|berupa|sebagai|bisakah|mohon|please|plis|saja|aja|nya|di|kah)\b/g, " ")
     .replace(/\s+/g, " ").trim();
   return { topic: t.length >= 3 ? t : "", addLast };
 }
