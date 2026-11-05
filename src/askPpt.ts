@@ -2,13 +2,14 @@
 // tiap jawaban jadi slide temuan + (kalau ada) slide grafik asli (bisa diedit di PowerPoint) + slide tabel,
 // ditutup slide catatan/definisi. Gaya (palet, font, logo) sama dengan "Export ke PPT" di dashboard.
 import pptxgen from "pptxgenjs";
-import type { Answer, Section } from "./askEngine";
+import { effectiveKind, pieSlices, CHART_KIND_LABEL, type Answer, type Section, type Chart, type ChartKind } from "./askEngine";
 
 export type DeckItem = { question: string; answer: Answer };
 export type DeckMeta = { scope: string; period: string | null; title?: string; logos?: { dark: string; light: string } };
 
 const NAVY = "2316AA", PINK = "EA3363", ICE = "D8D2F5", WHITE = "FFFFFF", INK = "1F2937", MUTED = "6B7280", TEAL = "0D9488";
 const CARD = "F7F9FC", LINE = "E2E8F0";
+const PALETTE = [NAVY, PINK, TEAL, "D97706", "7C3AED", "0EA5E9", "65A30D", "DB2777", "475569", "F59E0B", "94A3B8"];
 const HEAD = "Cambria", BODY = "Calibri";
 const W = 13.33, H = 7.5;
 const ROWS_PER_SLIDE = 10;
@@ -45,6 +46,50 @@ export async function buildDeck(items: DeckItem[], meta: DeckMeta): Promise<{ sl
     s.addText(`${meta.scope}${meta.period ? "  •  " + meta.period : ""}  •  dibuat ${today}`, { x: 0.9, y: 4.2, w: 11, h: 0.5, fontFace: BODY, fontSize: 14, italic: true, color: ICE, margin: 0 });
     logo(s, true);
   }
+
+
+  // Satu fungsi untuk semua jenis grafik → grafik asli PowerPoint (bisa diedit di PowerPoint).
+  const addChartSlide = (s: any, c: Chart, kind: ChartKind) => {
+    const box = { x: 0.7, y: 1.9, w: 11.9, h: 4.85 };
+    const T = pres.ChartType;
+    const code = c.fmt === "pct" ? '0.0"%"' : "#,##0";
+    const multi = c.series.length > 1;
+    const colors = multi ? PALETTE.slice(0, 3) : [NAVY];
+    const series = c.series.map((sr) => ({ name: sr.name, labels: c.labels, values: sr.values }));
+    const axes = { catAxisLabelFontSize: 10, catAxisLabelFontFace: BODY, valAxisLabelFontSize: 10, valAxisLabelFormatCode: code, valGridLine: { color: LINE, size: 0.5 }, catGridLine: { style: "none" } };
+    const legend = { showLegend: multi, legendPos: "b", legendFontSize: 11, legendFontFace: BODY };
+    const labelsOn = c.labels.length <= 12;
+    switch (kind) {
+      case "bar": case "column": case "stacked": {
+        const horizontal = kind === "bar" || (kind === "stacked" && c.labels.length > 6);
+        s.addChart(T.bar, series, { ...box, ...axes, ...legend, barDir: horizontal ? "bar" : "col", barGrouping: kind === "stacked" ? "stacked" : "clustered", chartColors: colors,
+          showValue: true, dataLabelFontSize: 10, dataLabelFormatCode: code, valAxisHidden: true, valGridLine: { style: "none" }, catAxisOrientation: horizontal ? "maxMin" : "minMax" } as any);
+        break;
+      }
+      case "line": case "area":
+        s.addChart(kind === "line" ? T.line : T.area, series, { ...box, ...axes, ...legend, chartColors: colors, lineSize: 3, lineDataSymbolSize: 7, showValue: labelsOn, dataLabelFontSize: 10,
+          dataLabelFormatCode: code, dataLabelPosition: "t", catAxisLabelRotate: c.labels.length > 8 ? 315 : 0, ...(kind === "area" ? { chartColorsOpacity: 60 } : {}) } as any);
+        break;
+      case "pie": case "donut": {
+        const sl = pieSlices(c);
+        s.addChart(kind === "pie" ? T.pie : T.doughnut, [{ name: c.series[0].name, labels: sl.map((x) => x.name), values: sl.map((x) => x.value) }], {
+          ...box, chartColors: PALETTE.slice(0, sl.length), showLegend: true, legendPos: "r", legendFontSize: 11, legendFontFace: BODY,
+          showPercent: true, showValue: false, showLabel: false, dataLabelFontSize: 11, dataLabelColor: WHITE, dataBorder: { pt: 1, color: WHITE }, ...(kind === "donut" ? { holeSize: 55 } : {}),
+        } as any);
+        break;
+      }
+      case "radar":
+        s.addChart(T.radar, series, { ...box, ...legend, chartColors: colors, radarStyle: "standard", lineSize: 2, catAxisLabelFontSize: 10, catAxisLabelFontFace: BODY, valAxisLabelFontSize: 9, valAxisLabelFormatCode: code } as any);
+        break;
+      case "scatter":
+        s.addChart(T.scatter, [{ name: "X-Axis", values: c.series[0].values }, { name: c.series[1].name, values: c.series[1].values, labels: c.labels }], {
+          ...box, chartColors: [NAVY], lineSize: 0, lineDataSymbolSize: 11, showLegend: false, showLabel: true, dataLabelFormatScatter: "custom", dataLabelFontSize: 9, dataLabelPosition: "t",
+          showCatAxisTitle: true, catAxisTitle: c.series[0].name, catAxisTitleFontSize: 11, showValAxisTitle: true, valAxisTitle: c.series[1].name, valAxisTitleFontSize: 11,
+          catAxisLabelFormatCode: code, valAxisLabelFormatCode: code, valAxisLabelFontSize: 10, catAxisLabelFontSize: 10,
+        } as any);
+        break;
+    }
+  };
 
   const tableSlides = (sec: Section, heading: string) => {
     const head = sec.head, rows = sec.rows;
@@ -87,20 +132,13 @@ export async function buildDeck(items: DeckItem[], meta: DeckMeta): Promise<{ sl
       const heading = sec.title || q;
       if (sec.chart && sec.chart.labels.length) {
         const c = sec.chart;
+        const kind = effectiveKind(c, a.chartKind);
         const s = newSlide(false);
-        kicker(s, "Grafik");
+        kicker(s, `Grafik · ${CHART_KIND_LABEL[kind]}`);
         title(s, heading);
-        const horizontal = c.labels.length > 6;
-        const code = c.fmt === "pct" ? '0.0"%"' : "#,##0";
-        s.addChart(pres.ChartType.bar, c.series.map((sr) => ({ name: sr.name, labels: c.labels, values: sr.values })), {
-          x: 0.7, y: 1.9, w: 11.9, h: 4.85, barDir: horizontal ? "bar" : "col", barGrouping: "clustered",
-          chartColors: c.series.length > 1 ? [NAVY, PINK, TEAL] : [NAVY], showLegend: c.series.length > 1, legendPos: "b", legendFontSize: 11, legendFontFace: BODY,
-          showValue: true, dataLabelFontSize: 10, dataLabelFormatCode: code, valAxisLabelFormatCode: code, valAxisHidden: true,
-          catAxisLabelFontSize: 10, catAxisLabelFontFace: BODY, catAxisOrientation: horizontal ? "maxMin" : "minMax",
-          valGridLine: { style: "none" }, catGridLine: { style: "none" },
-        } as any);
+        addChartSlide(s, c, kind);
         logo(s, false); footer(s);
-        outline.push("   ↳ grafik: " + heading);
+        outline.push(`   ↳ grafik ${CHART_KIND_LABEL[kind].toLowerCase()}: ${heading}`);
       }
       tableSlides(sec, heading);
     });

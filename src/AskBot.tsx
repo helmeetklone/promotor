@@ -3,40 +3,107 @@
 // Bisa menampilkan grafik di chat dan membuat PPT (askPpt.ts) dari jawaban-jawaban yang diminta.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle, Send, X, Sparkles, BarChart3, FilePlus2, Download, Check } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LabelList, ResponsiveContainer } from "recharts";
-import { buildDataset, answerQuestion, pptRequest, periodText, SUGGESTIONS, PPT_PRESET, type Answer, type Chart } from "./askEngine";
+import {
+  BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  ScatterChart, Scatter, CartesianGrid, XAxis, YAxis, Tooltip, Legend, LabelList, ResponsiveContainer,
+} from "recharts";
+import { buildDataset, answerQuestion, pptRequest, periodText, SUGGESTIONS, PPT_PRESET, CHART_KIND_LABEL, validKinds, effectiveKind, setChartKind, pieSlices, type Answer, type Chart, type ChartKind } from "./askEngine";
 import { buildDeck, type DeckItem } from "./askPpt";
 
 type Msg = { from: "user" | "bot"; text: string; answer?: Answer; question?: string };
 
 const COLORS = ["#2316AA", "#EA3363", "#0D9488"];
+const PIE_COLORS = ["#2316AA", "#EA3363", "#0D9488", "#D97706", "#7C3AED", "#0EA5E9", "#65A30D", "#DB2777", "#475569", "#F59E0B", "#94A3B8"];
 const nf = (v: number, f: "num" | "pct") => (f === "pct" ? v.toLocaleString("id-ID", { maximumFractionDigits: 1 }) + "%" : Math.round(v).toLocaleString("id-ID"));
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-function MiniChart({ chart }: { chart: Chart }) {
+function MiniChart({ chart, kind }: { chart: Chart; kind: ChartKind }) {
+  const n = chart.labels.length;
   const data = chart.labels.map((l, i) => {
     const row: any = { name: l };
     chart.series.forEach((s, k) => { row["s" + k] = s.values[i]; });
     return row;
   });
-  const h = Math.max(150, chart.labels.length * (chart.series.length > 1 ? 46 : 28) + 40);
-  return (
-    <div style={{ width: "100%", height: h }}>
-      <ResponsiveContainer>
-        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 44, bottom: 0, left: 0 }}>
-          <XAxis type="number" hide />
-          <YAxis type="category" dataKey="name" width={112} tick={{ fontSize: 10 }} tickFormatter={(v: string) => (v.length > 20 ? v.slice(0, 19) + "…" : v)} interval={0} />
-          <Tooltip formatter={(v: any) => nf(Number(v), chart.fmt)} />
-          {chart.series.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
-          {chart.series.map((s, k) => (
-            <Bar key={k} dataKey={"s" + k} name={s.name} fill={COLORS[k % COLORS.length]} radius={[0, 3, 3, 0]}>
-              <LabelList dataKey={"s" + k} position="right" fontSize={10} formatter={(v: any) => nf(Number(v), chart.fmt)} />
-            </Bar>
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
+  const f = (v: any) => nf(Number(v), chart.fmt);
+  const many = chart.series.length > 1;
+  const short = (v: string) => (v.length > 20 ? v.slice(0, 19) + "…" : v);
+  const box = (h: number, el: any) => <div style={{ width: "100%", height: h }}><ResponsiveContainer>{el}</ResponsiveContainer></div>;
+  const legend = many ? <Legend wrapperStyle={{ fontSize: 11 }} /> : null;
+  const xStep = n > 10 ? Math.ceil(n / 8) - 1 : 0;
+
+  if (kind === "bar" || kind === "stacked") {
+    return box(Math.max(150, n * (many && kind === "bar" ? 46 : 28) + 40),
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 44, bottom: 0, left: 0 }}>
+        <XAxis type="number" hide />
+        <YAxis type="category" dataKey="name" width={112} tick={{ fontSize: 10 }} tickFormatter={short} interval={0} />
+        <Tooltip formatter={f} />{legend}
+        {chart.series.map((s, k) => (
+          <Bar key={k} dataKey={"s" + k} name={s.name} fill={COLORS[k % COLORS.length]} stackId={kind === "stacked" ? "a" : undefined} radius={kind === "stacked" ? 0 : [0, 3, 3, 0]}>
+            <LabelList dataKey={"s" + k} position={kind === "stacked" ? "center" : "right"} fontSize={10} fill={kind === "stacked" ? "#fff" : "#374151"} formatter={f} />
+          </Bar>
+        ))}
+      </BarChart>);
+  }
+  if (kind === "column") {
+    return box(260,
+      <BarChart data={data} margin={{ top: 16, right: 8, bottom: n > 4 ? 36 : 8, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey="name" tick={{ fontSize: 10 }} tickFormatter={short} interval={xStep} angle={n > 4 ? -30 : 0} textAnchor={n > 4 ? "end" : "middle"} height={n > 4 ? 56 : 24} />
+        <YAxis tick={{ fontSize: 10 }} width={44} tickFormatter={f} />
+        <Tooltip formatter={f} />{legend}
+        {chart.series.map((s, k) => (
+          <Bar key={k} dataKey={"s" + k} name={s.name} fill={COLORS[k % COLORS.length]} radius={[3, 3, 0, 0]}>
+            {n <= 8 && <LabelList dataKey={"s" + k} position="top" fontSize={9} formatter={f} />}
+          </Bar>
+        ))}
+      </BarChart>);
+  }
+  if (kind === "line" || kind === "area") {
+    const Chart_: any = kind === "line" ? LineChart : AreaChart;
+    return box(250,
+      <Chart_ data={data} margin={{ top: 16, right: 12, bottom: 28, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey="name" tick={{ fontSize: 10 }} tickFormatter={short} interval={xStep} angle={n > 6 ? -30 : 0} textAnchor={n > 6 ? "end" : "middle"} height={n > 6 ? 48 : 24} />
+        <YAxis tick={{ fontSize: 10 }} width={44} tickFormatter={f} />
+        <Tooltip formatter={f} />{legend}
+        {chart.series.map((s, k) => kind === "line"
+          ? <Line key={k} type="monotone" dataKey={"s" + k} name={s.name} stroke={COLORS[k % COLORS.length]} strokeWidth={2} dot={n <= 20}>{n <= 12 && <LabelList dataKey={"s" + k} position="top" fontSize={9} formatter={f} />}</Line>
+          : <Area key={k} type="monotone" dataKey={"s" + k} name={s.name} stroke={COLORS[k % COLORS.length]} fill={COLORS[k % COLORS.length]} fillOpacity={0.25} />)}
+      </Chart_>);
+  }
+  if (kind === "pie" || kind === "donut") {
+    const sl = pieSlices(chart);
+    const total = sl.reduce((a, b) => a + b.value, 0) || 1;
+    return box(270,
+      <PieChart>
+        <Pie data={sl} dataKey="value" nameKey="name" innerRadius={kind === "donut" ? 48 : 0} outerRadius={84} paddingAngle={1}
+          label={(e: any) => `${((e.value / total) * 100).toLocaleString("id-ID", { maximumFractionDigits: 0 })}%`} labelLine={false} fontSize={10}>
+          {sl.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+        </Pie>
+        <Tooltip formatter={(v: any) => `${f(v)} (${((Number(v) / total) * 100).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%)`} />
+        <Legend wrapperStyle={{ fontSize: 10 }} formatter={short} />
+      </PieChart>);
+  }
+  if (kind === "radar") {
+    return box(280,
+      <RadarChart data={data} outerRadius={70} margin={{ top: 16, right: 24, bottom: 8, left: 24 }}>
+        <PolarGrid />
+        <PolarAngleAxis dataKey="name" tick={{ fontSize: 9 }} tickFormatter={short} />
+        <PolarRadiusAxis tick={{ fontSize: 9 }} tickFormatter={f} />
+        <Tooltip formatter={f} />{legend}
+        {chart.series.map((s, k) => <Radar key={k} dataKey={"s" + k} name={s.name} stroke={COLORS[k % COLORS.length]} fill={COLORS[k % COLORS.length]} fillOpacity={0.25} />)}
+      </RadarChart>);
+  }
+  // scatter: seri 1 = sumbu X, seri 2 = sumbu Y, tiap titik = satu label
+  const pts = chart.labels.map((l, i) => ({ name: l, x: chart.series[0].values[i], y: chart.series[1].values[i] }));
+  return box(280,
+    <ScatterChart margin={{ top: 16, right: 24, bottom: 24, left: 0 }}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis type="number" dataKey="x" name={chart.series[0].name} tick={{ fontSize: 10 }} tickFormatter={f} label={{ value: chart.series[0].name, position: "insideBottom", offset: -12, fontSize: 10 }} />
+      <YAxis type="number" dataKey="y" name={chart.series[1].name} tick={{ fontSize: 10 }} width={48} tickFormatter={f} />
+      <Tooltip formatter={f} cursor={{ strokeDasharray: "3 3" }} />
+      <Scatter data={pts} fill={COLORS[0]}><LabelList dataKey="name" position="top" fontSize={9} formatter={short} /></Scatter>
+    </ScatterChart>);
 }
 
 export default function AskBot({ timestampResult, absensiResult, getTarget, scope, logos }: {
@@ -49,7 +116,8 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   const [deck, setDeck] = useState<DeckItem[]>([]);
   const [chartOverride, setChartOverride] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
+  const [, bumpKind] = useState(0); // render ulang setelah ganti jenis grafik
+  const lastRef = useRef<HTMLDivElement>(null); // awal jawaban terakhir — dibuka dari atas, bukan dari bawah
 
   // Dataset baru dibangun saat panel pertama kali dibuka (dan ikut berubah kalau filter/ambang di dashboard berubah).
   const ds = useMemo(
@@ -57,7 +125,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
     [open, timestampResult, absensiResult, getTarget]
   );
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, open]);
+  useEffect(() => { lastRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [msgs, open]);
 
   const safeAnswer = (q: string): Answer => {
     try { return answerQuestion(q, ds!, scope); }
@@ -171,7 +239,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
               <div className="bg-indigo-600 text-white rounded-2xl rounded-br-sm px-3 py-2 max-w-[85%]">{m.text}</div>
             </div>
           ) : (
-            <div key={i} className="flex justify-start">
+            <div key={i} ref={i === msgs.length - 1 ? lastRef : undefined} className="flex justify-start scroll-mt-1">
               <div className="bg-gray-100 text-gray-900 rounded-2xl rounded-bl-sm px-3 py-2 max-w-[96%] min-w-0">
                 {m.text && <div className="whitespace-pre-line">{m.text}</div>}
                 {m.answer?.interpretasi && <div className="mt-1.5 text-[11px] text-gray-500 italic">{m.answer.interpretasi}</div>}
@@ -187,7 +255,21 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
                             className="flex items-center gap-1 text-[11px] text-indigo-700 hover:underline"><BarChart3 className="w-3 h-3" /> {show ? "Sembunyikan grafik" : "Grafik"}</button>
                         )}
                       </div>
-                      {show && sec.chart && <div className="px-1 pt-2"><MiniChart chart={sec.chart} /></div>}
+                      {show && sec.chart && (() => {
+                        const kind = effectiveKind(sec.chart, m.answer!.chartKind);
+                        return (
+                          <div className="px-1 pt-2">
+                            <div className="flex items-center gap-1.5 px-1 pb-1 text-[11px] text-gray-500">
+                              Jenis:
+                              <select value={kind} onChange={(e) => { setChartKind(sec.chart!, e.target.value as ChartKind); bumpKind((x) => x + 1); }}
+                                className="border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-800">
+                                {validKinds(sec.chart).map((k) => <option key={k} value={k}>{CHART_KIND_LABEL[k]}</option>)}
+                              </select>
+                            </div>
+                            <MiniChart chart={sec.chart} kind={kind} />
+                          </div>
+                        );
+                      })()}
                       <div className="overflow-x-auto">
                         <table className="w-full text-[11px]">
                           <thead><tr className="text-left text-gray-500">{sec.head.map((h, j) => <th key={j} className="px-2 py-1 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
@@ -221,7 +303,6 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
           )
         )}
         {busy && <div className="text-xs text-gray-500">⏳ Membuat PPT…</div>}
-        <div ref={endRef} />
       </div>
 
       <form onSubmit={(e) => { e.preventDefault(); ask(input); }} className="flex items-center gap-2 p-3 border-t border-gray-200">

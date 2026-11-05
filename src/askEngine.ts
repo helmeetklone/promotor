@@ -10,11 +10,49 @@ export type Person = {
   tenure: number | null; target: number | null;
   hasPenc: boolean; gar: number; nca: number; fresh: number; good: number; bad: number; unid: number;
   days: number; rows: number; flagRows: number; reasonRows: Record<string, number>;
+  dayList: string[]; dayFlag: Record<string, Record<string, number>>;
 };
 export type Dataset = { people: Person[]; regions: string[]; clusters: string[]; hasPenc: boolean; nRows: number; nTs: number; nAb: number; period: { min: string; max: string } | null };
-export type Chart = { labels: string[]; series: { name: string; values: number[] }[]; fmt: "num" | "pct" };
+export type ChartKind = "bar" | "column" | "stacked" | "line" | "area" | "pie" | "donut" | "radar" | "scatter";
+export type Chart = { labels: string[]; series: { name: string; values: number[] }[]; fmt: "num" | "pct"; kind?: ChartKind };
+
+export const CHART_KIND_LABEL: Record<ChartKind, string> = {
+  bar: "Batang (horizontal)", column: "Kolom (vertikal)", stacked: "Batang bertumpuk", line: "Garis", area: "Area",
+  pie: "Pie", donut: "Donut", radar: "Radar", scatter: "Sebaran (scatter)",
+};
+
+// Jenis grafik yang masuk akal untuk data ini (pie butuh 1 seri tanpa nilai negatif, scatter butuh 2 seri, dst).
+export function validKinds(c: Chart): ChartKind[] {
+  const one = c.series.length === 1, many = c.series.length > 1;
+  const nonNeg = c.series.every((s) => s.values.every((v) => v >= 0));
+  const out: ChartKind[] = ["bar", "column"];
+  if (many) out.push("stacked");
+  out.push("line", "area");
+  if (one && nonNeg && c.labels.length >= 2) out.push("pie", "donut");
+  if (c.labels.length >= 3) out.push("radar");
+  if (many) out.push("scatter");
+  return out;
+}
+// Jenis yang diminta tidak cocok dengan datanya → turun ke yang terdekat (mis. pie untuk 2 seri → kolom).
+export function resolveKind(c: Chart, want?: ChartKind | null): ChartKind {
+  const k = want || c.kind || "bar";
+  if (validKinds(c).includes(k)) return k;
+  if (k === "pie" || k === "donut") return c.series.length > 1 ? "column" : "bar";
+  if (k === "stacked" || k === "scatter") return "column";
+  return c.labels.length > 6 ? "bar" : "column";
+}
+// Pie/donut: maksimal 10 irisan; sisanya digabung "Lainnya".
+export function pieSlices(c: Chart): { name: string; value: number }[] {
+  const v = c.series[0].values.map((value, i) => ({ name: c.labels[i], value })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
+  if (v.length <= 10) return v;
+  return [...v.slice(0, 9), { name: "Lainnya", value: v.slice(9).reduce((a, b) => a + b.value, 0) }];
+}
+// Pilihan jenis grafik per objek Chart (dari dropdown di chat) — dipakai juga oleh PPT supaya samanya.
+const chosenKind = new WeakMap<Chart, ChartKind>();
+export const setChartKind = (c: Chart, k: ChartKind) => { chosenKind.set(c, k); };
+export const effectiveKind = (c: Chart, requested?: ChartKind | null): ChartKind => resolveKind(c, chosenKind.get(c) || requested || c.kind);
 export type Section = { title?: string; head: string[]; rows: string[][]; chart?: Chart };
-export type Answer = { text: string; interpretasi?: string; sections?: Section[]; chips?: string[]; wantChart?: boolean; unknown?: boolean };
+export type Answer = { text: string; interpretasi?: string; sections?: Section[]; chips?: string[]; wantChart?: boolean; chartKind?: ChartKind; unknown?: boolean };
 
 const REASON_LABEL: Record<string, string> = {
   zona: "Absensi <3x / zona tidak berurutan", identik: "GPS identik", koordinat: "Koordinat kosong",
@@ -65,7 +103,7 @@ export function buildDataset(tsAll: any[], abAll: any[], getTarget: (tenure: num
     if (!r.employee_id || r.employee_id === "-") continue;
     let p = map.get(r.employee_id);
     if (!p) {
-      p = { id: r.employee_id, name: "", region: "", cluster: "", tipe: "", player: "", tenure: null, target: null, hasPenc: false, gar: 0, nca: 0, fresh: 0, good: 0, bad: 0, unid: 0, days: 0, rows: 0, flagRows: 0, reasonRows: {} };
+      p = { id: r.employee_id, name: "", region: "", cluster: "", tipe: "", player: "", tenure: null, target: null, hasPenc: false, gar: 0, nca: 0, fresh: 0, good: 0, bad: 0, unid: 0, days: 0, rows: 0, flagRows: 0, reasonRows: {}, dayList: [], dayFlag: {} };
       map.set(r.employee_id, p); days.set(r.employee_id, new Set());
     }
     if (!p.name && r.employee_name && r.employee_name !== "-") p.name = r.employee_name;
@@ -82,11 +120,16 @@ export function buildDataset(tsAll: any[], abAll: any[], getTarget: (tenure: num
     if (r.date) { const d = wibDay(r.date); if (d) days.get(r.employee_id)!.add(d); }
     p.rows++;
     const why = rowReasons(r);
-    if (why.length) { p.flagRows++; why.forEach((k) => { p.reasonRows[k] = (p.reasonRows[k] || 0) + 1; }); }
+    if (why.length) {
+      p.flagRows++; why.forEach((k) => { p.reasonRows[k] = (p.reasonRows[k] || 0) + 1; });
+      const dd = wibDay(r.date);
+      if (dd) { const f = p.dayFlag[dd] || (p.dayFlag[dd] = { _all: 0 }); f._all++; why.forEach((k) => { f[k] = (f[k] || 0) + 1; }); }
+    }
   }
   const people = [...map.values()];
   for (const p of people) {
-    p.days = days.get(p.id)!.size;
+    p.dayList = [...days.get(p.id)!];
+    p.days = p.dayList.length;
     p.target = p.tenure != null ? getTarget(p.tenure) : null;
     if (!p.name) p.name = p.id;
     if (!p.region) p.region = "Tanpa Region";
@@ -156,7 +199,7 @@ type Parsed = {
   q: string; metrics: MetricKey[]; dims: Dim[]; order: "desc" | "asc" | null; topN: number | null; avg: boolean;
   count: boolean; ask: "ranking" | "count" | "total" | "profile" | null; reason: string | null;
   tipe: string | null; player: string | null; region: string | null; cluster: string | null;
-  cmp: { op: ">" | "<"; v: number } | null; belumCapai: boolean; masukTop: boolean; note?: string; wantChart: boolean; group: boolean;
+  cmp: { op: ">" | "<"; v: number } | null; belumCapai: boolean; masukTop: boolean; note?: string; wantChart: boolean; group: boolean; chartKind: ChartKind | null; daily: boolean; byReason: boolean;
 };
 
 const WORDNUM: Record<string, number> = { satu: 1, dua: 2, tiga: 3, empat: 4, lima: 5, enam: 6, tujuh: 7, delapan: 8, sembilan: 9, sepuluh: 10 };
@@ -179,6 +222,20 @@ function detectMetrics(q: string): MetricKey[] {
   return [...new Set(m)];
 }
 
+function detectKind(q: string, chartWord: boolean): ChartKind | null {
+  if (/donut|donat|doughnut/.test(q)) return "donut";
+  if (/\bpie\b|pizza|lingkaran|\bkue\b|diagram pai/.test(q)) return "pie";
+  if (/bertumpuk|\bstack/.test(q)) return "stacked";
+  if (/radar|laba.?laba|jaring/.test(q)) return "radar";
+  if (/scatter|sebaran|titik.?titik|diagram titik/.test(q)) return "scatter";
+  if (/(grafik|chart|diagram) area|area chart|\bgrafik bidang/.test(q)) return "area";
+  if (/\bgaris\b|\bline\b|\btren\b|\btrend\b/.test(q)) return "line";
+  if (/kolom|vertikal|column/.test(q)) return "column";
+  if (/batang|\bbar\b|horizontal/.test(q)) return "bar";
+  if (chartWord && /komposisi|proporsi|porsi|\bshare\b/.test(q)) return "pie";
+  return null;
+}
+
 // Cocok sebagian: kata di pertanyaan (>=4 huruf) sama dengan SATU kata dari nama region/cluster, dan hanya 1 yang punya kata itu.
 const NOT_NAME = new Set(["region", "cluster", "wilayah", "klaster", "store", "promotor", "player", "mana", "manakah", "yang", "paling", "tinggi", "rendah", "berapa", "jumlah", "total", "tanpa"]);
 function partialMatch(q: string, names: string[]): { name: string; word: string } | null {
@@ -192,9 +249,13 @@ function partialMatch(q: string, names: string[]): { name: string; word: string 
 
 function parseQuestion(raw: string, ds: Dataset): Parsed {
   const q = norm(raw);
-  const p: Parsed = { q, metrics: detectMetrics(q), dims: [], order: null, topN: null, avg: false, count: false, ask: null, reason: null, tipe: null, player: null, region: null, cluster: null, cmp: null, belumCapai: false, masukTop: false, wantChart: false, group: false };
+  const p: Parsed = { q, metrics: detectMetrics(q), dims: [], order: null, topN: null, avg: false, count: false, ask: null, reason: null, tipe: null, player: null, region: null, cluster: null, cmp: null, belumCapai: false, masukTop: false, wantChart: false, group: false, chartKind: null, daily: false, byReason: false };
 
-  p.wantChart = /grafik|chart|diagram|visualis|\bplot\b|\bbar\b/.test(q);
+  const chartWord = /grafik|chart|diagram|visualis|\bplot\b/.test(q);
+  p.chartKind = detectKind(q, chartWord);
+  p.wantChart = chartWord || p.chartKind !== null;
+  p.daily = /per hari|harian|tiap hari|setiap hari|per tanggal|hari ke hari|\btren\b|\btrend\b|perkembangan/.test(q);
+  p.byReason = /per jenis|jenis anomali|jenis-jenis|kategori anomali|macam anomali|penyebab|komposisi anomali|proporsi anomali|per kategori/.test(q);
   p.group = p.wantChart || /\bper\b|tiap|setiap|masing.?masing|\bby\b|bandingkan|perbandingan|dibandingkan/.test(q);
 
   // dimensi
@@ -278,6 +339,8 @@ export const SUGGESTIONS = [
   "Siapa 5 promotor dengan GAR tertinggi?",
   "Berapa total promotor In Store dan Out Store?",
   "Buat grafik NCA vs target per region",
+  "Grafik pie komposisi anomali per jenis",
+  "Grafik garis tren anomali per hari",
   "Buat PPT status achieve per region",
 ];
 
@@ -352,8 +415,8 @@ function rankingSection(title: string, dim: Dim, groups: Group[], mk: MetricKey,
     head: ["#", DIM_LABEL[dim], M.label + (p.avg && (mk === "gar" || mk === "nca") ? " (rata-rata)" : ""), ...extraCols.head],
     rows: shown.map((r, i) => [String(i + 1), r.g.label, M.f(r.v), ...extraCols.cell(r.a, r.g)]),
     chart: !shown.length ? undefined : mk === "ach"
-      ? { labels: shown.map((r) => r.g.label), series: [{ name: "NCA", values: shown.map((r) => r.a.nca) }, { name: "Target", values: shown.map((r) => r.a.tgt) }], fmt: "num" }
-      : { labels: shown.map((r) => r.g.label), series: [{ name: M.label, values: shown.map((r) => Math.round((r.v as number) * 10) / 10) }], fmt: mk === "pctAnomali" || mk === "pctCapai" ? "pct" : "num" },
+      ? { kind: "column" as ChartKind, labels: shown.map((r) => r.g.label), series: [{ name: "NCA", values: shown.map((r) => r.a.nca) }, { name: "Target", values: shown.map((r) => r.a.tgt) }], fmt: "num" }
+      : { kind: "bar" as ChartKind, labels: shown.map((r) => r.g.label), series: [{ name: M.label, values: shown.map((r) => Math.round((r.v as number) * 10) / 10) }], fmt: mk === "pctAnomali" || mk === "pctCapai" ? "pct" : "num" },
   };
   return { sec, top: sorted };
 }
@@ -363,6 +426,7 @@ export function answerQuestion(raw: string, ds: Dataset, scope?: string): Answer
   const parsed = ds.people.length && String(raw || "").trim() ? parseQuestion(raw, ds) : null;
   if (parsed?.note) a.interpretasi = a.interpretasi ? parsed.note + " " + a.interpretasi : parsed.note;
   if (parsed?.wantChart) a.wantChart = true;
+  if (parsed?.chartKind) a.chartKind = parsed.chartKind;
   return a;
 }
 
@@ -393,6 +457,10 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
     if (needTs && !ds.nTs) return { text: `Anomali "${REASON_LABEL[p.reason]}" dihitung dari data Timestamp, dan CSV yang di-upload belum berisi baris Timestamp, jadi belum bisa dijawab.` };
     if (needAb && !ds.nAb) return { text: `Anomali "${REASON_LABEL[p.reason]}" dihitung dari data Absensi, dan CSV yang di-upload belum berisi baris Absensi, jadi belum bisa dijawab.` };
   }
+
+  // 1a) tren harian & komposisi anomali per jenis (biasanya untuk grafik garis / pie)
+  if (p.byReason && !p.dims.length) return reasonBreakdownAnswer(p, people, scopeNote);
+  if (p.daily && (!p.dims.length || /per hari|harian|tiap hari|setiap hari|per tanggal|hari ke hari/.test(p.q))) return dailyAnswer(p, people, ds, scopeNote);
 
   // 1b) status / proyeksi achieve target
   if (isStatusIntent(p)) return statusAnswer(p, people, ds, scopeNote);
@@ -515,7 +583,7 @@ function statusAnswer(p: Parsed, people: Person[], ds: Dataset, scopeNote: strin
     if (gs.length > 1) sections.push({
       title: `Status per ${splitDim}`, head: [splitDim === "region" ? "Region" : "Cluster", "NCA", "Target", "Capai", ...(per && !done ? ["Proyeksi"] : []), "Status"],
       rows: gs.slice(0, 15).map(({ g, x }) => [g.label, fmt(x.nca), fmt(x.tgt), pct(x.ach), ...(per && !done ? [pct(x.projPct)] : []), verdict(x, done)]),
-      chart: { labels: gs.slice(0, 15).map(({ g }) => g.label), series: [{ name: "NCA", values: gs.slice(0, 15).map(({ x }) => x.nca) }, { name: "Target", values: gs.slice(0, 15).map(({ x }) => x.tgt) }], fmt: "num" },
+      chart: { kind: "column", labels: gs.slice(0, 15).map(({ g }) => g.label), series: [{ name: "NCA", values: gs.slice(0, 15).map(({ x }) => x.nca) }, { name: "Target", values: gs.slice(0, 15).map(({ x }) => x.tgt) }], fmt: "num" },
     });
   }
   const catatan = [
@@ -524,6 +592,57 @@ function statusAnswer(p: Parsed, people: Person[], ds: Dataset, scopeNote: strin
     per && per.partialStart ? "Data dimulai bukan dari awal bulan; proyeksi mengasumsikan NCA tetap dihitung sejak tanggal 1." : "",
   ].filter(Boolean).join(" ");
   return { text: lines.join("\n") + scopeNote, interpretasi: catatan, sections };
+}
+
+// ── tren harian (grafik garis) ──
+const tglPendek = (d: string) => { const [, m, dd] = d.split("-").map(Number); return `${dd} ${BULAN[m - 1]}`; };
+function dailyAnswer(p: Parsed, people: Person[], ds: Dataset, scopeNote: string): Answer {
+  const per = new Map<string, { active: number; flagPeople: number; flagRows: number }>();
+  for (const x of people) {
+    for (const d of x.dayList) { const r = per.get(d) || { active: 0, flagPeople: 0, flagRows: 0 }; r.active++; per.set(d, r); }
+    for (const d of Object.keys(x.dayFlag)) {
+      const v = p.reason ? x.dayFlag[d][p.reason] || 0 : x.dayFlag[d]._all;
+      if (v > 0) { const r = per.get(d) || { active: 0, flagPeople: 0, flagRows: 0 }; r.flagPeople++; r.flagRows += v; per.set(d, r); }
+    }
+  }
+  const days = [...per.keys()].sort();
+  if (!days.length) return { text: "Belum ada tanggal yang bisa dibaca dari data untuk membuat tren harian." };
+  const rows = days.map((d) => ({ d, ...per.get(d)! }));
+  const wantActive = /aktif|hadir|masuk kerja/.test(p.q) && !/anomal|janggal|bermasalah/.test(p.q);
+  const wantPct = /persen|%|persentase|rasio/.test(p.q);
+  const val = (r: (typeof rows)[number]) => (wantActive ? r.active : wantPct ? (r.active ? (r.flagPeople / r.active) * 100 : 0) : r.flagRows);
+  const name = wantActive ? "Promotor aktif" : wantPct ? "% promotor beranomali" : "Kejadian anomali";
+  const vals = rows.map((r) => Math.round(val(r) * 10) / 10);
+  const hi = rows.reduce((a, r) => (val(r) > val(a) ? r : a), rows[0]);
+  const lo = rows.reduce((a, r) => (val(r) < val(a) ? r : a), rows[0]);
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const f = (n: number) => (wantPct ? pct(n) : fmt1(n));
+  const rsn = p.reason ? ` (khusus: ${REASON_LABEL[p.reason]})` : "";
+  return {
+    text: `${name}${rsn} per hari, ${tgl(days[0])} – ${tgl(days[days.length - 1])}: rata-rata ${f(avg)}/hari. Tertinggi ${tgl(hi.d)} (${f(val(hi))}), terendah ${tgl(lo.d)} (${f(val(lo))}).${scopeNote}`,
+    sections: [{
+      title: `${name} per hari`, head: ["Tanggal", "Promotor aktif", "Beranomali", "Kejadian", "% beranomali"],
+      rows: rows.map((r) => [tglPendek(r.d), fmt(r.active), fmt(r.flagPeople), fmt(r.flagRows), pct(r.active ? (r.flagPeople / r.active) * 100 : null)]),
+      chart: { kind: "line", labels: rows.map((r) => tglPendek(r.d)), series: [{ name, values: vals }], fmt: wantPct ? "pct" : "num" },
+    }],
+  };
+}
+
+// ── komposisi anomali per jenis (pie) ──
+function reasonBreakdownAnswer(p: Parsed, people: Person[], scopeNote: string): Answer {
+  const keys = Object.keys(REASON_LABEL);
+  const rows = keys.map((k) => ({ k, orang: people.filter((x) => (x.reasonRows[k] || 0) > 0).length, kej: people.reduce((a, x) => a + (x.reasonRows[k] || 0), 0) })).filter((r) => r.kej > 0).sort((a, b) => b.kej - a.kej);
+  if (!rows.length) return { text: `Tidak ada anomali yang tercatat${scopeNote}.` };
+  const tot = rows.reduce((a, r) => a + r.kej, 0);
+  return {
+    text: `${fmt(tot)} kejadian anomali, terbanyak: ${REASON_LABEL[rows[0].k]} (${fmt(rows[0].kej)}, ${pct((rows[0].kej / tot) * 100)}).${scopeNote}`,
+    interpretasi: "Satu promotor bisa punya beberapa jenis anomali, jadi kolom Promotor tidak dijumlahkan. \"GPS Toko N/A\" adalah kekurangan data toko, bukan pelanggaran promotor.",
+    sections: [{
+      title: "Komposisi anomali per jenis", head: ["Jenis anomali", "Promotor", "Kejadian", "% kejadian"],
+      rows: rows.map((r) => [REASON_LABEL[r.k], fmt(r.orang), fmt(r.kej), pct((r.kej / tot) * 100)]),
+      chart: { kind: "pie", labels: rows.map((r) => REASON_LABEL[r.k]), series: [{ name: "Kejadian", values: rows.map((r) => r.kej) }], fmt: "num" },
+    }],
+  };
 }
 
 function topAnomaliRegions(p: Parsed, people: Person[], ds: Dataset, scopeNote: string): Answer {
@@ -542,7 +661,7 @@ function topAnomaliRegions(p: Parsed, people: Person[], ds: Dataset, scopeNote: 
     text: `${uniq.length} ${dim} masuk dalam ${n} promotor dengan anomali terbanyak${rsn}: ${uniq.join(", ") || "-"}.${tie ? " Catatan: ada promotor lain dengan jumlah anomali sama persis di batas peringkat." : ""}${scopeNote}`,
     interpretasi: `Aku artikan "top ${n} anomali" = ${n} promotor dengan jumlah hari/kejadian anomali terbanyak. Kalau maksudmu ${n} ${dim} dengan promotor beranomali terbanyak, lihat tabel kedua.`,
     sections: [
-      { title: `Top ${n} promotor beranomali`, head: ["#", "Promotor", dim === "region" ? "Region" : "Cluster", "Kejadian anomali"], rows: cut.map((x, i) => [String(i + 1), x.name, dim === "region" ? x.region : `${x.cluster} (${x.region})`, fmt(val(x))]), chart: cut.length ? { labels: cut.map((x) => x.name), series: [{ name: "Kejadian anomali", values: cut.map(val) }], fmt: "num" } : undefined },
+      { title: `Top ${n} promotor beranomali`, head: ["#", "Promotor", dim === "region" ? "Region" : "Cluster", "Kejadian anomali"], rows: cut.map((x, i) => [String(i + 1), x.name, dim === "region" ? x.region : `${x.cluster} (${x.region})`, fmt(val(x))]), chart: cut.length ? { kind: "bar", labels: cut.map((x) => x.name), series: [{ name: "Kejadian anomali", values: cut.map(val) }], fmt: "num" } : undefined },
       ranked.sec,
     ],
   };
@@ -559,7 +678,10 @@ function countTotalAnswer(p: Parsed, people: Person[], ds: Dataset, scopeNote: s
     if (!ds.hasPenc) return { text: NO_PENC };
     const rated = pool.filter((x) => x.hasPenc && x.target != null);
     const miss = rated.filter((x) => x.nca < (x.target as number));
-    return { text: `${fmt(miss.length)} dari ${fmt(rated.length)} promotor${w} belum capai target NCA (${pct(rated.length ? (miss.length / rated.length) * 100 : null)}).${scopeNote}`, interpretasi: "Target NCA per masa kerja: <1 bln = 75, 1–<3 bln = 120, ≥3 bln = 150. Hanya promotor yang punya data NCA & masa kerja yang dihitung." };
+    return { text: `${fmt(miss.length)} dari ${fmt(rated.length)} promotor${w} belum capai target NCA (${pct(rated.length ? (miss.length / rated.length) * 100 : null)}).${scopeNote}`,
+      sections: [{ title: "Capaian target NCA per promotor", head: ["Status", "Promotor", "%"], rows: [["Sudah capai", fmt(rated.length - miss.length), pct(rated.length ? ((rated.length - miss.length) / rated.length) * 100 : null)], ["Belum capai", fmt(miss.length), pct(rated.length ? (miss.length / rated.length) * 100 : null)]],
+        chart: { kind: "donut", labels: ["Sudah capai", "Belum capai"], series: [{ name: "Promotor", values: [rated.length - miss.length, miss.length] }], fmt: "num" } }],
+      interpretasi: "Target NCA per masa kerja: <1 bln = 75, 1–<3 bln = 120, ≥3 bln = 150. Hanya promotor yang punya data NCA & masa kerja yang dihitung." };
   }
   if (p.cmp) {
     if (!ds.hasPenc) return { text: NO_PENC };
@@ -580,7 +702,7 @@ function countTotalAnswer(p: Parsed, people: Person[], ds: Dataset, scopeNote: s
   const dimsSplit = /in.?store.*out.?store|out.?store.*in.?store/.test(p.q) && !p.tipe;
   if (dimsSplit) {
     const g = groupBy(pool, "tipe");
-    return { text: `Total ${fmt(pool.length)} promotor${w}.${scopeNote}`, sections: [{ head: ["Tipe", "Promotor", "Beranomali"], rows: g.map((x) => { const ag = aggregate(x.people, null); return [x.label, fmt(ag.n), fmt(ag.anomaliPeople)]; }), chart: { labels: g.map((x) => x.label), series: [{ name: "Promotor", values: g.map((x) => x.people.length) }, { name: "Beranomali", values: g.map((x) => aggregate(x.people, null).anomaliPeople) }], fmt: "num" } }] };
+    return { text: `Total ${fmt(pool.length)} promotor${w}.${scopeNote}`, sections: [{ head: ["Tipe", "Promotor", "Beranomali"], rows: g.map((x) => { const ag = aggregate(x.people, null); return [x.label, fmt(ag.n), fmt(ag.anomaliPeople)]; }), chart: { kind: "column", labels: g.map((x) => x.label), series: [{ name: "Promotor", values: g.map((x) => x.people.length) }, { name: "Beranomali", values: g.map((x) => aggregate(x.people, null).anomaliPeople) }], fmt: "num" } }] };
   }
   const list = (p.metrics.length ? p.metrics : (["promotor"] as MetricKey[]));
   const parts = list.map((mk) => `${METRICS[mk].label}${p.avg && (mk === "gar" || mk === "nca") ? " rata-rata per promotor" : ""}: ${METRICS[mk].f(METRICS[mk].get(a, p.avg))}`);
