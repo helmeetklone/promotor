@@ -1,8 +1,8 @@
 // AskBot.tsx — v139. Panel chat "Tanya Data" (melayang di pojok kanan bawah). Tanpa AI/API key:
-// semua jawaban dihitung lokal di browser oleh askBot.ts dari data yang sedang tampil di dashboard.
+// semua jawaban dihitung lokal di browser oleh askEngine.ts dari data yang sedang tampil di dashboard.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle, Send, X, Sparkles } from "lucide-react";
-import { buildDataset, answerQuestion, SUGGESTIONS, type Answer } from "./askBot";
+import { buildDataset, answerQuestion, SUGGESTIONS, type Answer } from "./askEngine";
 
 type Msg = { from: "user" | "bot"; text: string; answer?: Answer };
 

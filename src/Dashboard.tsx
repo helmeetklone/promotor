@@ -1,7 +1,7 @@
 // Dashboard.tsx — v139
 //   v139: tombol "Tanya Data" (pojok kanan bawah) — chat tanya-jawab tanpa AI/API key. Pertanyaan bahasa Indonesia
 //         ("region & cluster mana GAR tertinggi?", "berapa region masuk top 3 anomali?", "berapa promotor belum capai target?")
-//         dijawab lokal dari data yang sedang tampil (ikut filter Region/Cluster/Status). Kode: src/askBot.ts (mesin) + src/AskBot.tsx (UI).
+//         dijawab lokal dari data yang sedang tampil (ikut filter Region/Cluster/Status). Kode: src/askEngine.ts (mesin) + src/AskBot.tsx (UI).
 // Dashboard.tsx — v138
 //   v138: tab baru "Overview" (default) vs "Detail" — ringkasan buat presentasi: kartu KPI (NCA vs target, % promotor capai target,
 //         % anomali), NCA per Region (bar), Top 5 promotor (klik → detail). Tab "Detail" = tampilan lengkap lama.

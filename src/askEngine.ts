@@ -1,4 +1,4 @@
-// askBot.ts — v139. Mesin "Tanya Data" tanpa AI/API key: membaca pertanyaan bahasa Indonesia santai,
+// askEngine.ts — v139. Mesin "Tanya Data" tanpa AI/API key: membaca pertanyaan bahasa Indonesia santai,
 // lalu menghitung jawabannya dari data yang SEDANG tampil di dashboard (hasil processTimestamp/processAbsensi).
 // Murni fungsi (tanpa React) supaya gampang dites. Semua angka dihitung ulang dari baris data, bukan dikarang.
 //
@@ -11,7 +11,7 @@ export type Person = {
   hasPenc: boolean; gar: number; nca: number; fresh: number; good: number; bad: number; unid: number;
   days: number; rows: number; flagRows: number; reasonRows: Record<string, number>;
 };
-export type Dataset = { people: Person[]; regions: string[]; clusters: string[]; hasPenc: boolean; nRows: number; nTs: number; nAb: number };
+export type Dataset = { people: Person[]; regions: string[]; clusters: string[]; hasPenc: boolean; nRows: number; nTs: number; nAb: number; period: { min: string; max: string } | null };
 export type Section = { title?: string; head: string[]; rows: string[][] };
 export type Answer = { text: string; interpretasi?: string; sections?: Section[]; chips?: string[] };
 
@@ -39,11 +39,28 @@ function rowReasons(r: any): string[] {
   return out;
 }
 
+// Tanggal baris → "YYYY-MM-DD" WIB. Tanggal Excel yang terbaca UTC (mis. 2026-08-31T16:59:48Z = 1 Sep 00:00 WIB)
+// digeser +7 jam lalu dibulatkan ke jam terdekat (selisih detik di file sumber), sama seperti fmtTanggal di dashboard.
+function wibDay(v: any): string | null {
+  if (!v) return null;
+  const s = String(v);
+  if (/T/.test(s) && /(Z|[+-]\d\d:?\d\d)$/.test(s)) {
+    const t = Date.parse(s);
+    if (!isFinite(t)) return null;
+    const hr = 3600000;
+    return new Date(Math.round((t + 7 * hr) / hr) * hr).toISOString().slice(0, 10);
+  }
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
+}
+
 export function buildDataset(tsAll: any[], abAll: any[], getTarget: (tenure: number) => number | null): Dataset {
   const map = new Map<string, Person>();
   const days = new Map<string, Set<string>>();
   const rows = [...(tsAll || []), ...(abAll || [])];
+  let minD: string | null = null, maxD: string | null = null;
   for (const r of rows) {
+    const d = wibDay(r.date);
+    if (d) { if (!minD || d < minD) minD = d; if (!maxD || d > maxD) maxD = d; }
     if (!r.employee_id || r.employee_id === "-") continue;
     let p = map.get(r.employee_id);
     if (!p) {
@@ -61,7 +78,7 @@ export function buildDataset(tsAll: any[], abAll: any[], getTarget: (tenure: num
       p.hasPenc = true; p.gar = pc.ncaGAR || 0; p.nca = pc.ncaNCA || 0; p.fresh = pc.ncaFresh || 0;
       p.good = pc.ncaGoodSRC || 0; p.bad = pc.ncaBadSRC || 0; p.unid = pc.ncaUnidentified || 0;
     }
-    if (r.date) days.get(r.employee_id)!.add(String(r.date).slice(0, 10));
+    if (r.date) { const d = wibDay(r.date); if (d) days.get(r.employee_id)!.add(d); }
     p.rows++;
     const why = rowReasons(r);
     if (why.length) { p.flagRows++; why.forEach((k) => { p.reasonRows[k] = (p.reasonRows[k] || 0) + 1; }); }
@@ -75,7 +92,7 @@ export function buildDataset(tsAll: any[], abAll: any[], getTarget: (tenure: num
     if (!p.cluster) p.cluster = "Tanpa Cluster";
   }
   return {
-    people, nRows: rows.length, nTs: (tsAll || []).length, nAb: (abAll || []).length, hasPenc: people.some((p) => p.hasPenc),
+    people, nRows: rows.length, nTs: (tsAll || []).length, nAb: (abAll || []).length, period: minD && maxD ? { min: minD, max: maxD } : null, hasPenc: people.some((p) => p.hasPenc),
     regions: [...new Set(people.map((p) => p.region))], clusters: [...new Set(people.map((p) => p.cluster))],
   };
 }
@@ -252,6 +269,7 @@ export const SUGGESTIONS = [
   "Region dan cluster mana yang paling tinggi GAR-nya?",
   "Berapa region yang masuk top 3 anomali?",
   "Region mana yang anomalinya paling banyak?",
+  "Kira-kira region mana yang achieve target bulan ini?",
   "Berapa promotor yang belum capai target NCA?",
   "Siapa 5 promotor dengan GAR tertinggi?",
   "Berapa total promotor In Store dan Out Store?",
@@ -341,6 +359,9 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
     if (needAb && !ds.nAb) return { text: `Anomali "${REASON_LABEL[p.reason]}" dihitung dari data Absensi, dan CSV yang di-upload belum berisi baris Absensi, jadi belum bisa dijawab.` };
   }
 
+  // 1b) status / proyeksi achieve target
+  if (isStatusIntent(p)) return statusAnswer(p, people, ds, scopeNote);
+
   // 2) "berapa region yang masuk top N anomali"
   if (p.masukTop && p.topN && p.dims.some((d) => d === "region" || d === "cluster") && (primary === "anomali" || primary === "kejadian" || primary === "pctAnomali" || !primary)) {
     return topAnomaliRegions(p, people, ds, scopeNote);
@@ -380,6 +401,93 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
   if (maybe) return maybe.length === 1 ? profileAnswer(maybe[0]) : { text: `Ada ${maybe.length} promotor yang cocok. Maksudmu yang mana?`, sections: [{ head: ["Nama", "Wilayah", "ID"], rows: maybe.slice(0, 8).map((x) => [x.name, `${x.cluster} · ${x.region}`, x.id]) }] };
 
   return { text: "Maaf, aku belum paham pertanyaan itu. Aku bisa jawab soal GAR, NCA, target, jumlah promotor, dan anomali — per region, cluster, tipe, atau per promotor. Coba salah satu contoh ini:", chips: SUGGESTIONS };
+}
+
+// ── status & proyeksi "achieve target" ──
+const STATUS_STRONG = /achieve|achiev|on.?track|bakal|prediksi|proyeksi|perkiraan|forecast|estimasi|kira.?kira|kira2|lolos target/;
+const STATUS_WEAK = /(sudah|udah|telah) (capai|tercapai|mencapai)|capai (atau|apa)|tercapai (atau|apa)|(akan|bisa|mampu) (capai|mencapai)/;
+function isStatusIntent(p: Parsed): boolean {
+  return STATUS_STRONG.test(p.q) || (STATUS_WEAK.test(p.q) && !p.count);
+}
+
+const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const tgl = (d: string) => { const [y, m, dd] = d.split("-").map(Number); return `${dd} ${BULAN[m - 1]} ${y}`; };
+
+// Posisi periode berjalan, dibaca dari tanggal terakhir di data: hari ke-berapa dari berapa hari sebulan.
+function periodInfo(ds: Dataset): { elapsed: number; total: number; remaining: number; frac: number; text: string; partialStart: boolean } | null {
+  if (!ds.period) return null;
+  const [y, m, d] = ds.period.max.split("-").map(Number);
+  const total = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const elapsed = Math.min(d, total);
+  const startsLate = ds.period.min.slice(0, 7) === ds.period.max.slice(0, 7) && Number(ds.period.min.slice(8, 10)) > 3;
+  return { elapsed, total, remaining: total - elapsed, frac: elapsed / total, partialStart: startsLate,
+    text: `data ${tgl(ds.period.min)} – ${tgl(ds.period.max)} (hari ke-${elapsed} dari ${total} di ${BULAN[m - 1]} ${y})` };
+}
+
+type Ach = { n: number; rated: number; nca: number; tgt: number; ach: number | null; capai: number; proj: number | null; projPct: number | null };
+function achOf(people: Person[], frac: number | null): Ach {
+  const rated = people.filter((x) => x.hasPenc && x.target != null);
+  const nca = rated.reduce((a, x) => a + x.nca, 0);
+  const tgt = rated.reduce((a, x) => a + (x.target as number), 0);
+  const proj = frac && frac > 0 ? nca / frac : null;
+  return { n: people.length, rated: rated.length, nca, tgt, ach: tgt ? (nca / tgt) * 100 : null, capai: rated.filter((x) => x.nca >= (x.target as number)).length,
+    proj, projPct: proj != null && tgt ? (proj / tgt) * 100 : null };
+}
+function verdict(a: Ach, done: boolean): string {
+  if (a.ach == null) return "-";
+  if (a.ach >= 100) return "Sudah achieve";
+  if (done) return "Belum achieve";
+  return a.projPct != null && a.projPct >= 100 ? "Diperkirakan achieve" : "Diperkirakan belum";
+}
+
+function statusAnswer(p: Parsed, people: Person[], ds: Dataset, scopeNote: string): Answer {
+  if (!ds.hasPenc) return { text: NO_PENC };
+  const per = periodInfo(ds);
+  const done = !!per && per.remaining === 0;
+  const frac = per ? per.frac : null;
+  const a = achOf(people, frac);
+  if (!a.rated) return { text: "Belum ada promotor dengan data NCA dan masa kerja yang bisa dibandingkan dengan target." };
+  const name = p.cluster ? `Cluster ${p.cluster}` : p.region ? `Region ${p.region}` : p.tipe ? tipeLabel(p.tipe) : p.player || "Nasional";
+  const gap = Math.max(0, a.tgt - a.nca);
+  const v = verdict(a, done);
+
+  const lines: string[] = [];
+  lines.push(`${name}: ${v.toUpperCase()}. NCA ${fmt(a.nca)} dari target ${fmt(a.tgt)} (${pct(a.ach)}); ${fmt(a.capai)} dari ${fmt(a.rated)} promotor sudah capai target masing-masing.`);
+  if (per && !done) {
+    const proj = a.proj as number;
+    if ((a.ach as number) >= 100) lines.push(`Target sudah terlewati. Dengan laju sekarang, akhir bulan diperkirakan sekitar ${fmt(proj)} NCA (${pct(a.projPct)}).`);
+    else lines.push(`Kurang ${fmt(gap)} NCA lagi (butuh ± ${fmt1(gap / per.remaining)} NCA/hari selama ${per.remaining} hari tersisa). Dengan laju sekarang (± ${fmt1(a.nca / per.elapsed)} NCA/hari), akhir bulan diperkirakan sekitar ${fmt(proj)} NCA (${pct(a.projPct)} dari target) → ${(a.projPct as number) >= 100 ? "diperkirakan achieve" : "diperkirakan belum achieve"}.`);
+  } else if (per && done && gap > 0) lines.push(`Periode sudah lengkap (sampai ${tgl(ds.period!.max)}); kurang ${fmt(gap)} NCA dari target.`);
+
+  // Pertanyaan "region/cluster mana yang achieve?" → buka dengan daftar, bukan angka nasional.
+  const listMode = !p.region && !p.cluster && !p.tipe && !p.player && p.dims.some((d) => d === "region" || d === "cluster");
+  if (listMode) {
+    const d: Dim = p.dims.includes("cluster") && !p.dims.includes("region") ? "cluster" : "region";
+    const gs = groupBy(people, d).map((g) => ({ g, x: achOf(g.people, frac) })).filter((r) => r.x.rated);
+    const ok = gs.filter((r) => (r.x.ach as number) >= 100), no = gs.filter((r) => (r.x.ach as number) < 100);
+    const likely = no.filter((r) => !done && (r.x.projPct as number) >= 100);
+    lines.length = 0;
+    lines.push(`${ok.length} dari ${gs.length} ${d} sudah achieve: ${ok.map((r) => r.g.label).join(", ") || "-"}.`);
+    if (no.length) lines.push(`Belum achieve: ${no.map((r) => `${r.g.label} (${pct(r.x.ach)})`).join(", ")}.`);
+    if (likely.length) lines.push(`Dengan laju sekarang, yang diperkirakan masih bisa achieve di akhir bulan: ${likely.map((r) => r.g.label).join(", ")}.`);
+  }
+
+  // tabel pembanding: kalau 1 region → cluster-nya; kalau nasional/cluster → per region/cluster
+  const sections: Section[] = [];
+  const splitDim: "region" | "cluster" | null = p.cluster ? null : p.region ? "cluster" : p.dims.includes("cluster") && !p.dims.includes("region") ? "cluster" : "region";
+  if (splitDim) {
+    const gs = groupBy(people, splitDim).map((g) => ({ g, x: achOf(g.people, frac) })).filter((r) => r.x.rated).sort((m, n) => (n.x.ach as number) - (m.x.ach as number));
+    if (gs.length > 1) sections.push({
+      title: `Status per ${splitDim}`, head: [splitDim === "region" ? "Region" : "Cluster", "NCA", "Target", "Capai", ...(per && !done ? ["Proyeksi"] : []), "Status"],
+      rows: gs.slice(0, 15).map(({ g, x }) => [g.label, fmt(x.nca), fmt(x.tgt), pct(x.ach), ...(per && !done ? [pct(x.projPct)] : []), verdict(x, done)]),
+    });
+  }
+  const catatan = [
+    "Target = jumlah target NCA tiap promotor menurut masa kerjanya (<1 bln 75, 1–<3 bln 120, ≥3 bln 150).",
+    per && !done ? `Perkiraan kasar: NCA "bulan berjalan" dianggap kumulatif dari tanggal 1 dan laju harian dianggap tetap; hari libur/weekend tidak diperhitungkan. Periode dibaca dari file yang di-upload: ${per.text}.` : per ? `Periode dibaca dari file yang di-upload: ${per.text}.` : "Tanggal di data tidak terbaca, jadi proyeksi akhir bulan tidak dihitung.",
+    per && per.partialStart ? "Data dimulai bukan dari awal bulan; proyeksi mengasumsikan NCA tetap dihitung sejak tanggal 1." : "",
+  ].filter(Boolean).join(" ");
+  return { text: lines.join("\n") + scopeNote, interpretasi: catatan, sections };
 }
 
 function topAnomaliRegions(p: Parsed, people: Person[], ds: Dataset, scopeNote: string): Answer {
