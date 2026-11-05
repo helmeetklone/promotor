@@ -1,3 +1,5 @@
+// Dashboard.tsx — v144
+//   v144: Tanya Data — pertanyaan "bikin chart/ppt bisa ngga?" dijawab (kemampuan + contoh yang bisa diklik), tidak lagi "belum paham".
 // Dashboard.tsx — v143
 //   v143: Tanya Data — permintaan PPT lebih longgar dibaca ("buatin ppt", "bisa bikin ppt gak?", "ppt dari data ini"); kalau topik tidak dikenali,
 //         tetap dibuatkan PPT ringkasan umum (tidak lagi berhenti dengan pesan "belum bisa").
@@ -4055,7 +4057,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v143</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v144</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>

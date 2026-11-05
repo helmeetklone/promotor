@@ -503,6 +503,10 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
   const maybe = findPersonLoose(q, ds);
   if (maybe) return maybe.length === 1 ? profileAnswer(maybe[0]) : { text: `Ada ${maybe.length} promotor yang cocok. Maksudmu yang mana?`, sections: [{ head: ["Nama", "Wilayah", "ID"], rows: maybe.slice(0, 8).map((x) => [x.name, `${x.cluster} · ${x.region}`, x.id]) }] };
 
+  // pertanyaan "bisa bikin chart/grafik/ppt?" tanpa topik → jelaskan kemampuan + beri contoh yang bisa diklik
+  if (/\b(chart|grafik|diagram|visual|visualisasi|gambar|ppt|pptx|powerpoint|presentasi|slide)\b/.test(norm(text0))) {
+    return { text: "Bisa! Aku bisa menampilkan grafik langsung di chat (batang, kolom, bertumpuk, garis, area, pie, donut, radar, scatter) dan membuat PPT dari datamu. Tinggal sebut topiknya, misalnya pilih salah satu ini:", chips: ["Grafik GAR per region", "Grafik anomali per region pie", "Grafik tren anomali per hari", "Grafik NCA vs target per region scatter", "Buat PPT status achieve per region", "Buat PPT anomali per region"] };
+  }
   return { text: "Maaf, aku belum paham pertanyaan itu. Aku bisa jawab soal GAR, NCA, target, jumlah promotor, dan anomali — per region, cluster, tipe, atau per promotor. Coba salah satu contoh ini:", chips: SUGGESTIONS, unknown: true };
 }
 
