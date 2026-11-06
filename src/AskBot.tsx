@@ -221,21 +221,21 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 w-[min(94vw,460px)] h-[min(84vh,660px)] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed bottom-4 right-4 z-40 w-[min(94vw,28.75rem)] h-[min(84vh,41.25rem)] bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-indigo-600 text-white">
         <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="w-4 h-4" /> Tanya Data</div>
         <div className="flex items-center gap-1">
           {deck.length > 0 && (
             <>
               <button type="button" disabled={busy} onClick={() => makeDeck(deck, "Ringkasan Data Promotor")}
-                className="flex items-center gap-1 text-[11px] bg-white/20 hover:bg-white/30 disabled:opacity-60 rounded px-2 py-1"><Download className="w-3 h-3" /> PPT ({deck.length})</button>
-              <button type="button" onClick={() => setDeck([])} className="text-[11px] hover:bg-indigo-500 rounded px-1.5 py-1" title="Kosongkan daftar PPT">Kosongkan</button>
+                className="flex items-center gap-1 text-[0.6875rem] bg-white/20 hover:bg-white/30 disabled:opacity-60 rounded px-2 py-1"><Download className="w-3 h-3" /> PPT ({deck.length})</button>
+              <button type="button" onClick={() => setDeck([])} className="text-[0.6875rem] hover:bg-indigo-500 rounded px-1.5 py-1" title="Kosongkan daftar PPT">Kosongkan</button>
             </>
           )}
           <button type="button" onClick={() => setOpen(false)} aria-label="Tutup" className="hover:bg-indigo-500 rounded p-1"><X className="w-4 h-4" /></button>
         </div>
       </div>
-      <div className="px-4 py-2 text-[11px] text-gray-500 bg-gray-50 border-b border-gray-100">
+      <div className="px-4 py-2 text-[0.6875rem] text-gray-500 bg-gray-50 border-b border-gray-100">
         Jawaban dihitung dari data yang sedang tampil{scope && scope !== "Nasional" ? ` (${scope})` : " (nasional)"}.
       </div>
 
@@ -260,24 +260,24 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
             <div key={i} ref={i === msgs.length - 1 ? lastRef : undefined} className="flex justify-start scroll-mt-1">
               <div className="bg-gray-100 text-gray-900 rounded-2xl rounded-bl-sm px-3 py-2 max-w-[96%] min-w-0">
                 {m.text && <div className="whitespace-pre-line">{m.text}</div>}
-                {m.answer?.interpretasi && <div className="mt-1.5 text-[11px] text-gray-500 italic">{m.answer.interpretasi}</div>}
+                {m.answer?.interpretasi && <div className="mt-1.5 text-[0.6875rem] text-gray-500 italic">{m.answer.interpretasi}</div>}
                 {m.answer?.sections?.map((sec, k) => {
                   const key = `${i}-${k}`;
                   const show = !!sec.chart && chartShown(key, m.answer!);
                   return (
                     <div key={k} className="mt-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
                       <div className="flex items-center justify-between px-2 py-1 bg-gray-50 border-b border-gray-200">
-                        <div className="text-[11px] font-semibold text-gray-600">{sec.title || "Rincian"}</div>
+                        <div className="text-[0.6875rem] font-semibold text-gray-600">{sec.title || "Rincian"}</div>
                         {sec.chart && (
                           <button type="button" onClick={() => setChartOverride((o) => ({ ...o, [key]: !show }))}
-                            className="flex items-center gap-1 text-[11px] text-indigo-700 hover:underline"><BarChart3 className="w-3 h-3" /> {show ? "Sembunyikan grafik" : "Grafik"}</button>
+                            className="flex items-center gap-1 text-[0.6875rem] text-indigo-700 hover:underline"><BarChart3 className="w-3 h-3" /> {show ? "Sembunyikan grafik" : "Grafik"}</button>
                         )}
                       </div>
                       {show && sec.chart && (() => {
                         const kind = effectiveKind(sec.chart, m.answer!.chartKind);
                         return (
                           <div className="px-1 pt-2">
-                            <div className="flex items-center gap-1.5 px-1 pb-1 text-[11px] text-gray-500">
+                            <div className="flex items-center gap-1.5 px-1 pb-1 text-[0.6875rem] text-gray-500">
                               Jenis:
                               <select value={kind} onChange={(e) => { setChartKind(sec.chart!, e.target.value as ChartKind); bumpKind((x) => x + 1); }}
                                 className="border border-gray-300 rounded px-1 py-0.5 bg-white text-gray-800">
@@ -289,7 +289,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
                         );
                       })()}
                       <div className="overflow-x-auto">
-                        <table className="w-full text-[11px]">
+                        <table className="w-full text-[0.6875rem]">
                           <thead><tr className="text-left text-gray-500">{sec.head.map((h, j) => <th key={j} className="px-2 py-1 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
                           <tbody>{sec.rows.map((r, j) => (
                             <tr key={j} className="border-t border-gray-100">{r.map((c, l) => <td key={l} className={`px-2 py-1 align-top ${c.length <= 20 ? "whitespace-nowrap" : ""}`}>{c}</td>)}</tr>
@@ -302,10 +302,10 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
                 {m.answer && !m.answer.unknown && m.question && m.answer.text && (
                   <div className="mt-2">
                     {deck.some((d) => d.answer === m.answer) ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700"><Check className="w-3 h-3" /> Ada di daftar PPT</span>
+                      <span className="inline-flex items-center gap-1 text-[0.6875rem] text-emerald-700"><Check className="w-3 h-3" /> Ada di daftar PPT</span>
                     ) : (
                       <button type="button" onClick={() => addToDeck(m.question!, m.answer!)}
-                        className="inline-flex items-center gap-1 text-[11px] text-indigo-700 hover:underline"><FilePlus2 className="w-3 h-3" /> + PPT</button>
+                        className="inline-flex items-center gap-1 text-[0.6875rem] text-indigo-700 hover:underline"><FilePlus2 className="w-3 h-3" /> + PPT</button>
                     )}
                   </div>
                 )}

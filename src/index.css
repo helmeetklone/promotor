@@ -6,3 +6,7 @@ html, body, #root {
   overflow-x: hidden;
   max-width: 100vw;
 }
+
+/* Skala otomatis untuk layar besar / browser di-zoom-out: ukuran dasar (rem) ikut membesar setelah lebar 1440px,
+   sehingga tampilan tetap terbaca di 1440px, 1920px, 2560px, dst. (Semua ukuran Tailwind berbasis rem ikut skala.) */
+html { font-size: clamp(16px, calc(16px + (100vw - 1440px) * 0.0054), 26px); }

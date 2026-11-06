@@ -1,3 +1,8 @@
+// Dashboard.tsx — v147
+//   v147: Overview selebar header (tidak lagi menyempit di tengah) dan semua teks kecil (text-[Npx]) diganti satuan rem agar ikut skala di layar besar.
+// Dashboard.tsx — v146
+//   v146: layout responsif untuk layar besar/zoom-out (mis. 2560x1600): ukuran dasar huruf (rem) naik otomatis di atas 1440px, lebar konten
+//         maks 88rem (dulu 72rem tetap), panel Tanya Data ikut skala. Di layar <=1440px tampilan tidak berubah.
 // Dashboard.tsx — v145
 //   v145: Tanya Data — tombol juga muncul di baris Overview/Detail (kanan atas), selain tombol melayang di pojok kanan bawah (kini lewat portal).
 // Dashboard.tsx — v144
@@ -380,7 +385,7 @@ function ExportButton({ onClick, small }) {
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       title="Export ke Excel"
-      className={`flex items-center gap-1 text-gray-400 hover:text-teal-700 transition-colors ${small ? "p-1" : "px-2 py-1 text-[11px] border border-gray-200 rounded-md hover:border-teal-300"}`}
+      className={`flex items-center gap-1 text-gray-400 hover:text-teal-700 transition-colors ${small ? "p-1" : "px-2 py-1 text-[0.6875rem] border border-gray-200 rounded-md hover:border-teal-300"}`}
     >
       <Download className={small ? "w-3 h-3" : "w-3 h-3"} />
       {!small && "Export"}
@@ -1178,13 +1183,13 @@ function TopList({ title, items, unit, showDays, onItemClick }) {
   if (!items || items.length === 0) return null;
   return (
     <div className="mt-2.5 pt-2 border-t border-black/5">
-      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">{title}{onItemClick ? " · klik nama untuk detail" : ""}</div>
+      <div className="text-[0.625rem] font-semibold text-gray-500 uppercase tracking-wide mb-1">{title}{onItemClick ? " · klik nama untuk detail" : ""}</div>
       <ol className="space-y-0.5">
         {items.map((it, i) => (
           <li key={it.id + i}>
             <button type="button" onClick={onItemClick ? () => onItemClick(it) : undefined} disabled={!onItemClick}
-              className={`w-full flex items-baseline justify-between gap-2 text-left text-[12px] text-gray-800 rounded px-1 -mx-1 ${onItemClick ? "hover:bg-black/5 cursor-pointer" : "cursor-default"}`}>
-              <span className="min-w-0 truncate"><b>{i + 1}.</b> <span className={onItemClick ? "underline decoration-dotted underline-offset-2" : ""}>{it.name}</span>{it.promotorType ? <span className={`ml-1 px-1 rounded text-[9px] font-semibold ${it.promotorType === "In Store Promotor" ? "bg-sky-100 text-sky-700" : "bg-orange-100 text-orange-700"}`}>{tipePromotorLabel(it.promotorType)}</span> : null}{it.player ? <span className={`ml-1 px-1 rounded text-[9px] font-semibold ${it.player === "Player" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{it.player}</span> : null}{it.sub ? <span className="text-gray-400 text-[10px]"> · {it.sub}</span> : null}</span>
+              className={`w-full flex items-baseline justify-between gap-2 text-left text-[0.75rem] text-gray-800 rounded px-1 -mx-1 ${onItemClick ? "hover:bg-black/5 cursor-pointer" : "cursor-default"}`}>
+              <span className="min-w-0 truncate"><b>{i + 1}.</b> <span className={onItemClick ? "underline decoration-dotted underline-offset-2" : ""}>{it.name}</span>{it.promotorType ? <span className={`ml-1 px-1 rounded text-[0.5625rem] font-semibold ${it.promotorType === "In Store Promotor" ? "bg-sky-100 text-sky-700" : "bg-orange-100 text-orange-700"}`}>{tipePromotorLabel(it.promotorType)}</span> : null}{it.player ? <span className={`ml-1 px-1 rounded text-[0.5625rem] font-semibold ${it.player === "Player" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>{it.player}</span> : null}{it.sub ? <span className="text-gray-400 text-[0.625rem]"> · {it.sub}</span> : null}</span>
               <span className="shrink-0 text-gray-600">{it.value.toLocaleString("id-ID")}/{it.target}{unit ? " " + unit : ""}{showDays ? ` · ${it.days} hr` : ""}</span>
             </button>
           </li>
@@ -1444,7 +1449,7 @@ function InsightsCard({ insights }) {
   if (!insights || insights.length === 0) return null;
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-amber-700 font-semibold mb-3">
+      <div className="flex items-center gap-1.5 text-[0.6875rem] uppercase tracking-wide text-amber-700 font-semibold mb-3">
         <Lightbulb className="w-3.5 h-3.5" /> Key Insights
       </div>
       <ul className="space-y-1.5">
@@ -1491,14 +1496,14 @@ function UploadBox({ onFiles, label, files, onRemove, onClearAll }) {
               <li key={f.id} className="flex items-center justify-between gap-2 bg-white border border-teal-100 rounded-lg px-2.5 py-1.5 text-xs">
                 <span className="min-w-0 truncate text-gray-700">
                   {f.name} <span className="text-gray-400">· {f.rows.length.toLocaleString("id-ID")} baris</span>
-                  {dupIds.has(f.id) && <span className="ml-1.5 px-1 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold">kemungkinan dobel</span>}
+                  {dupIds.has(f.id) && <span className="ml-1.5 px-1 rounded bg-amber-100 text-amber-700 text-[0.625rem] font-semibold">kemungkinan dobel</span>}
                 </span>
                 <button type="button" onClick={() => onRemove(f.id)} title="Hapus file ini"
                   className="shrink-0 text-gray-400 hover:text-red-600 font-bold px-1.5">✕</button>
               </li>
             ))}
           </ul>
-          <div className="mt-2 flex items-center gap-3 text-[11px]" onClick={(e) => e.stopPropagation()}>
+          <div className="mt-2 flex items-center gap-3 text-[0.6875rem]" onClick={(e) => e.stopPropagation()}>
             <span className="text-gray-400">Klik area ini atau drop lagi untuk tambah file</span>
             <button type="button" onClick={onClearAll} className="text-red-600 hover:text-red-800 font-medium">Hapus semua</button>
           </div>
@@ -1540,7 +1545,7 @@ function StatCard({ icon: Icon, label, value, tone, onClick, subtitle, unit, exp
         </div>
         <div className="min-w-0">
           <div className="text-base font-bold text-gray-900 leading-none">{value.toLocaleString("id-ID")}{unit ? ` ${unit}` : ""}</div>
-          <div className="text-[10px] text-gray-700 mt-1 truncate">{label}{subtitle ? ` • ${subtitle}` : ""}</div>
+          <div className="text-[0.625rem] text-gray-700 mt-1 truncate">{label}{subtitle ? ` • ${subtitle}` : ""}</div>
         </div>
       </button>
       {exportRows && (
@@ -1554,7 +1559,7 @@ function Panel({ title, height, children, exportData, exportFilename }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3.5 h-full flex flex-col">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-[11px] text-gray-500">{title}</div>
+        <div className="text-[0.6875rem] text-gray-500">{title}</div>
         {exportData && exportData.length > 0 && (
           <ExportButton small onClick={() => exportRowsToXlsx(exportData, exportFilename || "chart-data")} />
         )}
@@ -1575,7 +1580,7 @@ function FlaggedTable({ rows, columns, exportFilename }) {
         </div>
       )}
       <div className="overflow-x-auto w-full">
-        <table className="w-full text-[11px]">
+        <table className="w-full text-[0.6875rem]">
           <thead>
             <tr className="border-b border-gray-200 text-gray-500">
               {columns.map((c) => <th key={c.key} className="text-left px-2.5 py-2 font-medium whitespace-nowrap">{c.label}</th>)}
@@ -1606,7 +1611,7 @@ function Leaderboard({ title, data, tone, onItemClick, exportFilename }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-3.5 h-full">
       <div className="flex items-center justify-between mb-2.5">
-        <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+        <div className="flex items-center gap-1.5 text-[0.6875rem] text-gray-500">
           <Trophy className="w-3.5 h-3.5" /> {title}
         </div>
         {data.length > 0 && (
@@ -1647,7 +1652,7 @@ function GlossaryModal({ open, onClose }) {
   const Section = ({ title, children }) => (
     <div className="mb-5">
       <div className="text-sm font-bold text-gray-900 mb-1.5">{title}</div>
-      <div className="text-[13px] text-gray-700 leading-relaxed space-y-2">{children}</div>
+      <div className="text-[0.8125rem] text-gray-700 leading-relaxed space-y-2">{children}</div>
     </div>
   );
   const Term = ({ name, children }) => (
@@ -1716,7 +1721,7 @@ function GlossaryModal({ open, onClose }) {
           </Section>
 
           <Section title="Proxy Efisiensi & Efektivitas Lapangan">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[12px] text-amber-800">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[0.75rem] text-amber-800">
               ⚠ Ini <b>BUKAN</b> efektivitas penjualan/pencapaian — data target &amp; realisasi belum tersedia. Ini cuma <i>proxy</i> (pendekatan sementara) dari pola kerja yang tercatat.
             </div>
             <Term name="Efektivitas (Tingkat Kehadiran)">
@@ -1730,7 +1735,7 @@ function GlossaryModal({ open, onClose }) {
               <li><b>Per tipe</b> (In Store/Out Store, gabungan semua orang di tipe itu) — muncul di kartu "Proxy Efisiensi &amp; Efektivitas Lapangan", bisa diklik buat lihat rata-rata per Region/Cluster.</li>
               <li><b>Per individu</b> (1 orang) — muncul sebagai kolom "Efektivitas (Individu)" &amp; "Efisiensi (Individu)" di tabel detail. Angkanya SAMA di semua baris tanggal milik orang itu (dihitung sekali dari gabungan semua harinya, bukan dihitung ulang per hari — baris detail tanggal/zona/flag tetap data mentah per hari, cuma 2 kolom ini yang nempel angka ringkasan orangnya).</li>
             </ul>
-            <div className="text-[12px] text-gray-500">Contoh: periode data 15 hari, seseorang tercatat 12 hari (9 di antaranya polanya sesuai standar) → Efektivitas = 12/15 = 80%, Efisiensi = 9/12 = 75%.</div>
+            <div className="text-[0.75rem] text-gray-500">Contoh: periode data 15 hari, seseorang tercatat 12 hari (9 di antaranya polanya sesuai standar) → Efektivitas = 12/15 = 80%, Efisiensi = 9/12 = 75%.</div>
           </Section>
 
           <Section title="Selisih Cakupan: Timestamp & Absensi vs Total Promotor">
@@ -1753,7 +1758,7 @@ function GlossaryModal({ open, onClose }) {
           </Section>
 
           <Section title="Efektivitas & Efisiensi Pencapaian (Data Tagging & NCA)">
-            <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-[12px] text-teal-800">
+            <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-[0.75rem] text-teal-800">
               Beda dari section "Proxy" — ini berbasis data pencapaian AKTUAL (Tagging &amp; NCA), bukan pola kerja. Cuma promotor yang punya DUA-DUANYA data (Tagging &amp; NCA lengkap) yang dinilai.
             </div>
             <Term name="Efektif">
@@ -1850,8 +1855,8 @@ function RegionDrillModal({ open, title, rows, onClose, onDrillToCluster }) {
                       onClick={() => onDrillToCluster(g.region, c.cluster)}
                       className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-teal-50 text-left"
                     >
-                      <span className="text-[13px] text-gray-600">{c.cluster}</span>
-                      <span className="text-[13px] font-medium text-gray-700">{c.count.toLocaleString("id-ID")} promotor</span>
+                      <span className="text-[0.8125rem] text-gray-600">{c.cluster}</span>
+                      <span className="text-[0.8125rem] font-medium text-gray-700">{c.count.toLocaleString("id-ID")} promotor</span>
                     </button>
                   ))}
                 </div>
@@ -1972,11 +1977,11 @@ function EfficiencyDrillModal({ open, title, personRows, onClose }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2 px-3 py-2.5">
                   <div className="bg-indigo-50 rounded-md px-2.5 py-1.5">
-                    <div className="text-[10px] text-indigo-500 font-medium">Efektivitas</div>
+                    <div className="text-[0.625rem] text-indigo-500 font-medium">Efektivitas</div>
                     <div className="text-base font-bold text-indigo-700">{fmtPct(g.efektivitas)}</div>
                   </div>
                   <div className="bg-teal-50 rounded-md px-2.5 py-1.5">
-                    <div className="text-[10px] text-teal-600 font-medium">Efisiensi</div>
+                    <div className="text-[0.625rem] text-teal-600 font-medium">Efisiensi</div>
                     <div className="text-base font-bold text-teal-700">{fmtPct(g.efisiensi)}</div>
                   </div>
                 </div>
@@ -1986,10 +1991,10 @@ function EfficiencyDrillModal({ open, title, personRows, onClose }) {
                   {g.clusters.map((c) => (
                     <div key={c.cluster} className="px-3 py-2">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[13px] font-medium text-gray-700">{c.cluster}</span>
-                        <span className="text-[11px] text-gray-400">{c.count.toLocaleString("id-ID")} promotor</span>
+                        <span className="text-[0.8125rem] font-medium text-gray-700">{c.cluster}</span>
+                        <span className="text-[0.6875rem] text-gray-400">{c.count.toLocaleString("id-ID")} promotor</span>
                       </div>
-                      <div className="flex items-center gap-4 text-[12px] text-gray-500">
+                      <div className="flex items-center gap-4 text-[0.75rem] text-gray-500">
                         <span>Efektivitas <b className="text-indigo-700">{fmtPct(c.efektivitas)}</b></span>
                         <span>Efisiensi <b className="text-teal-700">{fmtPct(c.efisiensi)}</b></span>
                       </div>
@@ -2054,7 +2059,7 @@ function DetailModal({ detail, onClose }) {
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 gap-3">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-gray-900 truncate">{detail.title}</div>
-            <div className="text-[11px] text-gray-500">{filteredRows.length.toLocaleString("id-ID")} baris</div>
+            <div className="text-[0.6875rem] text-gray-500">{filteredRows.length.toLocaleString("id-ID")} baris</div>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             {filteredRows.length > 0 && (
@@ -2070,20 +2075,20 @@ function DetailModal({ detail, onClose }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
               {detail.summary.items.map((it) => (
                 <div key={it.label} className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500">{it.label}</div>
+                  <div className="text-[0.625rem] uppercase tracking-wide text-gray-500">{it.label}</div>
                   {it.clickable ? (
-                    <button type="button" onClick={() => setShowCek((v) => !v)} className="text-[13px] font-semibold text-amber-700 underline decoration-dotted hover:text-amber-900 text-left">
+                    <button type="button" onClick={() => setShowCek((v) => !v)} className="text-[0.8125rem] font-semibold text-amber-700 underline decoration-dotted hover:text-amber-900 text-left">
                       {it.value} {showCek ? "▲" : "▼ klik untuk detail"}
                     </button>
                   ) : (
-                    <div className="text-[13px] font-semibold text-gray-900 truncate">{it.value}</div>
+                    <div className="text-[0.8125rem] font-semibold text-gray-900 truncate">{it.value}</div>
                   )}
                 </div>
               ))}
             </div>
-            {detail.summary.note && !detail.summary.findings && <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">{detail.summary.note}</div>}
+            {detail.summary.note && !detail.summary.findings && <div className="mt-2 text-[0.6875rem] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">{detail.summary.note}</div>}
             {detail.summary.findings && (showCek || true) && (
-              <div className="mt-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2 space-y-2">
+              <div className="mt-2 text-[0.6875rem] text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2 space-y-2">
                 {!showCek ? (
                   <div>{detail.summary.note} <button type="button" className="underline" onClick={() => setShowCek(true)}>Lihat rincian</button></div>
                 ) : (
@@ -2097,11 +2102,11 @@ function DetailModal({ detail, onClose }) {
                 )}
               </div>
             )}
-            <div className="mt-2 text-[10px] text-gray-400">Tabel di bawah = riwayat aktivitas (Absensi & Timestamp) promotor ini.</div>
+            <div className="mt-2 text-[0.625rem] text-gray-400">Tabel di bawah = riwayat aktivitas (Absensi & Timestamp) promotor ini.</div>
           </div>
         )}
         {/(Comply|Campuran)/.test(detail.title) && (
-          <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-800">
+          <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-[0.6875rem] text-amber-800">
             <ul className="list-disc list-inside space-y-0.5">
               <li>Comply/Not Comply butuh 3 zona berturut-turut tanpa lompat (bukan sekadar 3 zona beda)</li>
               <li>Jarak GPS tidak menjadi parameter perhitungan</li>
@@ -2123,7 +2128,7 @@ function DetailModal({ detail, onClose }) {
           {shown.length === 0 ? (
             <div className="text-xs text-gray-500">Tidak ada data yang cocok.</div>
           ) : (
-            <table className="w-full text-[11px]">
+            <table className="w-full text-[0.6875rem]">
               <thead>
                 <tr className="border-b border-gray-200 text-gray-500">
                   {detail.columns.map((c) => <th key={c.key} className="text-left px-2.5 py-2 font-medium whitespace-nowrap">{c.label}</th>)}
@@ -2405,7 +2410,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
 
   return (
     <div className="bg-gradient-to-r from-emerald-50 to-white border border-emerald-200 rounded-xl p-5 mb-4">
-      <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">
+      <div className="text-[0.6875rem] uppercase tracking-wide text-emerald-700 font-semibold mb-3">
         Overview Total — Timestamp (Journey) + Absensi (Attendance)
       </div>
 
@@ -2419,21 +2424,21 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
           {/* 2. Total Anomali (Terindikasi) */}
           <div className="mt-4 pt-4 border-t border-emerald-200/50">
             <div className="text-base font-bold text-gray-900 mb-1">Total Anomali (Terindikasi)</div>
-            <div className="text-[11px] text-gray-500 mb-2">Promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp &amp; Absensi).</div>
+            <div className="text-[0.6875rem] text-gray-500 mb-2">Promotor dengan minimal 3 kejadian anomali (gabungan 6 kategori, Timestamp &amp; Absensi).</div>
             <div className="grid grid-cols-2 gap-4">
               <Num
                 value={<>{anomaliInStoreCount.toLocaleString("id-ID")}/{inStore.toLocaleString("id-ID")} <span className="text-sm">({pctIn}%)</span></>}
                 className="text-2xl font-bold text-amber-700 leading-none"
                 onClick={() => onDetail("Total Anomali — In Store Promotor (per Kategori)", buildCategorySummary("In Store Promotor"), categorySummaryColumns)}
               >
-                <div className="text-[11px] text-gray-700 mt-1">In Store Promotor</div>
+                <div className="text-[0.6875rem] text-gray-700 mt-1">In Store Promotor</div>
               </Num>
               <Num
                 value={<>{anomaliOutStoreCount.toLocaleString("id-ID")}/{outStore.toLocaleString("id-ID")} <span className="text-sm">({pctOut}%)</span></>}
                 className="text-2xl font-bold text-fuchsia-700 leading-none"
                 onClick={() => onDetail("Total Anomali — Out Store Promotor (per Kategori)", buildCategorySummary("Out Store Promotor"), categorySummaryColumns)}
               >
-                <div className="text-[11px] text-gray-700 mt-1">Out Store Promotor</div>
+                <div className="text-[0.6875rem] text-gray-700 mt-1">Out Store Promotor</div>
               </Num>
             </div>
           </div>
@@ -2456,8 +2461,8 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
                     { title: "Durasi Bermasalah", source: "Absensi", value: data.durasi.count, of: data.durasi.total, unit: "promotor" },
                   ].map((row) => (
                     <div key={row.title} className="px-3 py-2">
-                      <div className="text-[12px] text-gray-700">
-                        {row.title} <span className="text-[10px] text-gray-400">({row.source})</span>
+                      <div className="text-[0.75rem] text-gray-700">
+                        {row.title} <span className="text-[0.625rem] text-gray-400">({row.source})</span>
                       </div>
                       <div className="text-sm text-gray-900 mt-0.5">
                         <b className="text-base">{row.value.toLocaleString("id-ID")}</b> dari {row.of.toLocaleString("id-ID")} {row.unit}
@@ -2474,7 +2479,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 pt-4 border-t border-emerald-200/50 md:divide-x md:divide-emerald-200/50">
         <div className="md:pr-6 space-y-2.5">
           <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-            <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Timestamp</div>
+            <div className="text-[0.625rem] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Timestamp</div>
             {timestampResult ? (
               <div className="text-sm text-gray-800">
                 <span className="font-bold text-gray-900">{timestampResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
@@ -2483,7 +2488,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
             ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
           </div>
           <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-            <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Absensi</div>
+            <div className="text-[0.625rem] uppercase tracking-wide text-gray-400 font-semibold mb-1">Periode Absensi</div>
             {absensiResult ? (
               <div className="text-sm text-gray-800">
                 <span className="font-bold text-gray-900">{absensiResult.coverage.uniqueEmployees.toLocaleString("id-ID")} karyawan</span>
@@ -2492,7 +2497,7 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
             ) : <div className="text-sm text-gray-400">Data tidak tersedia</div>}
           </div>
           <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-            <div className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp & Absensi vs Total Promotor</div>
+            <div className="text-[0.625rem] uppercase tracking-wide text-gray-400 font-semibold mb-1">Selisih Cakupan: Timestamp & Absensi vs Total Promotor</div>
             {timestampResult && absensiResult ? (
               <ul className="text-sm text-gray-800 list-disc list-inside space-y-1">
                 <li>Selisih total Timestamp: <span className="font-bold text-gray-900">{onlyInAbsensi.size.toLocaleString("id-ID")} karyawan</span></li>
@@ -2506,24 +2511,24 @@ function OverviewBanner({ absensiResult, timestampResult, onDetail }) {
           {timestampResult && (
             <>
               <div className="text-sm font-bold text-gray-900 mb-1">Detail Zona Waktu (Timestamp)</div>
-              <div className="text-[11px] text-gray-500 mb-2">Klik angka untuk melihat daftar promotor.</div>
+              <div className="text-[0.6875rem] text-gray-500 mb-2">Klik angka untuk melihat daftar promotor.</div>
               <div className="grid grid-cols-2 gap-3">
                 <Num
                   value={zoneComplyIds.length.toLocaleString("id-ID")}
                   className="text-lg font-bold text-emerald-700 leading-none"
                   onClick={() => setRegionDrill({ title: "Comply (≥50% hari kerja) — per Region", rows: byZoneIds(zoneComplyIds).filter((v) => !v.zoneNotCompliant) })}
                 >
-                  <div className="text-[10px] text-gray-700 mt-1">Comply (≥50% hari)</div>
+                  <div className="text-[0.625rem] text-gray-700 mt-1">Comply (≥50% hari)</div>
                 </Num>
                 <Num
                   value={zoneNotComplyIds.length.toLocaleString("id-ID")}
                   className="text-lg font-bold text-red-700 leading-none"
                   onClick={() => setRegionDrill({ title: "Not Comply (<50% hari kerja) — per Region", rows: byZoneIds(zoneNotComplyIds).filter((v) => v.zoneNotCompliant) })}
                 >
-                  <div className="text-[10px] text-gray-700 mt-1">Not Comply (&lt;50% hari)</div>
+                  <div className="text-[0.625rem] text-gray-700 mt-1">Not Comply (&lt;50% hari)</div>
                 </Num>
               </div>
-              <ul className="text-[11px] text-gray-600 mt-2 list-disc list-inside">
+              <ul className="text-[0.6875rem] text-gray-600 mt-2 list-disc list-inside">
                 <li>Comply/Not Comply butuh 3 zona berturut-turut tanpa lompat (bukan sekadar 3 zona beda)</li>
                 <li>Jarak GPS tidak menjadi parameter perhitungan</li>
                 <li>Per orang: dilihat dari persentase hari comply — ≥50% hari comply → Comply, &lt;50% → Not Comply</li>
@@ -2756,7 +2761,7 @@ function OverviewView({ ov, sum, onPerson }) {
   const barColor = (pct) => (pct >= 100 ? "bg-emerald-500" : pct >= 70 ? "bg-blue-500" : pct >= 40 ? "bg-indigo-400" : "bg-amber-400");
   const periode = ov.minDate && ov.maxDate ? `${fmtTanggal(ov.minDate)} – ${fmtTanggal(ov.maxDate)}` : "-";
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="w-full">
       <div className="mb-4">
         <h2 className="text-2xl font-bold text-gray-900">Ringkasan Kinerja Promotor</h2>
         <div className="text-sm text-gray-500">Gambaran singkat pencapaian NCA dan kedisiplinan data. Klik nama promotor untuk lihat detail.</div>
@@ -2774,7 +2779,7 @@ function OverviewView({ ov, sum, onPerson }) {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
-          <div className="text-[11px] tracking-wide uppercase font-semibold text-gray-500">New Customer Acq. (NCA)</div>
+          <div className="text-[0.6875rem] tracking-wide uppercase font-semibold text-gray-500">New Customer Acq. (NCA)</div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-4xl font-extrabold text-gray-900">{fmtRingkas(sel.nca)}</span>
             <span className="text-sm text-gray-500">/ {fmtRingkas(sel.tgt)} target</span>
@@ -2784,7 +2789,7 @@ function OverviewView({ ov, sum, onPerson }) {
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
-          <div className="text-[11px] tracking-wide uppercase font-semibold text-gray-500">Promotor Capai Target</div>
+          <div className="text-[0.6875rem] tracking-wide uppercase font-semibold text-gray-500">Promotor Capai Target</div>
           <div className="mt-2 text-4xl font-extrabold text-gray-900">{fmtPct(sel.pctCapai)}</div>
           <div className="mt-3"><ProgressBar pct={sel.pctCapai} color="bg-emerald-500" /></div>
           <div className="mt-2 text-sm text-gray-600">{sel.capai.toLocaleString("id-ID")} dari {sel.n.toLocaleString("id-ID")} promotor</div>
@@ -2792,7 +2797,7 @@ function OverviewView({ ov, sum, onPerson }) {
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
-          <div className="text-[11px] tracking-wide uppercase font-semibold text-gray-500">Promotor dengan Anomali</div>
+          <div className="text-[0.6875rem] tracking-wide uppercase font-semibold text-gray-500">Promotor dengan Anomali</div>
           {[
             { l: "In Store", pct: sum?.pctIn, n: sum?.anomaliInStoreCount, tot: sum?.inStore, t: "In Store Promotor" },
             { l: "Out Store", pct: sum?.pctOut, n: sum?.anomaliOutStoreCount, tot: sum?.outStore, t: "Out Store Promotor" },
@@ -2821,7 +2826,7 @@ function OverviewView({ ov, sum, onPerson }) {
                   <span className="shrink-0 text-gray-700"><b>{fmtRingkas(r.nca)}</b> <span className="text-gray-400">/ {fmtRingkas(r.tgt)}</span></span>
                 </div>
                 <ProgressBar pct={r.pct} color={barColor(r.pct)} h="h-2.5" />
-                <div className="text-[11px] text-gray-400">{fmtPct(r.pct)} · {r.n.toLocaleString("id-ID")} promotor</div>
+                <div className="text-[0.6875rem] text-gray-400">{fmtPct(r.pct)} · {r.n.toLocaleString("id-ID")} promotor</div>
               </div>
             ))}
           </div>
@@ -2842,19 +2847,19 @@ function OverviewView({ ov, sum, onPerson }) {
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-lg font-bold text-emerald-600">{fmtRingkas(it.nca)}</div>
-                    <div className="text-[11px] text-gray-400">target {it.target}</div>
+                    <div className="text-[0.6875rem] text-gray-400">target {it.target}</div>
                   </div>
                 </button>
               );
             })}
           </div>
           {topList.some((x) => x.ekstrem) && (
-            <div className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">⚠ = angka ≥10× target. Rumus konsisten, tapi perlu dikonfirmasi (lihat panel "Cek Kualitas Data" di tab Detail).</div>
+            <div className="mt-3 text-[0.6875rem] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">⚠ = angka ≥10× target. Rumus konsisten, tapi perlu dikonfirmasi (lihat panel "Cek Kualitas Data" di tab Detail).</div>
           )}
         </div>
       </div>
       {ov.ekstremCount > 0 && (
-        <div className="mt-3 text-[11px] text-gray-400">{ov.ekstremCount} promotor bernilai ≥10× target ikut dihitung di total. Cek di tab Detail → Cek Kualitas Data.</div>
+        <div className="mt-3 text-[0.6875rem] text-gray-400">{ov.ekstremCount} promotor bernilai ≥10× target ikut dihitung di total. Cek di tab Detail → Cek Kualitas Data.</div>
       )}
     </div>
   );
@@ -3332,7 +3337,7 @@ function DashboardPage(props) {
 
       {/* Threshold GPS/Durasi — kontrol GLOBAL (dipakai kedua tipe promotor),
           jadi cuma 1 instance di sini, bukan diulang per kolom. */}
-      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex flex-wrap gap-3 items-center text-[11px] text-gray-500">
+      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 flex flex-wrap gap-3 items-center text-[0.6875rem] text-gray-500">
         <span className="font-semibold text-gray-700">Threshold:</span>
         <label className="flex items-center gap-1.5">Pendek &lt; (jam):
           <input type="number" value={shortHr} onChange={(e) => setShortHr(parseFloat(e.target.value) || 0)}
@@ -3351,8 +3356,8 @@ function DashboardPage(props) {
 
       {/* ═══════ Proxy Efisiensi & Efektivitas Lapangan ═══════ */}
       <div className="bg-gradient-to-r from-indigo-50 to-white border border-indigo-200 rounded-xl p-5 mb-5">
-        <div className="text-[11px] uppercase tracking-wide text-indigo-700 font-semibold mb-1">Proxy Efisiensi &amp; Efektivitas Lapangan</div>
-        <div className="text-[11px] text-gray-500 mb-4">
+        <div className="text-[0.6875rem] uppercase tracking-wide text-indigo-700 font-semibold mb-1">Proxy Efisiensi &amp; Efektivitas Lapangan</div>
+        <div className="text-[0.6875rem] text-gray-500 mb-4">
           Ini BUKAN efektivitas penjualan/pencapaian (data pencapaian belum tersedia) — ini indikator kedisiplinan dari pola kerja yang tercatat.
           Klik kartu di bawah buat lihat rinciannya per Region.
         </div>
@@ -3377,7 +3382,7 @@ function DashboardPage(props) {
                     <span className="text-sm font-semibold text-gray-900">Efektivitas</span>
                     <span className="text-2xl font-bold text-indigo-700">{fmt(efektivitas)}</span>
                   </div>
-                  <div className="text-[11px] text-gray-400 mt-0.5">Rincian: {fmt(ts?.attendanceRate)} dari Timestamp, {fmt(ab?.attendanceRate)} dari Absensi</div>
+                  <div className="text-[0.6875rem] text-gray-400 mt-0.5">Rincian: {fmt(ts?.attendanceRate)} dari Timestamp, {fmt(ab?.attendanceRate)} dari Absensi</div>
                 </div>
 
                 <div className="pt-3 border-t border-gray-100">
@@ -3385,7 +3390,7 @@ function DashboardPage(props) {
                     <span className="text-sm font-semibold text-gray-900">Efisiensi</span>
                     <span className="text-2xl font-bold text-teal-700">{fmt(efisiensi)}</span>
                   </div>
-                  <div className="text-[11px] text-gray-400 mt-0.5">Rincian: {fmt(ts?.complianceRate)} pola kunjungan sesuai, {fmt(ab?.complianceRate)} durasi wajar</div>
+                  <div className="text-[0.6875rem] text-gray-400 mt-0.5">Rincian: {fmt(ts?.complianceRate)} pola kunjungan sesuai, {fmt(ab?.complianceRate)} durasi wajar</div>
                 </div>
               </button>
             );
@@ -3402,8 +3407,8 @@ function DashboardPage(props) {
 
       {/* ═══════ Efektivitas & Efisiensi Pencapaian (Data Tagging & NCA) ═══════ */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5">
-        <div className="text-[11px] uppercase tracking-wide text-teal-700 font-semibold mb-1">Efektivitas &amp; Efisiensi Pencapaian</div>
-        <div className="text-[11px] text-gray-500 mb-4">
+        <div className="text-[0.6875rem] uppercase tracking-wide text-teal-700 font-semibold mb-1">Efektivitas &amp; Efisiensi Pencapaian</div>
+        <div className="text-[0.6875rem] text-gray-500 mb-4">
           Berbeda dari bagian "Proxy" di atas, penilaian ini berbasis data pencapaian aktual (Tagging &amp; NCA) — bukan pola kerja.
           Hanya promotor dengan kedua data tersebut lengkap yang dinilai.
         </div>
@@ -3463,12 +3468,12 @@ function DashboardPage(props) {
                             <b className="text-base text-gray-900">{c.count.toLocaleString("id-ID")}</b> orang ({pct(c.count)}%)
                           </span>
                         </div>
-                        <div className="text-[12px] text-gray-600 leading-relaxed">{c.rekomendasi}</div>
+                        <div className="text-[0.75rem] text-gray-600 leading-relaxed">{c.rekomendasi}</div>
                       </div>
                     ))}
                   </div>
                   {buckets.baruBergabung > 0 && (
-                    <div className="text-[12px] text-gray-500 mt-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    <div className="text-[0.75rem] text-gray-500 mt-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                       Selain itu, terdapat <b>{buckets.baruBergabung.toLocaleString("id-ID")}</b> promotor ({pct(buckets.baruBergabung)}%) dengan status <b>Baru Bergabung</b> (masa kerja kurang dari 3 bulan) yang belum dinilai secara ketat, karena target pencapaian untuk kelompok ini masih dalam proses penentuan.
                     </div>
                   )}
@@ -3482,7 +3487,7 @@ function DashboardPage(props) {
                     return (
                       <div className="mt-5 pt-4 border-t border-gray-100">
                         <div className="text-sm font-bold text-gray-800 mb-1">Capaian NCA vs Target</div>
-                        <div className="text-[11px] text-gray-500 mb-3">
+                        <div className="text-[0.6875rem] text-gray-500 mb-3">
                           Metrik "NCA" (dari file NCA) dibandingkan target per bulan berdasarkan masa kerja: &lt;1 bulan = 75, 1–&lt;3 bulan = 120, ≥3 bulan = 150. Semua tingkat masa kerja sudah punya target, jadi semua promotor dinilai.
                         </div>
                         <div className="text-sm text-gray-700 mb-3">
@@ -3496,7 +3501,7 @@ function DashboardPage(props) {
                                 <b className="text-base text-gray-900">{capaianNCA.tercapai.toLocaleString("id-ID")}</b> orang ({pctNCA(capaianNCA.tercapai)}%)
                               </span>
                             </div>
-                            <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA sudah memenuhi atau melebihi target sesuai masa kerja. Direkomendasikan dipertahankan.</div>
+                            <div className="text-[0.75rem] text-gray-600 leading-relaxed">Capaian NCA sudah memenuhi atau melebihi target sesuai masa kerja. Direkomendasikan dipertahankan.</div>
                             <TopList title="Top 3 capaian tertinggi (NCA/target)" items={topTercapai} onItemClick={(it) => openPerson(it, "NCA")} />
                           </div>
                           <div className="border rounded-lg p-3.5 border-red-200 bg-red-50">
@@ -3506,7 +3511,7 @@ function DashboardPage(props) {
                                 <b className="text-base text-gray-900">{capaianNCA.belumTercapai.toLocaleString("id-ID")}</b> orang ({pctNCA(capaianNCA.belumTercapai)}%)
                               </span>
                             </div>
-                            <div className="text-[12px] text-gray-600 leading-relaxed">Capaian NCA masih di bawah target sesuai masa kerja. Direkomendasikan pembinaan dan pemantauan lebih lanjut.</div>
+                            <div className="text-[0.75rem] text-gray-600 leading-relaxed">Capaian NCA masih di bawah target sesuai masa kerja. Direkomendasikan pembinaan dan pemantauan lebih lanjut.</div>
                             <TopList title="Top 3 paling jauh di bawah target (NCA/target)" items={topBelum} onItemClick={(it) => openPerson(it, "NCA")} />
                           </div>
                         </div>
@@ -3540,7 +3545,7 @@ function DashboardPage(props) {
                     return (
                       <div className="mt-5 pt-4 border-t border-gray-100">
                         <div className="text-sm font-bold text-gray-800 mb-1">Aktivitas Lapangan vs GAR</div>
-                        <div className="text-[11px] text-gray-500 mb-3">
+                        <div className="text-[0.6875rem] text-gray-500 mb-3">
                           Membandingkan seberapa sering promotor tercatat aktif (jumlah hari ada kejadian Timestamp/Absensi, sepanjang periode data) dengan hasil GAR (dari NCA, Bulan Berjalan) — untuk melihat apakah aktivitas di lapangan sejalan dengan hasil, atau ada indikasi penempatan kurang tepat. Aktivitas Tinggi = kerja ≥{AKTIVITAS_TINGGI_THRESHOLD_HARI} hari/bulan. GAR Tinggi = memenuhi target sesuai masa kerja (75/120/150).
                         </div>
                         <div className="text-sm text-gray-700 mb-3">
@@ -3555,7 +3560,7 @@ function DashboardPage(props) {
                                   <b className="text-base text-gray-900">{c.count.toLocaleString("id-ID")}</b> orang ({pctAG(c.count)}%)
                                 </span>
                               </div>
-                              <div className="text-[12px] text-gray-600 leading-relaxed">{c.rekomendasi}</div>
+                              <div className="text-[0.75rem] text-gray-600 leading-relaxed">{c.rekomendasi}</div>
                               <TopList title={c.topTitle} items={c.top} showDays onItemClick={(it) => openPerson(it, "GAR")} />
                             </div>
                           ))}
@@ -3572,7 +3577,7 @@ function DashboardPage(props) {
                     return (
                       <div className="mt-5 pt-4 border-t border-gray-100">
                         <div className="text-sm font-bold text-gray-800 mb-1">Cek Kualitas Data GAR &amp; NCA</div>
-                        <div className="text-[11px] text-gray-500 mb-3">
+                        <div className="text-[0.6875rem] text-gray-500 mb-3">
                           Dashboard memeriksa sendiri apakah angka tiap promotor masuk akal, pakai dua rumus yang berlaku di file sumber:
                           <b> NCA = Fresh IMEI + Good SRC</b> dan <b>GAR = NCA + Bad SRC + Unidentified IMEI</b>. Angka yang melanggar rumus patut dicek ke sumbernya.
                         </div>
@@ -3588,10 +3593,10 @@ function DashboardPage(props) {
                             <button key={k} type="button" disabled={cek.counts[k] === 0} onClick={() => openRule(k)}
                               className={`text-left border rounded-lg p-3 ${cek.counts[k] === 0 ? "border-gray-200 bg-white cursor-default" : "border-amber-200 bg-amber-50 hover:bg-amber-100 cursor-pointer"}`}>
                               <div className="flex items-baseline justify-between gap-2">
-                                <span className="text-[12px] font-semibold text-gray-800">{CEK_ATURAN[k]}</span>
+                                <span className="text-[0.75rem] font-semibold text-gray-800">{CEK_ATURAN[k]}</span>
                                 <span className="text-xs text-gray-500 shrink-0"><b className="text-base text-gray-900">{cek.counts[k].toLocaleString("id-ID")}</b> orang</span>
                               </div>
-                              <div className="text-[11px] text-gray-500 mt-0.5">{cek.counts[k] === 0 ? "Tidak ada temuan ✓" : "Klik untuk lihat daftarnya"}</div>
+                              <div className="text-[0.6875rem] text-gray-500 mt-0.5">{cek.counts[k] === 0 ? "Tidak ada temuan ✓" : "Klik untuk lihat daftarnya"}</div>
                             </button>
                           ))}
                         </div>
@@ -3610,7 +3615,7 @@ function DashboardPage(props) {
         <div className="md:col-start-1 md:row-start-1 mb-3 md:mb-0 md:pr-5">
           <div className="text-base font-bold text-amber-700 mb-1">In Store Promotor</div>
           <div className="text-base font-bold text-gray-900 mb-0.5">Timestamp (Journey)</div>
-          <div className="text-[11px] text-gray-500 mb-2">{inStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreTs?.total.toLocaleString("id-ID") ?? 0} aktivitas</div>
+          <div className="text-[0.6875rem] text-gray-500 mb-2">{inStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreTs?.total.toLocaleString("id-ID") ?? 0} aktivitas</div>
           {inStoreTs ? (
             <div className="grid grid-cols-2 gap-2.5">
               <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={inStoreTs.anomalyCounts.zone} tone="indigo"
@@ -3627,7 +3632,7 @@ function DashboardPage(props) {
         <div className="md:col-start-2 md:row-start-1 mb-3 md:mb-0 md:pl-5">
           <div className="text-base font-bold text-fuchsia-700 mb-1">Out Store Promotor</div>
           <div className="text-base font-bold text-gray-900 mb-0.5">Timestamp (Journey)</div>
-          <div className="text-[11px] text-gray-500 mb-2">{outStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreTs?.total.toLocaleString("id-ID") ?? 0} aktivitas</div>
+          <div className="text-[0.6875rem] text-gray-500 mb-2">{outStoreTs?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreTs?.total.toLocaleString("id-ID") ?? 0} aktivitas</div>
           {outStoreTs ? (
             <div className="grid grid-cols-2 gap-2.5">
               <StatCard icon={AlertTriangle} label="#Absensi <3x/hari" value={outStoreTs.anomalyCounts.zone} tone="indigo"
@@ -3686,11 +3691,11 @@ function DashboardPage(props) {
         </div>
 
         <div className="md:col-start-1 md:pr-5 md:row-start-4">
-          <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag In Store — Timestamp ({inStoreTs?.flagged.length ?? 0}/{inStoreTs?.total ?? 0})</div>
+          <div className="text-[0.6875rem] text-gray-500 mb-2">Detail ter-flag In Store — Timestamp ({inStoreTs?.flagged.length ?? 0}/{inStoreTs?.total ?? 0})</div>
           <FlaggedTable rows={inStoreTs?.flagged || []} columns={TIMESTAMP_COLUMNS} exportFilename="instore-timestamp-detail-anomali" />
         </div>
         <div className="md:col-start-2 md:pl-5 md:row-start-4">
-          <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Out Store — Timestamp ({outStoreTs?.flagged.length ?? 0}/{outStoreTs?.total ?? 0})</div>
+          <div className="text-[0.6875rem] text-gray-500 mb-2">Detail ter-flag Out Store — Timestamp ({outStoreTs?.flagged.length ?? 0}/{outStoreTs?.total ?? 0})</div>
           <FlaggedTable rows={outStoreTs?.flagged || []} columns={TIMESTAMP_COLUMNS} exportFilename="outstore-timestamp-detail-anomali" />
         </div>
       </div>
@@ -3700,7 +3705,7 @@ function DashboardPage(props) {
 
         <div className="md:col-start-1 md:pr-5 md:row-start-1 mb-3 md:mb-0">
           <div className="text-base font-bold text-gray-900 mb-0.5">Absensi (Attendance)</div>
-          <div className="text-[11px] text-gray-500 mb-2">{inStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
+          <div className="text-[0.6875rem] text-gray-500 mb-2">{inStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {inStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {inStoreAb ? (
             <div className="grid grid-cols-2 gap-2.5">
               <StatCard icon={MapPin} label="#Toko GPS N/A" value={inStoreAb.anomalyCounts.gpsNoOutlet} tone="pink"
@@ -3714,7 +3719,7 @@ function DashboardPage(props) {
         </div>
         <div className="md:col-start-2 md:pl-5 md:row-start-1 mb-3 md:mb-0">
           <div className="text-base font-bold text-gray-900 mb-0.5">Absensi (Attendance)</div>
-          <div className="text-[11px] text-gray-500 mb-2">{outStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
+          <div className="text-[0.6875rem] text-gray-500 mb-2">{outStoreAb?.uniqueCoverage.toLocaleString("id-ID") ?? 0} promotor, {outStoreAb?.total.toLocaleString("id-ID") ?? 0} shift</div>
           {outStoreAb ? (
             <div className="grid grid-cols-2 gap-2.5">
               <StatCard icon={Clock} label="Durasi Bermasalah (Pendek/Panjang/No-Checkout)" value={outStoreAb.anomalyCounts.duration} tone="indigo"
@@ -3773,11 +3778,11 @@ function DashboardPage(props) {
         </div>
 
         <div className="md:col-start-1 md:pr-5 md:row-start-4">
-          <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag In Store — Absensi ({inStoreAb?.flagged.length ?? 0}/{inStoreAb?.total ?? 0})</div>
+          <div className="text-[0.6875rem] text-gray-500 mb-2">Detail ter-flag In Store — Absensi ({inStoreAb?.flagged.length ?? 0}/{inStoreAb?.total ?? 0})</div>
           <FlaggedTable rows={inStoreAb?.flagged || []} columns={ABSENSI_COLUMNS} exportFilename="instore-absensi-detail-anomali" />
         </div>
         <div className="md:col-start-2 md:pl-5 md:row-start-4">
-          <div className="text-[11px] text-gray-500 mb-2">Detail ter-flag Out Store — Absensi ({outStoreAb?.flagged.length ?? 0}/{outStoreAb?.total ?? 0})</div>
+          <div className="text-[0.6875rem] text-gray-500 mb-2">Detail ter-flag Out Store — Absensi ({outStoreAb?.flagged.length ?? 0}/{outStoreAb?.total ?? 0})</div>
           <FlaggedTable rows={outStoreAb?.flagged || []} columns={ABSENSI_COLUMNS} exportFilename="outstore-absensi-detail-anomali" />
         </div>
       </div>
@@ -3815,7 +3820,7 @@ class DashboardErrorBoundary extends React.Component {
             <div className="text-sm text-gray-600 mb-4">
               Kemungkinan ada baris data dengan format yang tidak terduga. Screenshot detail teknis di bawah dan kirimkan untuk diperbaiki.
             </div>
-            <pre className="text-left text-[11px] bg-gray-100 rounded p-3 overflow-auto max-h-64 whitespace-pre-wrap">
+            <pre className="text-left text-[0.6875rem] bg-gray-100 rounded p-3 overflow-auto max-h-64 whitespace-pre-wrap">
               {String(this.state.error?.stack || this.state.error?.message || this.state.error)}
             </pre>
             <button
@@ -3950,7 +3955,7 @@ export default function Dashboard() {
           <div className="text-sm text-gray-600">Memproses data, mohon tunggu sebentar...</div>
         </div>
       )}
-      <div className="max-w-6xl mx-auto px-4 py-6 w-full min-w-0">
+      <div className="max-w-[88rem] mx-auto px-4 py-6 w-full min-w-0">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-bold">Dashboard Anomali Lapangan</h1>
           <div className="flex items-center gap-3">
@@ -3999,7 +4004,7 @@ export default function Dashboard() {
           <>
             {rawRows && (
               <div className="flex flex-wrap items-center gap-3 mb-4 bg-white border border-gray-200 rounded-xl px-4 py-3">
-                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tampilan:</span>
+                <span className="text-[0.6875rem] font-semibold text-gray-500 uppercase tracking-wide">Tampilan:</span>
                 {regionOptions.length > 0 && (
                   <>
                     <label className="flex items-center gap-1.5 text-xs text-gray-700">
@@ -4042,7 +4047,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => { setSelectedRegion("Semua"); setSelectedCluster("Semua"); setSelectedStatus("Semua"); }}
-                    className="text-[11px] text-teal-700 hover:underline"
+                    className="text-[0.6875rem] text-teal-700 hover:underline"
                   >
                     Reset ke Nasional
                   </button>
@@ -4059,7 +4064,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v145</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v147</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
