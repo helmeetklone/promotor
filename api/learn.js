@@ -10,7 +10,7 @@ import { get, put } from "@vercel/blob";
 
 const PATH = "tanya-data/knowledge.json";
 const RE_FROM = /^[a-z0-9][a-z0-9 .\-]{1,39}$/;
-const RE_TO = /^(region|cluster) [a-z0-9][a-z0-9 .\-]{1,60}$/;
+const RE_TO = /^((region|cluster) [a-z0-9][a-z0-9 .\-]{1,60}|[a-z][a-z0-9\-]{2,24})$/;   // "region x" / "cluster y" atau satu kata baku (mis. omset → nca)
 const MAX_LESSONS = 300;
 const MAX_QUESTIONS = 200;
 

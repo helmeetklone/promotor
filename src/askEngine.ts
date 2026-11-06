@@ -154,8 +154,8 @@ export type Alt = { label: string; question: string; lesson?: Lesson };
 const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Padanan nama wilayah bawaan (bahasa Indonesia / singkatan / ejaan lain → nama region di data).
 const ALIASES: [RegExp, string][] = [
-  [/\b(sumatera|sumatra) utara\b|\bnorth(ern)? sumater?a\b|\bsumut\b/g, "northern sumatra"],
-  [/\b(sumatera|sumatra) selatan\b|\bsouth(ern)? sumater?a\b|\bsumsel\b/g, "southern sumatra"],
+  [/\b(sumatera|sumatra) utara\b|\bnorth(ern)? sumate?ra\b|\bsumut\b/g, "northern sumatra"],
+  [/\b(sumatera|sumatra) selatan\b|\bsouth(ern)? sumate?ra\b|\bsumsel\b/g, "southern sumatra"],
   [/\bjawa barat\b|\bjabar\b/g, "west java"],
   [/\bjawa tengah\b|\bjateng\b/g, "central java"],
   [/\bjawa timur\b|\bjatim\b/g, "east java"],
@@ -469,6 +469,80 @@ function rankingSection(title: string, dim: Dim, groups: Group[], mk: MetricKey,
   return { sec, top: sorted };
 }
 
+// ── perpustakaan ejaan: nama wilayah (ID/EN/singkatan/salah ketik) + kata kunci pertanyaan ──
+const REGION_PHRASES: Record<string, string[]> = {
+  "northern sumatra": ["sumatera utara", "sumatra utara", "north sumatra", "north sumatera", "northern sumatera", "norther sumatra"],
+  "southern sumatra": ["sumatera selatan", "sumatra selatan", "south sumatra", "south sumatera", "southern sumatera", "souther sumatra"],
+  "west java": ["jawa barat", "jawa barat raya"],
+  "central java": ["jawa tengah", "jawa tengah raya"],
+  "east java": ["jawa timur", "jawa timur raya"],
+  "bali nusra": ["bali nusa tenggara", "bali dan nusa tenggara", "nusa tenggara", "bali nusantara"],
+  "jakarta banten": ["dki jakarta", "jakarta dan banten", "jakarta banten raya"],
+  "kalimantan": ["borneo"],
+  "sulawesi": ["celebes"],
+};
+export const KEYWORDS = ["anomali", "promotor", "region", "cluster", "tertinggi", "terendah", "terbanyak", "tersedikit", "persen", "persentase", "achieve", "proyeksi", "target", "grafik", "ceritakan", "storytelling", "kenapa", "mengapa", "berapa", "jumlah", "bandingkan", "perbandingan", "capai", "tercapai", "kejadian", "komposisi", "penyebab", "harian", "total", "nca", "gar", "fresh", "rata", "presentasi", "pptx"];
+
+const personTok = new WeakMap<Dataset, Set<string>>();
+function personTokens(ds: Dataset): Set<string> {
+  let t = personTok.get(ds);
+  if (!t) { t = new Set(); ds.people.forEach((x) => norm(x.name).split(/[\s-]+/).forEach((w) => { if (w.length >= 3) t!.add(w); })); personTok.set(ds, t); }
+  return t;
+}
+// Apakah pertanyaan menyebut nama promotor? (supaya tidak ikut disimpan sebagai pola yang dibagikan)
+export function mentionsPerson(raw: string, ds: Dataset): boolean {
+  const pt = personTokens(ds);
+  const structural = new Set<string>([...KEYWORDS, ...NOT_NAME, ...STOP, ...NAME_SKIP, ...ds.regions.flatMap((r) => norm(r).split(/[\s-]+/)), ...ds.clusters.flatMap((c) => norm(c).split(/[\s-]+/))]);
+  return norm(raw).split(" ").some((w) => w.length >= 4 && pt.has(w) && !structural.has(w));
+}
+
+function autoCorrect(q0: string, ds: Dataset): { q: string; fixes: Lesson[] } {
+  const fixes: Lesson[] = [];
+  let toks = q0.split(" ").filter(Boolean);
+  // a) frasa wilayah (1–3 kata) yang mirip nama/alias wilayah → nama baku
+  for (const n of [3, 2, 1]) {
+    for (let i = 0; i + n <= toks.length; i++) {
+      const gram = toks.slice(i, i + n).join(" ");
+      if (gram.length < 6) continue;
+      // nama yang sudah benar (baku, alias, atau region nyata di data) jangan disentuh — "southern" beda 2 huruf dari "northern"
+      const viaAlias = Object.entries(REGION_PHRASES).find(([c, al]) => al.includes(gram));
+      if (viaAlias) { fixes.push({ from: gram, to: viaAlias[0] }); toks = [...toks.slice(0, i), ...viaAlias[0].split(" "), ...toks.slice(i + n)]; continue; }
+      const exact = Object.keys(REGION_PHRASES).includes(gram) || ds.regions.some((r) => norm(r) === gram);
+      if (exact) continue;
+      let hit: string | null = null, best = 99, tie = false;
+      for (const [canon, al] of Object.entries(REGION_PHRASES)) {
+        for (const ph of [canon, ...al]) {
+          if (ph.length <= 5) continue;
+          const d = lev(gram, ph);
+          if (d <= (ph.length >= 12 ? 2 : 1)) { if (d < best) { best = d; hit = canon; tie = false; } else if (d === best && hit !== canon) tie = true; }
+        }
+      }
+      if (tie) hit = null;
+      if (hit) { fixes.push({ from: gram, to: hit }); toks = [...toks.slice(0, i), ...hit.split(" "), ...toks.slice(i + n)]; }
+    }
+  }
+  // b) salah ketik pada kata kunci (mis. "anomaly", "promotr", "tertingi") — kata nama promotor/wilayah tidak disentuh
+  const pt = personTokens(ds);
+  const regTok = new Set<string>([...ds.regions, ...ds.clusters].flatMap((r) => norm(r).split(/[\s-]+/)));
+  toks = toks.map((t) => {
+    if (t.length < 6 || KEYWORDS.includes(t) || pt.has(t) || regTok.has(t) || NOT_NAME.has(t) || STOP.has(t) || NAME_SKIP.has(t)) return t;
+    const kw = KEYWORDS.find((k) => k.length >= 5 && k[0] === t[0] && lev(t, k) <= (t.length >= 9 ? 2 : 1));
+    if (kw) { fixes.push({ from: t, to: kw }); return kw; }
+    return t;
+  });
+  return { q: toks.join(" "), fixes };
+}
+
+// Belajar dari kalimat yang diulang: pertanyaan A tak dipahami, lalu B (hampir sama, hanya 1 kata beda) berhasil → kata beda itu = padanan.
+export function learnFromRephrase(q1: string, q2: string): Lesson | null {
+  const t = (x: string) => new Set(norm(x).split(" ").filter((w) => w.length >= 2));
+  const a = t(q1), b = t(q2);
+  const A = [...a].filter((w) => !b.has(w)), B = [...b].filter((w) => !a.has(w));
+  const shared = [...a].filter((w) => b.has(w)).length;
+  if (A.length === 1 && B.length === 1 && shared >= 2 && KEYWORDS.includes(B[0]) && !KEYWORDS.includes(A[0]) && /^[a-z][a-z0-9-]{3,24}$/.test(A[0])) return { from: A[0], to: B[0] };
+  return null;
+}
+
 // Nama wilayah yang tidak ketemu persis / ambigu → minta pengguna memilih, jangan menjawab diam-diam untuk seluruh data.
 function lev(a: string, b: string): number {
   const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
@@ -504,13 +578,15 @@ function clarifyName(q: string, ds: Dataset): Answer | null {
 }
 
 export function answerQuestion(raw0: string, ds: Dataset, scope?: string, lessons?: Lesson[]): Answer {
-  const { q: raw, used } = applyLessons(raw0, lessons);
+  const { q: rawL, used } = applyLessons(raw0, lessons);
+  const { q: raw, fixes } = ds.people.length ? autoCorrect(rawL, ds) : { q: rawL, fixes: [] as Lesson[] };
   if (ds.people.length && raw) {
     const pq = parseQuestion(raw, ds);
     if (!pq.region && !pq.cluster) { const c = clarifyName(norm(raw), ds); if (c) return c; }
   }
   const a = answerCore(raw, ds, scope);
   const parsed = ds.people.length && String(raw || "").trim() ? parseQuestion(raw, ds) : null;
+  if (fixes.length) a.interpretasi = (a.interpretasi ? a.interpretasi + " " : "") + `Aku membetulkan ejaan: ${fixes.map((f) => `"${f.from}" → "${f.to}"`).join(", ")}.`;
   if (used.length) {
     const ingat = used.map((l) => `"${l.from}" = ${l.to}`).join(", ");
     a.interpretasi = (a.interpretasi ? a.interpretasi + " " : "") + `Aku ingat dari koreksimu sebelumnya: ${ingat}.`;

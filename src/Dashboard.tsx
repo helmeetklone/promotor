@@ -1,3 +1,7 @@
+// Dashboard.tsx — v153
+//   v153: Tanya Data belajar sendiri tanpa tombol Ya/Kurang: perpustakaan nama wilayah (ID/EN/singkatan/salah ketik, mis. "north sumatera", "sumatra utara"),
+//         pembetulan salah ketik kata kunci ("anomaly", "tertingi"), mencatat padanan kata dari kalimat yang diulang, dan menyimpan pola pertanyaan
+//         yang berhasil (tanpa nama promotor) ke penyimpanan bersama. Koreksi tetap bisa dengan mengetik "bukan itu".
 // Dashboard.tsx — v152
 //   v152: Tanya Data tidak lagi diam-diam menjawab untuk seluruh nasional saat nama wilayah tak dikenali: padanan bawaan (north sumatra, sumatera utara/selatan,
 //         jawa barat/tengah/timur, nusra, dst.), kata ambigu seperti "sumatra"/"java" dan ejaan mirip → ditawari pilihan (dan pilihan diingat). Cerita memakai lingkup region/cluster yang ditanya.
@@ -4079,7 +4083,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v152</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v153</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>

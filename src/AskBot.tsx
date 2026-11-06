@@ -3,12 +3,12 @@
 // Bisa menampilkan grafik di chat dan membuat PPT (askPpt.ts) dari jawaban-jawaban yang diminta.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MessageCircle, Send, X, Sparkles, BarChart3, FilePlus2, Download, Check, ThumbsUp, ThumbsDown, Brain, Trash2 } from "lucide-react";
+import { MessageCircle, Send, X, Sparkles, BarChart3, FilePlus2, Download, Check, Brain, Trash2 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ScatterChart, Scatter, CartesianGrid, XAxis, YAxis, Tooltip, Legend, LabelList, ResponsiveContainer,
 } from "recharts";
-import { buildDataset, answerQuestion, alternatives, similarQuestions, pptRequest, periodText, SUGGESTIONS, PPT_PRESET, CHART_KIND_LABEL, validKinds, effectiveKind, setChartKind, pieSlices, type Answer, type Chart, type ChartKind, type Lesson, type Alt } from "./askEngine";
+import { buildDataset, answerQuestion, alternatives, similarQuestions, learnFromRephrase, mentionsPerson, pptRequest, periodText, SUGGESTIONS, PPT_PRESET, CHART_KIND_LABEL, validKinds, effectiveKind, setChartKind, pieSlices, type Answer, type Chart, type ChartKind, type Lesson, type Alt } from "./askEngine";
 import { narrate, isStoryRequest, stripStoryWords } from "./askStory";
 import { loadLessons, saveLessons, addLesson, loadFavs, addFav, clearLearning, BUILTIN_LESSONS, BUILTIN_QUESTIONS, mergedLessons, fetchShared, pushShared } from "./askLearn";
 import { buildDeck, type DeckItem } from "./askPpt";
@@ -123,10 +123,10 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   const [busy, setBusy] = useState(false);
   const [lessons, setLessons] = useState<Lesson[]>(() => loadLessons());
   const [favs, setFavs] = useState<string[]>(() => loadFavs());
-  const [fb, setFb] = useState<Record<number, "up" | "down">>({});
   const [showLearn, setShowLearn] = useState(false);
   const [sync, setSync] = useState<"?" | "ok" | "off">("?"); // tersambung ke penyimpanan bersama di Vercel?
   const lastQ = useRef<string>("");
+  const prevUnknown = useRef<string>("");
   const lastA = useRef<Answer | null>(null);
   const [, bumpKind] = useState(0); // render ulang setelah ganti jenis grafik
   const lastRef = useRef<HTMLDivElement>(null); // awal jawaban terakhir — dibuka dari atas, bukan dari bawah
@@ -233,11 +233,6 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
     }
     void ask(a.question, a.label);
   };
-  const rate = (i: number, m: Msg, up: boolean) => {
-    setFb((f) => ({ ...f, [i]: up ? "up" : "down" }));
-    if (up) { setFavs((f) => addFav(f, m.question!)); void pushShared({ op: "fav", q: m.question! }); botSay("Siap, kuingat pertanyaan ini sebagai contoh yang tepat."); }
-    else reask(m.question!);
-  };
   const resetLearning = () => { clearLearning(); setLessons([]); setFavs([]); };
   const removeLesson = (from: string) => { setLessons((l) => { const n = l.filter((x) => x.from !== from); saveLessons(n); return n; }); void pushShared({ op: "remove", from }); };
 
@@ -268,7 +263,23 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
       // belum paham → tebak dari pertanyaan yang pernah dinilai tepat (👍) dan contoh bawaan
       const sims = similarQuestions(q, [...favs, ...BUILTIN_QUESTIONS].reverse().concat(SUGGESTIONS), 3);
       if (sims.length) { a.text = "Aku belum yakin maksudnya. Apakah salah satu ini?"; a.chips = [...sims, ...SUGGESTIONS.filter((x) => !sims.includes(x)).slice(0, 3)]; }
-    } else { lastQ.current = q; lastA.current = a; a.cerita = narrate(a, scope) || undefined; }
+      prevUnknown.current = q;
+    } else {
+      lastQ.current = q; lastA.current = a; a.cerita = narrate(a, scope) || undefined;
+      // belajar sendiri #1: kalimat sebelumnya tak dipahami, lalu diulang dengan 1 kata beda dan berhasil → catat padanannya
+      const les = prevUnknown.current ? learnFromRephrase(prevUnknown.current, q) : null;
+      prevUnknown.current = "";
+      if (les && !lessons.some((x) => x.from === les.from)) {
+        setLessons((l) => addLesson(l, les));
+        void pushShared({ op: "lesson", from: les.from, to: les.to }).then((ok) => setSync(ok ? "ok" : "off"));
+        a.interpretasi = (a.interpretasi ? a.interpretasi + " " : "") + `Aku mencatat: "${les.from}" berarti "${les.to}" (dari kalimatmu sebelumnya).`;
+      }
+      // belajar sendiri #2: pola pertanyaan yang berhasil dijawab disimpan (tanpa nama promotor) untuk menebak maksud pertanyaan serupa
+      if (!mentionsPerson(q, ds) && q.length <= 160 && !favs.includes(q)) {
+        setFavs((f) => addFav(f, q));
+        void pushShared({ op: "fav", q });
+      }
+    }
     setMsgs((m) => [...m, { from: "bot", text: a.text, answer: a, question: q }]);
   };
 
@@ -317,14 +328,14 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
         </div>
         {showLearn && (
           <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2 text-gray-700 space-y-1">
-            <div className="text-gray-500">{sync === "ok" ? "Tersimpan di server dashboard (Vercel) — permanen dan dipakai semua pengguna. Ini aturan sederhana, bukan AI." : sync === "off" ? "Penyimpanan bersama di Vercel belum tersambung, jadi hasil belajar sementara hanya di browser ini. Setelah tersambung, otomatis ikut terunggah." : "Menghubungkan ke penyimpanan…"}</div>
+            <div className="text-gray-500">{sync === "ok" ? "Bot mencatat sendiri dari percakapan (tanpa perlu klik apa pun) dan menyimpannya di server dashboard (Vercel) — permanen dan dipakai semua pengguna. Ini aturan sederhana, bukan AI. Kalau jawabannya keliru, ketik \"bukan itu\"." : sync === "off" ? "Penyimpanan bersama di Vercel belum tersambung, jadi catatan sementara hanya di browser ini. Setelah tersambung, otomatis ikut terunggah." : "Menghubungkan ke penyimpanan…"}</div>
             {BUILTIN_LESSONS.map((l) => <div key={"b" + l.from} className="text-gray-600">📌 "{l.from}" → {l.to} <span className="text-gray-400">(bawaan GitHub)</span></div>)}
-            {lessons.length === 0 && favs.length === 0 && <div>Belum ada. Kalau jawabanku kurang tepat, klik 👎 atau ketik "bukan itu" — pilihanmu kuingat.</div>}
+            {lessons.length === 0 && favs.length === 0 && <div>Belum ada catatan. Catatan muncul otomatis seiring kamu bertanya.</div>}
             {lessons.map((l) => (
               <div key={l.from} className="flex items-center justify-between gap-2"><span>"{l.from}" → {l.to}</span>
                 <button type="button" onClick={() => removeLesson(l.from)} aria-label="Hapus" className="text-gray-400 hover:text-red-600"><X className="w-3 h-3" /></button></div>
             ))}
-            {favs.length > 0 && <div className="text-gray-500">{favs.length} pertanyaan ditandai tepat (👍) — dipakai untuk menebak maksud.</div>}
+            {favs.length > 0 && <div className="text-gray-500">{favs.length} pola pertanyaan berhasil dijawab — dipakai untuk menebak maksud pertanyaan serupa (nama promotor tidak disimpan).</div>}
             {sync !== "ok" && (lessons.length > 0 || favs.length > 0) && (
               <button type="button" onClick={resetLearning} className="inline-flex items-center gap-1 text-red-600 hover:underline"><Trash2 className="w-3 h-3" /> Hapus semua dari browser ini</button>
             )}
@@ -400,17 +411,6 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
                     ) : (
                       <button type="button" onClick={() => addToDeck(m.question!, m.answer!)}
                         className="inline-flex items-center gap-1 text-[0.6875rem] text-indigo-700 hover:underline"><FilePlus2 className="w-3 h-3" /> + PPT</button>
-                    )}
-                  </div>
-                )}
-                {m.answer && !m.answer.unknown && m.question && m.answer.text && (
-                  <div className="mt-1.5 flex items-center gap-2 text-[0.6875rem] text-gray-500">
-                    {fb[i] ? <span>{fb[i] === "up" ? "Terima kasih 👍" : "Dicatat, kucoba lagi 👎"}</span> : (
-                      <>
-                        <span>Jawabannya tepat?</span>
-                        <button type="button" onClick={() => rate(i, m, true)} className="inline-flex items-center gap-1 hover:text-emerald-700"><ThumbsUp className="w-3 h-3" /> Ya</button>
-                        <button type="button" onClick={() => rate(i, m, false)} className="inline-flex items-center gap-1 hover:text-red-600"><ThumbsDown className="w-3 h-3" /> Kurang</button>
-                      </>
                     )}
                   </div>
                 )}
