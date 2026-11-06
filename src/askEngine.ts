@@ -52,7 +52,7 @@ const chosenKind = new WeakMap<Chart, ChartKind>();
 export const setChartKind = (c: Chart, k: ChartKind) => { chosenKind.set(c, k); };
 export const effectiveKind = (c: Chart, requested?: ChartKind | null): ChartKind => resolveKind(c, chosenKind.get(c) || requested || c.kind);
 export type Section = { title?: string; head: string[]; rows: string[][]; chart?: Chart };
-export type Answer = { text: string; interpretasi?: string; cerita?: string; sections?: Section[]; chips?: string[]; wantChart?: boolean; chartKind?: ChartKind; unknown?: boolean };
+export type Answer = { text: string; interpretasi?: string; cerita?: string; alts?: Alt[]; clarify?: boolean; sections?: Section[]; chips?: string[]; wantChart?: boolean; chartKind?: ChartKind; unknown?: boolean };
 
 const REASON_LABEL: Record<string, string> = {
   zona: "Absensi <3x / zona tidak berurutan", identik: "GPS identik", koordinat: "Koordinat kosong",
@@ -152,8 +152,24 @@ const hasWord = (q: string, re: RegExp) => re.test(q);
 export type Lesson = { from: string; to: string };   // kata/frasa pengguna → frasa baku yang dimengerti mesin
 export type Alt = { label: string; question: string; lesson?: Lesson };
 const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Padanan nama wilayah bawaan (bahasa Indonesia / singkatan / ejaan lain → nama region di data).
+const ALIASES: [RegExp, string][] = [
+  [/\b(sumatera|sumatra) utara\b|\bnorth(ern)? sumater?a\b|\bsumut\b/g, "northern sumatra"],
+  [/\b(sumatera|sumatra) selatan\b|\bsouth(ern)? sumater?a\b|\bsumsel\b/g, "southern sumatra"],
+  [/\bjawa barat\b|\bjabar\b/g, "west java"],
+  [/\bjawa tengah\b|\bjateng\b/g, "central java"],
+  [/\bjawa timur\b|\bjatim\b/g, "east java"],
+  [/\bnusa tenggara\b|\bntb\b|\bntt\b|(?<!bali )\bnusra\b/g, "bali nusra"],
+  [/\bsumatera\b/g, "sumatra"],
+];
+function applyAliases(q0: string): string {
+  let q = q0;
+  for (const [re, to] of ALIASES) q = q.replace(re, to);
+  for (const [, to] of ALIASES) q = q.replace(new RegExp("(" + to + ")( " + to + ")+", "g"), "$1");
+  return q.replace(/\s+/g, " ").trim();
+}
 function applyLessons(raw: string, lessons?: Lesson[]): { q: string; used: Lesson[] } {
-  let q = norm(raw);
+  let q = applyAliases(norm(raw));
   const used: Lesson[] = [];
   for (const l of [...(lessons || [])].sort((a, b) => b.from.length - a.from.length)) {
     const re = new RegExp("(^|\\s)" + escRe(l.from) + "(?=\\s|$)", "g");
@@ -262,6 +278,8 @@ function partialMatch(q: string, names: string[]): { name: string; word: string 
   return null;
 }
 
+const NAME_SKIP = new Set(["mana", "manakah", "yang", "paling", "tinggi", "rendah", "berapa", "jumlah", "total", "ya", "dong", "donk", "deh", "apa", "siapa", "dengan", "dan", "atau", "untuk", "punya", "lebih", "kurang", "banyak", "sedikit", "terbaik", "terburuk", "tertinggi", "terendah", "terbanyak", "masuk", "top", "per", "saja", "aja", "ini", "itu", "nya", "kok", "sih", "bisa", "ada", "beranomali", "anomali", "gar", "nca", "capai", "achieve", "tidak", "belum", "sudah", "udah", "bagaimana", "gimana", "bagus", "jelek", "tinggi", "rendah", "di", "ke", "dari"]);
+
 function parseQuestion(raw: string, ds: Dataset): Parsed {
   const q = norm(raw);
   const p: Parsed = { q, metrics: detectMetrics(q), dims: [], order: null, topN: null, avg: false, count: false, ask: null, reason: null, tipe: null, player: null, region: null, cluster: null, cmp: null, belumCapai: false, masukTop: false, wantChart: false, group: false, chartKind: null, daily: false, byReason: false };
@@ -338,7 +356,7 @@ function parseQuestion(raw: string, ds: Dataset): Parsed {
   // nama yang disebut setelah "region/cluster" tapi tidak ada di data → jangan diam-diam abaikan
   if (!p.region && !p.cluster) {
     const m = q.match(/\b(?:region|cluster|wilayah)\s+([a-z][a-z0-9-]{2,})/);
-    const SKIP = new Set(["mana", "manakah", "yang", "paling", "tinggi", "rendah", "berapa", "jumlah", "total", "ya", "dong", "donk", "deh", "apa", "siapa", "dengan", "dan", "atau", "untuk", "punya", "lebih", "kurang", "banyak", "sedikit", "terbaik", "terburuk", "tertinggi", "terendah", "terbanyak", "masuk", "top", "per", "saja", "aja", "ini", "itu", "nya", "kok", "sih", "bisa", "ada", "beranomali", "anomali", "gar", "nca", "capai", "achieve", "tidak", "belum", "sudah", "udah", "bagaimana", "gimana", "bagus", "jelek", "tinggi", "rendah", "di", "ke", "dari"]);
+    const SKIP = NAME_SKIP;
     if (m && !SKIP.has(m[1])) p.note = `Aku tidak menemukan "${m[1]}" sebagai region/cluster di data ini, jadi jawabannya untuk seluruh data yang tampil. Cek ejaannya, atau klik 👎 supaya kutawarkan pilihan yang mirip.`;
   }
 
@@ -451,8 +469,46 @@ function rankingSection(title: string, dim: Dim, groups: Group[], mk: MetricKey,
   return { sec, top: sorted };
 }
 
+// Nama wilayah yang tidak ketemu persis / ambigu → minta pengguna memilih, jangan menjawab diam-diam untuk seluruh data.
+function lev(a: string, b: string): number {
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function clarifyName(q: string, ds: Dataset): Answer | null {
+  const rep = (w: string, to: string) => q.replace(new RegExp("(^|\\s)" + escRe(w) + "(?=\\s|$)", "g"), "$1" + to).replace(/\b(region|cluster) \1\b/g, "$1");
+  const toks = (n: string) => norm(n).split(/[\s-]+/).filter((t) => t.length >= 3);
+  const regions = ds.regions.filter((n) => !n.startsWith("Tanpa "));
+  const clusters = ds.clusters.filter((n) => !n.startsWith("Tanpa "));
+  let w = "", cand: { kind: "region" | "cluster"; name: string }[] = [], ambiguous = false;
+  const m = q.match(/\b(?:region|cluster|wilayah)\s+([a-z][a-z0-9-]{2,})/);
+  if (m && !NAME_SKIP.has(m[1]) && !NOT_NAME.has(m[1])) {
+    const x = m[1];
+    const near = (t: string) => t === x || (x.length >= 4 && t.length >= 4 && (t.startsWith(x) || x.startsWith(t))) || (x.length >= 5 && t.length >= 5 && lev(t, x) <= 2);
+    const rg = regions.filter((n) => toks(n).some(near)).map((name) => ({ kind: "region" as const, name }));
+    const cl = clusters.filter((n) => toks(n).some(near)).map((name) => ({ kind: "cluster" as const, name }));
+    if (rg.length + cl.length) { w = x; cand = [...rg, ...cl]; }
+  }
+  if (!w) {
+    // kata yang cocok dengan >1 region (mis. "sumatra", "java") tanpa kata penjelas lain
+    for (const x of q.split(" ").filter((t) => t.length >= 4 && !NOT_NAME.has(t) && !STOP.has(t) && !NAME_SKIP.has(t))) {
+      const rg = regions.filter((n) => toks(n).includes(x));
+      if (rg.length >= 2) { w = x; cand = rg.map((name) => ({ kind: "region" as const, name })); ambiguous = true; break; }
+    }
+  }
+  if (!w || !cand.length) return null;
+  const list = cand.slice(0, 6);
+  const alts: Alt[] = list.map((c) => ({ label: `${c.kind === "region" ? "Region" : "Cluster"} ${c.name}`, question: rep(w, `${c.kind} ${norm(c.name)}`), lesson: { from: w, to: `${c.kind} ${norm(c.name)}` } }));
+  return { text: ambiguous ? `Kata "${w}" cocok dengan beberapa region. Maksudmu yang mana?` : `Aku belum menemukan "${w}" persis di data ini. Maksudmu yang mana? Pilihanmu akan kuingat.`, alts, clarify: true };
+}
+
 export function answerQuestion(raw0: string, ds: Dataset, scope?: string, lessons?: Lesson[]): Answer {
   const { q: raw, used } = applyLessons(raw0, lessons);
+  if (ds.people.length && raw) {
+    const pq = parseQuestion(raw, ds);
+    if (!pq.region && !pq.cluster) { const c = clarifyName(norm(raw), ds); if (c) return c; }
+  }
   const a = answerCore(raw, ds, scope);
   const parsed = ds.people.length && String(raw || "").trim() ? parseQuestion(raw, ds) : null;
   if (used.length) {

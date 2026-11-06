@@ -1,3 +1,6 @@
+// Dashboard.tsx — v152
+//   v152: Tanya Data tidak lagi diam-diam menjawab untuk seluruh nasional saat nama wilayah tak dikenali: padanan bawaan (north sumatra, sumatera utara/selatan,
+//         jawa barat/tengah/timur, nusra, dst.), kata ambigu seperti "sumatra"/"java" dan ejaan mirip → ditawari pilihan (dan pilihan diingat). Cerita memakai lingkup region/cluster yang ditanya.
 // Dashboard.tsx — v151
 //   v151: Tanya Data menambah ringkasan bercerita (📖 storytelling singkat) di tiap jawaban berbentuk peringkat/ringkasan/tren/komposisi;
 //         minta "ceritakan / pakai storytelling / jelaskan dengan narasi" untuk versi lebih panjang dari jawaban terakhir. Kode: src/askStory.ts.
@@ -4076,7 +4079,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v151</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v152</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>

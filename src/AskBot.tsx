@@ -263,6 +263,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
     const pr = pptRequest(q);
     if (pr) { await handlePpt(pr); return; }
     const a = safeAnswer(q);
+    if (a.clarify) { setMsgs((m) => [...m, { from: "bot", text: a.text, alts: a.alts }]); return; }
     if (a.unknown) {
       // belum paham → tebak dari pertanyaan yang pernah dinilai tepat (👍) dan contoh bawaan
       const sims = similarQuestions(q, [...favs, ...BUILTIN_QUESTIONS].reverse().concat(SUGGESTIONS), 3);
