@@ -4,9 +4,9 @@
 //   POST /api/learn {op:"lesson",from,to}   → tambah/ubah pelajaran kata → frasa baku
 //   POST /api/learn {op:"fav",q}            → catat pertanyaan yang dinilai tepat
 //   POST /api/learn {op:"remove",from}      → hapus satu pelajaran
-// Syarat: di Vercel → Storage → buat Blob store lalu hubungkan ke project ini (otomatis menambah BLOB_READ_WRITE_TOKEN).
+// Syarat: di Vercel → Storage → buat Blob store (privat) lalu hubungkan ke project ini (otomatis menambah BLOB_STORE_ID / BLOB_READ_WRITE_TOKEN).
 // Tanpa itu endpoint membalas 503 dan dashboard tetap jalan (belajar hanya tersimpan di browser).
-import { list, put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 
 const PATH = "tanya-data/knowledge.json";
 const RE_FROM = /^[a-z0-9][a-z0-9 .\-]{1,39}$/;
@@ -51,19 +51,17 @@ export function applyOp(state, body) {
 }
 
 async function load() {
-  const { blobs } = await list({ prefix: PATH, limit: 1 });
-  if (!blobs.length) return empty();
-  const r = await fetch(blobs[0].url + "?t=" + Date.now(), { cache: "no-store" });
-  if (!r.ok) return empty();
-  return sanitize(await r.json());
+  const r = await get(PATH, { access: "private", useCache: false });
+  if (!r || r.statusCode !== 200 || !r.stream) return empty();
+  try { return sanitize(JSON.parse(await new Response(r.stream).text())); } catch { return empty(); }
 }
 async function save(state) {
-  await put(PATH, JSON.stringify(state), { access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json", cacheControlMaxAge: 0 });
+  await put(PATH, JSON.stringify(state), { access: "private", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json" });
 }
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return res.status(503).json({ error: "storage_not_configured" });
+  if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.BLOB_STORE_ID) return res.status(503).json({ error: "storage_not_configured" });
   try {
     if (req.method === "GET") return res.status(200).json(await load());
     if (req.method === "POST") {

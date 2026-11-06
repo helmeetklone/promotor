@@ -1,3 +1,5 @@
+// Dashboard.tsx — v150
+//   v150: api/learn.js disesuaikan dengan Blob store privat + autentikasi baru (BLOB_STORE_ID/OIDC): akses "private", baca lewat get(), tanpa wajib BLOB_READ_WRITE_TOKEN.
 // Dashboard.tsx — v149
 //   v149: hasil belajar Tanya Data disimpan di VERCEL (api/learn.js → Vercel Blob), dipakai semua pengguna dan tidak hilang saat browser ditutup.
 //         Butuh Blob store yang dihubungkan ke project di Vercel; tanpa itu otomatis jatuh ke penyimpanan browser. (src/askKnowledge.json = isi awal opsional.)
@@ -4071,7 +4073,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v149</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v150</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
