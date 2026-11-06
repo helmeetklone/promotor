@@ -2,6 +2,7 @@
 // semua jawaban dihitung lokal di browser oleh askEngine.ts dari data yang sedang tampil di dashboard.
 // Bisa menampilkan grafik di chat dan membuat PPT (askPpt.ts) dari jawaban-jawaban yang diminta.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MessageCircle, Send, X, Sparkles, BarChart3, FilePlus2, Download, Check } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -201,11 +202,21 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   const chartShown = (key: string, a: Answer) => (key in chartOverride ? chartOverride[key] : !!a.wantChart);
 
   if (!open) {
+    // Dua pintu masuk: tombol di baris Overview/Detail (selalu terlihat, ikut scroll) + tombol melayang di pojok kanan bawah
+    // (lewat portal ke <body> supaya tidak terpengaruh container induk).
     return (
-      <button type="button" onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-full shadow-lg px-4 py-3">
-        <MessageCircle className="w-4 h-4" /> Tanya Data
-      </button>
+      <>
+        <button type="button" onClick={() => setOpen(true)}
+          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow px-3 py-1.5">
+          <MessageCircle className="w-4 h-4" /> Tanya Data
+        </button>
+        {typeof document !== "undefined" && createPortal(
+          <button type="button" onClick={() => setOpen(true)} aria-label="Buka Tanya Data"
+            style={{ position: "fixed", right: 16, bottom: 16, zIndex: 2147483000 }}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-full shadow-lg px-4 py-3">
+            <MessageCircle className="w-4 h-4" /> Tanya Data
+          </button>, document.body)}
+      </>
     );
   }
 

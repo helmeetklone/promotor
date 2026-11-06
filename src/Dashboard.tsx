@@ -1,3 +1,5 @@
+// Dashboard.tsx — v145
+//   v145: Tanya Data — tombol juga muncul di baris Overview/Detail (kanan atas), selain tombol melayang di pojok kanan bawah (kini lewat portal).
 // Dashboard.tsx — v144
 //   v144: Tanya Data — pertanyaan "bikin chart/ppt bisa ngga?" dijawab (kemampuan + contoh yang bisa diklik), tidak lagi "belum paham".
 // Dashboard.tsx — v143
@@ -4057,7 +4059,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v144</div>
+        <div className="text-center text-[10px] text-gray-300 mt-8">Dashboard v145</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
