@@ -9,7 +9,7 @@ import {
   ScatterChart, Scatter, CartesianGrid, XAxis, YAxis, Tooltip, Legend, LabelList, ResponsiveContainer,
 } from "recharts";
 import { buildDataset, answerQuestion, alternatives, similarQuestions, pptRequest, periodText, SUGGESTIONS, PPT_PRESET, CHART_KIND_LABEL, validKinds, effectiveKind, setChartKind, pieSlices, type Answer, type Chart, type ChartKind, type Lesson, type Alt } from "./askEngine";
-import { loadLessons, saveLessons, addLesson, loadFavs, addFav, clearLearning } from "./askLearn";
+import { loadLessons, saveLessons, addLesson, loadFavs, addFav, clearLearning, BUILTIN_LESSONS, BUILTIN_QUESTIONS, mergedLessons, exportLearning } from "./askLearn";
 import { buildDeck, type DeckItem } from "./askPpt";
 
 type Msg = { from: "user" | "bot"; text: string; answer?: Answer; question?: string; alts?: Alt[] };
@@ -137,7 +137,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   useEffect(() => { lastRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [msgs, open]);
 
   const safeAnswer = (q: string): Answer => {
-    try { return answerQuestion(q, ds!, scope, lessons); }
+    try { return answerQuestion(q, ds!, scope, mergedLessons(lessons)); }
     catch (e) { return { text: "Maaf, ada error saat menghitung jawabannya. Coba ubah kalimat pertanyaannya.", unknown: true }; }
   };
   const botSay = (text: string, extra?: Partial<Msg>) => setMsgs((m) => [...m, { from: "bot", text, ...extra }]);
@@ -214,6 +214,15 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
     if (up) { setFavs((f) => addFav(f, m.question!)); botSay("Siap, kuingat pertanyaan ini sebagai contoh yang tepat."); }
     else reask(m.question!);
   };
+  const [copied, setCopied] = useState("");
+  const copyLearning = async () => {
+    const txt = exportLearning(lessons, favs);
+    try { await navigator.clipboard.writeText(txt); setCopied("Tersalin. Tempel ke chat Claude supaya dimasukkan ke GitHub."); }
+    catch {
+      try { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = "tanya-data-pelajaran.json"; a.click(); setCopied("File terunduh. Kirim ke Claude supaya dimasukkan ke GitHub."); }
+      catch { setCopied("Gagal menyalin."); }
+    }
+  };
   const resetLearning = () => { clearLearning(); setLessons([]); setFavs([]); };
   const removeLesson = (from: string) => setLessons((l) => { const n = l.filter((x) => x.from !== from); saveLessons(n); return n; });
 
@@ -228,7 +237,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
     const a = safeAnswer(q);
     if (a.unknown) {
       // belum paham → tebak dari pertanyaan yang pernah dinilai tepat (👍) dan contoh bawaan
-      const sims = similarQuestions(q, [...favs].reverse().concat(SUGGESTIONS), 3);
+      const sims = similarQuestions(q, [...favs, ...BUILTIN_QUESTIONS].reverse().concat(SUGGESTIONS), 3);
       if (sims.length) { a.text = "Aku belum yakin maksudnya. Apakah salah satu ini?"; a.chips = [...sims, ...SUGGESTIONS.filter((x) => !sims.includes(x)).slice(0, 3)]; }
     } else lastQ.current = q;
     setMsgs((m) => [...m, { from: "bot", text: a.text, answer: a, question: q }]);
@@ -275,17 +284,24 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
         <div className="flex items-center justify-between gap-2">
           <span>Jawaban dihitung dari data yang sedang tampil{scope && scope !== "Nasional" ? ` (${scope})` : " (nasional)"}.</span>
           <button type="button" onClick={() => setShowLearn((v) => !v)} title="Hal yang sudah dipelajari dari koreksimu"
-            className="shrink-0 inline-flex items-center gap-1 text-indigo-700 hover:underline"><Brain className="w-3 h-3" /> Dipelajari ({lessons.length + favs.length})</button>
+            className="shrink-0 inline-flex items-center gap-1 text-indigo-700 hover:underline"><Brain className="w-3 h-3" /> Dipelajari ({lessons.length + favs.length + BUILTIN_LESSONS.length})</button>
         </div>
         {showLearn && (
           <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2 text-gray-700 space-y-1">
-            <div className="text-gray-500">Tersimpan hanya di browser ini (bukan AI, bukan di server). Hilang kalau data browser dihapus.</div>
+            <div className="text-gray-500">Hasil belajar baru tersimpan di browser ini (bukan AI). Agar permanen dan dipakai semua orang, klik "Salin untuk GitHub" lalu kirim ke Claude.</div>
+            {BUILTIN_LESSONS.map((l) => <div key={"b" + l.from} className="text-gray-600">📌 "{l.from}" → {l.to} <span className="text-gray-400">(bawaan GitHub)</span></div>)}
             {lessons.length === 0 && favs.length === 0 && <div>Belum ada. Kalau jawabanku kurang tepat, klik 👎 atau ketik "bukan itu" — pilihanmu kuingat.</div>}
             {lessons.map((l) => (
               <div key={l.from} className="flex items-center justify-between gap-2"><span>"{l.from}" → {l.to}</span>
                 <button type="button" onClick={() => removeLesson(l.from)} aria-label="Hapus" className="text-gray-400 hover:text-red-600"><X className="w-3 h-3" /></button></div>
             ))}
             {favs.length > 0 && <div className="text-gray-500">{favs.length} pertanyaan ditandai tepat (👍) — dipakai untuk menebak maksud.</div>}
+            {(lessons.length > 0 || favs.length > 0) && (
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={copyLearning} className="inline-flex items-center gap-1 text-indigo-700 hover:underline"><FilePlus2 className="w-3 h-3" /> Salin untuk GitHub</button>
+                {copied && <span className="text-emerald-700">{copied}</span>}
+              </div>
+            )}
             {(lessons.length > 0 || favs.length > 0) && (
               <button type="button" onClick={resetLearning} className="inline-flex items-center gap-1 text-red-600 hover:underline"><Trash2 className="w-3 h-3" /> Hapus semua yang dipelajari</button>
             )}

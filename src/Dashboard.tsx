@@ -1,3 +1,6 @@
+// Dashboard.tsx — v149
+//   v149: pengetahuan bawaan Tanya Data di GitHub (src/askKnowledge.json, dibaca semua pengguna) + tombol "Salin untuk GitHub" di panel "Dipelajari"
+//         untuk memindahkan hasil belajar di browser ke file itu (via commit).
 // Dashboard.tsx — v148
 //   v148: Tanya Data bisa "belajar" (lokal, tanpa AI): tombol 👍/👎 per jawaban, ketik "bukan itu/beda donk" → ditawari arti lain & pilihan diingat
 //         (mis. "medan"=region NORTHERN SUMATRA); menebak maksud dari pertanyaan yang pernah dinilai tepat; daftar "Dipelajari" bisa dihapus.
@@ -4068,7 +4071,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v148</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v149</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
