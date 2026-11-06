@@ -147,6 +147,21 @@ const fmt1 = (n: number | null | undefined) => (n == null || !isFinite(n) ? "-" 
 const pct = (n: number | null | undefined) => (n == null || !isFinite(n) ? "-" : fmt1(n) + "%");
 const norm = (s: string) => String(s || "").toLowerCase().replace(/[^a-z0-9%<>\s./-]/g, " ").replace(/\s+/g, " ").trim();
 const hasWord = (q: string, re: RegExp) => re.test(q);
+
+// ── belajar dari koreksi pengguna (disimpan di browser, lihat askLearn.ts) ──
+export type Lesson = { from: string; to: string };   // kata/frasa pengguna → frasa baku yang dimengerti mesin
+export type Alt = { label: string; question: string; lesson?: Lesson };
+const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function applyLessons(raw: string, lessons?: Lesson[]): { q: string; used: Lesson[] } {
+  let q = norm(raw);
+  const used: Lesson[] = [];
+  for (const l of [...(lessons || [])].sort((a, b) => b.from.length - a.from.length)) {
+    const re = new RegExp("(^|\\s)" + escRe(l.from) + "(?=\\s|$)", "g");
+    if (l.from && re.test(q)) { q = q.replace(re, "$1" + l.to); used.push(l); }
+  }
+  q = q.replace(/\b(region|cluster) \1\b/g, "$1").replace(/\s+/g, " ").trim();
+  return { q, used };
+}
 const tipeLabel = (t: string) => (t === "In Store Promotor" ? "In Store" : t === "Out Store Promotor" ? "Out Store" : t || "-");
 
 // ── agregat per grup ──
@@ -256,6 +271,8 @@ function parseQuestion(raw: string, ds: Dataset): Parsed {
   p.wantChart = chartWord || p.chartKind !== null;
   p.daily = /per hari|harian|tiap hari|setiap hari|per tanggal|hari ke hari|\btren\b|\btrend\b|perkembangan/.test(q);
   p.byReason = /per jenis|jenis anomali|jenis-jenis|kategori anomali|macam anomali|penyebab|komposisi anomali|proporsi anomali|per kategori/.test(q);
+  const why = /\b(kenapa|mengapa|sebab|alasan|kok)\b|bisa banyak|apa (saja )?(yang )?(bikin|menyebabkan)/.test(q) && /anomali/.test(q);
+  if (why) p.byReason = true;
   p.group = p.wantChart || /\bper\b|tiap|setiap|masing.?masing|\bby\b|bandingkan|perbandingan|dibandingkan/.test(q);
 
   // dimensi
@@ -316,6 +333,19 @@ function parseQuestion(raw: string, ds: Dataset): Parsed {
       const c = partialMatch(q, ds.clusters);
       if (c) { p.cluster = c.name; p.note = `Aku artikan "${c.word}" sebagai cluster ${c.name}.`; }
     }
+  }
+
+  // nama yang disebut setelah "region/cluster" tapi tidak ada di data → jangan diam-diam abaikan
+  if (!p.region && !p.cluster) {
+    const m = q.match(/\b(?:region|cluster|wilayah)\s+([a-z][a-z0-9-]{2,})/);
+    const SKIP = new Set(["mana", "manakah", "yang", "paling", "tinggi", "rendah", "berapa", "jumlah", "total", "ya", "dong", "donk", "deh", "apa", "siapa", "dengan", "dan", "atau", "untuk", "punya", "lebih", "kurang", "banyak", "sedikit", "terbaik", "terburuk", "tertinggi", "terendah", "terbanyak", "masuk", "top", "per", "saja", "aja", "ini", "itu", "nya", "kok", "sih", "bisa", "ada", "beranomali", "anomali", "gar", "nca", "capai", "achieve", "tidak", "belum", "sudah", "udah", "bagaimana", "gimana", "bagus", "jelek", "tinggi", "rendah", "di", "ke", "dari"]);
+    if (m && !SKIP.has(m[1])) p.note = `Aku tidak menemukan "${m[1]}" sebagai region/cluster di data ini, jadi jawabannya untuk seluruh data yang tampil. Cek ejaannya, atau klik 👎 supaya kutawarkan pilihan yang mirip.`;
+  }
+
+  // "region medan": Medan adalah nama cluster, bukan region → pakai region induknya (seluruh cluster di region itu)
+  if (/\bregion\b|\bwilayah\b/.test(q) && !/\bcluster\b|\bklaster\b/.test(q) && p.cluster && !p.region) {
+    const parent = ds.people.find((x) => x.cluster === p.cluster)?.region;
+    if (parent) { p.note = `"${p.cluster}" adalah cluster di region ${parent}. Karena kamu menyebut region, aku pakai seluruh region ${parent} (bukan hanya cluster itu). Kalau maksudmu cluster-nya saja, tulis "cluster ${p.cluster}".`; p.region = parent; p.cluster = null; }
   }
 
   // pembanding angka: "di atas 150", "kurang dari 50"
@@ -421,9 +451,14 @@ function rankingSection(title: string, dim: Dim, groups: Group[], mk: MetricKey,
   return { sec, top: sorted };
 }
 
-export function answerQuestion(raw: string, ds: Dataset, scope?: string): Answer {
+export function answerQuestion(raw0: string, ds: Dataset, scope?: string, lessons?: Lesson[]): Answer {
+  const { q: raw, used } = applyLessons(raw0, lessons);
   const a = answerCore(raw, ds, scope);
   const parsed = ds.people.length && String(raw || "").trim() ? parseQuestion(raw, ds) : null;
+  if (used.length) {
+    const ingat = used.map((l) => `"${l.from}" = ${l.to}`).join(", ");
+    a.interpretasi = (a.interpretasi ? a.interpretasi + " " : "") + `Aku ingat dari koreksimu sebelumnya: ${ingat}.`;
+  }
   if (parsed?.note) a.interpretasi = a.interpretasi ? parsed.note + " " + a.interpretasi : parsed.note;
   if (parsed?.wantChart) a.wantChart = true;
   if (parsed?.chartKind) a.chartKind = parsed.chartKind;
@@ -459,7 +494,7 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
   }
 
   // 1a) tren harian & komposisi anomali per jenis (biasanya untuk grafik garis / pie)
-  if (p.byReason && !p.dims.length) return reasonBreakdownAnswer(p, people, scopeNote);
+  if (p.byReason && (!p.dims.length || p.region || p.cluster || (p.q.match(/\b(kenapa|mengapa|sebab|alasan|kok)\b/) && !/\bper (region|cluster|tipe|promotor)\b/.test(p.q)))) return reasonBreakdownAnswer(p, people, scopeNote);
   if (p.daily && (!p.dims.length || /per hari|harian|tiap hari|setiap hari|per tanggal|hari ke hari/.test(p.q))) return dailyAnswer(p, people, ds, scopeNote);
 
   // 1b) status / proyeksi achieve target
@@ -638,8 +673,9 @@ function reasonBreakdownAnswer(p: Parsed, people: Person[], scopeNote: string): 
   const rows = keys.map((k) => ({ k, orang: people.filter((x) => (x.reasonRows[k] || 0) > 0).length, kej: people.reduce((a, x) => a + (x.reasonRows[k] || 0), 0) })).filter((r) => r.kej > 0).sort((a, b) => b.kej - a.kej);
   if (!rows.length) return { text: `Tidak ada anomali yang tercatat${scopeNote}.` };
   const tot = rows.reduce((a, r) => a + r.kej, 0);
+  const ag = aggregate(people, null);
   return {
-    text: `${fmt(tot)} kejadian anomali, terbanyak: ${REASON_LABEL[rows[0].k]} (${fmt(rows[0].kej)}, ${pct((rows[0].kej / tot) * 100)}).${scopeNote}`,
+    text: `${pct(ag.pctAnomali)} promotor beranomali (${fmt(ag.anomaliPeople)} dari ${fmt(ag.n)}). Total ${fmt(tot)} kejadian anomali, terbanyak: ${REASON_LABEL[rows[0].k]} (${fmt(rows[0].kej)}, ${pct((rows[0].kej / tot) * 100)}).${scopeNote}`,
     interpretasi: "Satu promotor bisa punya beberapa jenis anomali, jadi kolom Promotor tidak dijumlahkan. \"GPS Toko N/A\" adalah kekurangan data toko, bukan pelanggaran promotor.",
     sections: [{
       title: "Komposisi anomali per jenis", head: ["Jenis anomali", "Promotor", "Kejadian", "% kejadian"],
@@ -751,4 +787,37 @@ function profileAnswer(x: Person): Answer {
   rows.push(["Anomali", x.flagRows ? `${fmt(x.flagRows)} kejadian — ${why.join(", ")}` : "tidak ada"]);
   const capai = x.hasPenc && x.target != null ? (x.nca >= x.target ? "sudah capai target NCA" : "belum capai target NCA") : null;
   return { text: `${x.name}${capai ? ` — ${capai}` : ""}.`, sections: [{ head: ["Info", "Nilai"], rows }] };
+}
+
+// ── saran arti lain saat jawaban dinilai kurang tepat ──
+export function alternatives(raw: string, ds: Dataset): Alt[] {
+  const q = norm(raw);
+  const out: Alt[] = [];
+  const rep = (w: string, to: string) => q.replace(new RegExp("(^|\\s)" + escRe(w) + "(?=\\s|$)", "g"), "$1" + to).replace(/\b(region|cluster) \1\b/g, "$1");
+  const words = q.split(" ").filter((w) => w.length >= 4 && !NOT_NAME.has(w) && !STOP.has(w));
+  for (const w of words) {
+    const has = (n: string) => !n.startsWith("Tanpa ") && norm(n).split(/[\s-]+/).includes(w);
+    const cl = ds.clusters.filter(has);
+    const rg = ds.regions.filter(has);
+    const parents = [...new Set(cl.map((c) => ds.people.find((x) => x.cluster === c)?.region).filter(Boolean) as string[])];
+    const regs = [...new Set([...rg, ...parents])].slice(0, 3);
+    if (!regs.length && !cl.length) continue;
+    for (const r of regs) out.push({ label: `Region ${r} (seluruh cluster di dalamnya)`, question: rep(w, "region " + norm(r)), lesson: { from: w, to: "region " + norm(r) } });
+    for (const c of cl.slice(0, 3)) out.push({ label: `Cluster ${c} saja`, question: rep(w, "cluster " + norm(c)), lesson: { from: w, to: "cluster " + norm(c) } });
+    break;
+  }
+  if (/anomali/.test(q) && !/per jenis/.test(q)) out.push({ label: "Rincian jenis anomali (penyebabnya apa saja)", question: q + " per jenis anomali" });
+  if (/anomali/.test(q) && !/promotor (dengan|yang)|siapa/.test(q)) out.push({ label: "Promotor dengan anomali terbanyak", question: "siapa promotor dengan anomali terbanyak" + (words.length ? "" : "") });
+  return out.slice(0, 6);
+}
+
+// kemiripan kata (Jaccard) untuk menebak maksud dari pertanyaan yang pernah dinilai tepat
+export function similarQuestions(raw: string, pool: string[], n = 3): string[] {
+  const tok = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length >= 3 && !NOT_NAME.has(w)));
+  const a = tok(raw);
+  if (!a.size) return [];
+  const seen = new Set<string>();
+  return pool.map((c) => { const b = tok(c); let i = 0; a.forEach((w) => { if (b.has(w)) i++; }); return { c, sc: i / (a.size + b.size - i || 1) }; })
+    .filter((x) => x.sc >= 0.34 && !seen.has(x.c) && seen.add(x.c))
+    .sort((x, y) => y.sc - x.sc).slice(0, n).map((x) => x.c);
 }

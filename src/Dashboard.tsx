@@ -1,3 +1,7 @@
+// Dashboard.tsx — v148
+//   v148: Tanya Data bisa "belajar" (lokal, tanpa AI): tombol 👍/👎 per jawaban, ketik "bukan itu/beda donk" → ditawari arti lain & pilihan diingat
+//         (mis. "medan"=region NORTHERN SUMATRA); menebak maksud dari pertanyaan yang pernah dinilai tepat; daftar "Dipelajari" bisa dihapus.
+//         "region <nama cluster>" kini dibaca sebagai region induknya; "kenapa banyak anomali …" dijawab dengan rincian jenis + % beranomali.
 // Dashboard.tsx — v147
 //   v147: Overview selebar header (tidak lagi menyempit di tengah) dan semua teks kecil (text-[Npx]) diganti satuan rem agar ikut skala di layar besar.
 // Dashboard.tsx — v146
@@ -4064,7 +4068,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v147</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v148</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>
