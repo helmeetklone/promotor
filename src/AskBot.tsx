@@ -9,6 +9,7 @@ import {
   ScatterChart, Scatter, CartesianGrid, XAxis, YAxis, Tooltip, Legend, LabelList, ResponsiveContainer,
 } from "recharts";
 import { buildDataset, answerQuestion, alternatives, similarQuestions, pptRequest, periodText, SUGGESTIONS, PPT_PRESET, CHART_KIND_LABEL, validKinds, effectiveKind, setChartKind, pieSlices, type Answer, type Chart, type ChartKind, type Lesson, type Alt } from "./askEngine";
+import { narrate, isStoryRequest, stripStoryWords } from "./askStory";
 import { loadLessons, saveLessons, addLesson, loadFavs, addFav, clearLearning, BUILTIN_LESSONS, BUILTIN_QUESTIONS, mergedLessons, fetchShared, pushShared } from "./askLearn";
 import { buildDeck, type DeckItem } from "./askPpt";
 
@@ -126,6 +127,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   const [showLearn, setShowLearn] = useState(false);
   const [sync, setSync] = useState<"?" | "ok" | "off">("?"); // tersambung ke penyimpanan bersama di Vercel?
   const lastQ = useRef<string>("");
+  const lastA = useRef<Answer | null>(null);
   const [, bumpKind] = useState(0); // render ulang setelah ganti jenis grafik
   const lastRef = useRef<HTMLDivElement>(null); // awal jawaban terakhir — dibuka dari atas, bukan dari bawah
 
@@ -245,6 +247,19 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
     setMsgs((m) => [...m, { from: "user", text: display || q }]);
     setInput("");
     if (CORRECTION.test(q) && lastQ.current) { reask(lastQ.current); return; }
+    // "kasih jawaban dengan storytelling" → ceritakan jawaban yang barusan (atau topik yang disebut bersamaan)
+    if (isStoryRequest(q)) {
+      const topic = stripStoryWords(q);
+      let target: Answer | null = null, tq = lastQ.current;
+      if (topic.length >= 3) { const t = safeAnswer(topic); if (!t.unknown) { target = t; tq = topic; } }
+      if (!target && lastA.current) target = lastA.current;
+      const story = target ? narrate(target, scope, true) : null;
+      if (target && story) {
+        if (tq && target !== lastA.current) { lastA.current = target; lastQ.current = tq; }
+        setMsgs((m) => [...m, { from: "bot", text: "📖 " + story }]);
+      } else botSay(target ? "Jawaban ini berupa daftar/rincian yang belum bisa kuceritakan, tapi tabel di atas sudah lengkap. Mau kubuatkan grafiknya?" : "Cerita tentang apa? Tanya dulu datanya, misalnya \"GAR tertinggi per region\", lalu minta \"ceritakan dengan storytelling\".", target ? undefined : { answer: { text: "", chips: SUGGESTIONS.slice(0, 3) } });
+      return;
+    }
     const pr = pptRequest(q);
     if (pr) { await handlePpt(pr); return; }
     const a = safeAnswer(q);
@@ -252,7 +267,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
       // belum paham → tebak dari pertanyaan yang pernah dinilai tepat (👍) dan contoh bawaan
       const sims = similarQuestions(q, [...favs, ...BUILTIN_QUESTIONS].reverse().concat(SUGGESTIONS), 3);
       if (sims.length) { a.text = "Aku belum yakin maksudnya. Apakah salah satu ini?"; a.chips = [...sims, ...SUGGESTIONS.filter((x) => !sims.includes(x)).slice(0, 3)]; }
-    } else lastQ.current = q;
+    } else { lastQ.current = q; lastA.current = a; a.cerita = narrate(a, scope) || undefined; }
     setMsgs((m) => [...m, { from: "bot", text: a.text, answer: a, question: q }]);
   };
 
@@ -337,6 +352,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
             <div key={i} ref={i === msgs.length - 1 ? lastRef : undefined} className="flex justify-start scroll-mt-1">
               <div className="bg-gray-100 text-gray-900 rounded-2xl rounded-bl-sm px-3 py-2 max-w-[96%] min-w-0">
                 {m.text && <div className="whitespace-pre-line">{m.text}</div>}
+                {m.answer?.cerita && <div className="mt-1.5 text-[0.8125rem] text-gray-800 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">📖 {m.answer.cerita}</div>}
                 {m.answer?.interpretasi && <div className="mt-1.5 text-[0.6875rem] text-gray-500 italic">{m.answer.interpretasi}</div>}
                 {m.answer?.sections?.map((sec, k) => {
                   const key = `${i}-${k}`;

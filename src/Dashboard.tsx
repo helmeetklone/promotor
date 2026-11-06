@@ -1,3 +1,6 @@
+// Dashboard.tsx — v151
+//   v151: Tanya Data menambah ringkasan bercerita (📖 storytelling singkat) di tiap jawaban berbentuk peringkat/ringkasan/tren/komposisi;
+//         minta "ceritakan / pakai storytelling / jelaskan dengan narasi" untuk versi lebih panjang dari jawaban terakhir. Kode: src/askStory.ts.
 // Dashboard.tsx — v150
 //   v150: api/learn.js disesuaikan dengan Blob store privat + autentikasi baru (BLOB_STORE_ID/OIDC): akses "private", baca lewat get(), tanpa wajib BLOB_READ_WRITE_TOKEN.
 // Dashboard.tsx — v149
@@ -4073,7 +4076,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v150</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v151</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>

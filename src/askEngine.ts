@@ -52,7 +52,7 @@ const chosenKind = new WeakMap<Chart, ChartKind>();
 export const setChartKind = (c: Chart, k: ChartKind) => { chosenKind.set(c, k); };
 export const effectiveKind = (c: Chart, requested?: ChartKind | null): ChartKind => resolveKind(c, chosenKind.get(c) || requested || c.kind);
 export type Section = { title?: string; head: string[]; rows: string[][]; chart?: Chart };
-export type Answer = { text: string; interpretasi?: string; sections?: Section[]; chips?: string[]; wantChart?: boolean; chartKind?: ChartKind; unknown?: boolean };
+export type Answer = { text: string; interpretasi?: string; cerita?: string; sections?: Section[]; chips?: string[]; wantChart?: boolean; chartKind?: ChartKind; unknown?: boolean };
 
 const REASON_LABEL: Record<string, string> = {
   zona: "Absensi <3x / zona tidak berurutan", identik: "GPS identik", koordinat: "Koordinat kosong",
