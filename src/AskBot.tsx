@@ -9,7 +9,7 @@ import {
   ScatterChart, Scatter, CartesianGrid, XAxis, YAxis, Tooltip, Legend, LabelList, ResponsiveContainer,
 } from "recharts";
 import { buildDataset, answerQuestion, alternatives, similarQuestions, pptRequest, periodText, SUGGESTIONS, PPT_PRESET, CHART_KIND_LABEL, validKinds, effectiveKind, setChartKind, pieSlices, type Answer, type Chart, type ChartKind, type Lesson, type Alt } from "./askEngine";
-import { loadLessons, saveLessons, addLesson, loadFavs, addFav, clearLearning, BUILTIN_LESSONS, BUILTIN_QUESTIONS, mergedLessons, exportLearning } from "./askLearn";
+import { loadLessons, saveLessons, addLesson, loadFavs, addFav, clearLearning, BUILTIN_LESSONS, BUILTIN_QUESTIONS, mergedLessons, fetchShared, pushShared } from "./askLearn";
 import { buildDeck, type DeckItem } from "./askPpt";
 
 type Msg = { from: "user" | "bot"; text: string; answer?: Answer; question?: string; alts?: Alt[] };
@@ -124,9 +124,30 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   const [favs, setFavs] = useState<string[]>(() => loadFavs());
   const [fb, setFb] = useState<Record<number, "up" | "down">>({});
   const [showLearn, setShowLearn] = useState(false);
+  const [sync, setSync] = useState<"?" | "ok" | "off">("?"); // tersambung ke penyimpanan bersama di Vercel?
   const lastQ = useRef<string>("");
   const [, bumpKind] = useState(0); // render ulang setelah ganti jenis grafik
   const lastRef = useRef<HTMLDivElement>(null); // awal jawaban terakhir — dibuka dari atas, bukan dari bawah
+
+  // Muat hasil belajar bersama dari Vercel (sekali). Yang baru ada di browser ini ikut diunggah.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const sh = await fetchShared();
+      if (!alive) return;
+      if (!sh) { setSync("off"); return; }
+      setSync("ok");
+      const local = loadLessons(), lf = loadFavs();
+      const shL = new Set(sh.lessons.map((l) => l.from)), shQ = new Set(sh.questions);
+      const mergedL = [...sh.lessons, ...local.filter((l) => !shL.has(l.from))];
+      const mergedF = [...sh.questions, ...lf.filter((q) => !shQ.has(q))];
+      setLessons(mergedL); saveLessons(mergedL); setFavs(mergedF);
+      try { localStorage.setItem("xlsmart-askbot-favs-v1", JSON.stringify(mergedF)); } catch { /* abaikan */ }
+      local.filter((l) => !shL.has(l.from)).forEach((l) => void pushShared({ op: "lesson", from: l.from, to: l.to }));
+      lf.filter((q) => !shQ.has(q)).forEach((q) => void pushShared({ op: "fav", q }));
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // Dataset baru dibangun saat panel pertama kali dibuka (dan ikut berubah kalau filter/ambang di dashboard berubah).
   const ds = useMemo(
@@ -205,26 +226,18 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   const pickAlt = (a: Alt) => {
     if (a.lesson) {
       setLessons((l) => addLesson(l, a.lesson!));
+      void pushShared({ op: "lesson", from: a.lesson.from, to: a.lesson.to }).then((ok) => setSync(ok ? "ok" : "off"));
       botSay(`Oke, kuingat: "${a.lesson.from}" = ${a.lesson.to}. Berikut jawabannya:`);
     }
     void ask(a.question, a.label);
   };
   const rate = (i: number, m: Msg, up: boolean) => {
     setFb((f) => ({ ...f, [i]: up ? "up" : "down" }));
-    if (up) { setFavs((f) => addFav(f, m.question!)); botSay("Siap, kuingat pertanyaan ini sebagai contoh yang tepat."); }
+    if (up) { setFavs((f) => addFav(f, m.question!)); void pushShared({ op: "fav", q: m.question! }); botSay("Siap, kuingat pertanyaan ini sebagai contoh yang tepat."); }
     else reask(m.question!);
   };
-  const [copied, setCopied] = useState("");
-  const copyLearning = async () => {
-    const txt = exportLearning(lessons, favs);
-    try { await navigator.clipboard.writeText(txt); setCopied("Tersalin. Tempel ke chat Claude supaya dimasukkan ke GitHub."); }
-    catch {
-      try { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = "tanya-data-pelajaran.json"; a.click(); setCopied("File terunduh. Kirim ke Claude supaya dimasukkan ke GitHub."); }
-      catch { setCopied("Gagal menyalin."); }
-    }
-  };
   const resetLearning = () => { clearLearning(); setLessons([]); setFavs([]); };
-  const removeLesson = (from: string) => setLessons((l) => { const n = l.filter((x) => x.from !== from); saveLessons(n); return n; });
+  const removeLesson = (from: string) => { setLessons((l) => { const n = l.filter((x) => x.from !== from); saveLessons(n); return n; }); void pushShared({ op: "remove", from }); };
 
   const ask = async (qRaw: string, display?: string) => {
     const q = qRaw.trim();
@@ -288,7 +301,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
         </div>
         {showLearn && (
           <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2 text-gray-700 space-y-1">
-            <div className="text-gray-500">Hasil belajar baru tersimpan di browser ini (bukan AI). Agar permanen dan dipakai semua orang, klik "Salin untuk GitHub" lalu kirim ke Claude.</div>
+            <div className="text-gray-500">{sync === "ok" ? "Tersimpan di server dashboard (Vercel) — permanen dan dipakai semua pengguna. Ini aturan sederhana, bukan AI." : sync === "off" ? "Penyimpanan bersama di Vercel belum tersambung, jadi hasil belajar sementara hanya di browser ini. Setelah tersambung, otomatis ikut terunggah." : "Menghubungkan ke penyimpanan…"}</div>
             {BUILTIN_LESSONS.map((l) => <div key={"b" + l.from} className="text-gray-600">📌 "{l.from}" → {l.to} <span className="text-gray-400">(bawaan GitHub)</span></div>)}
             {lessons.length === 0 && favs.length === 0 && <div>Belum ada. Kalau jawabanku kurang tepat, klik 👎 atau ketik "bukan itu" — pilihanmu kuingat.</div>}
             {lessons.map((l) => (
@@ -296,14 +309,8 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
                 <button type="button" onClick={() => removeLesson(l.from)} aria-label="Hapus" className="text-gray-400 hover:text-red-600"><X className="w-3 h-3" /></button></div>
             ))}
             {favs.length > 0 && <div className="text-gray-500">{favs.length} pertanyaan ditandai tepat (👍) — dipakai untuk menebak maksud.</div>}
-            {(lessons.length > 0 || favs.length > 0) && (
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={copyLearning} className="inline-flex items-center gap-1 text-indigo-700 hover:underline"><FilePlus2 className="w-3 h-3" /> Salin untuk GitHub</button>
-                {copied && <span className="text-emerald-700">{copied}</span>}
-              </div>
-            )}
-            {(lessons.length > 0 || favs.length > 0) && (
-              <button type="button" onClick={resetLearning} className="inline-flex items-center gap-1 text-red-600 hover:underline"><Trash2 className="w-3 h-3" /> Hapus semua yang dipelajari</button>
+            {sync !== "ok" && (lessons.length > 0 || favs.length > 0) && (
+              <button type="button" onClick={resetLearning} className="inline-flex items-center gap-1 text-red-600 hover:underline"><Trash2 className="w-3 h-3" /> Hapus semua dari browser ini</button>
             )}
           </div>
         )}

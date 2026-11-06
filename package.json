@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.2",
     "lucide-react": "^0.383.0",
     "papaparse": "^5.4.1",
     "pptxgenjs": "^3.12.0",

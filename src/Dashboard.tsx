@@ -1,6 +1,6 @@
 // Dashboard.tsx — v149
-//   v149: pengetahuan bawaan Tanya Data di GitHub (src/askKnowledge.json, dibaca semua pengguna) + tombol "Salin untuk GitHub" di panel "Dipelajari"
-//         untuk memindahkan hasil belajar di browser ke file itu (via commit).
+//   v149: hasil belajar Tanya Data disimpan di VERCEL (api/learn.js → Vercel Blob), dipakai semua pengguna dan tidak hilang saat browser ditutup.
+//         Butuh Blob store yang dihubungkan ke project di Vercel; tanpa itu otomatis jatuh ke penyimpanan browser. (src/askKnowledge.json = isi awal opsional.)
 // Dashboard.tsx — v148
 //   v148: Tanya Data bisa "belajar" (lokal, tanpa AI): tombol 👍/👎 per jawaban, ketik "bukan itu/beda donk" → ditawari arti lain & pilihan diingat
 //         (mis. "medan"=region NORTHERN SUMATRA); menebak maksud dari pertanyaan yang pernah dinilai tepat; daftar "Dipelajari" bisa dihapus.

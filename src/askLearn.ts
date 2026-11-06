@@ -30,12 +30,27 @@ export function clearLearning() { try { localStorage.removeItem(KL); localStorag
 export const BUILTIN_LESSONS: Lesson[] = ((knowledge as any).lessons || []).filter((l: any) => l && l.from && l.to);
 export const BUILTIN_QUESTIONS: string[] = ((knowledge as any).questions || []).filter((x: any) => typeof x === "string");
 
-// Gabungan bawaan + lokal; pelajaran lokal menimpa bawaan untuk kata yang sama.
+// Gabungan bawaan + lokal/bersama; yang lebih baru menimpa bawaan untuk kata yang sama.
 export function mergedLessons(local: Lesson[]): Lesson[] {
   const m = new Map<string, Lesson>();
   [...BUILTIN_LESSONS, ...local].forEach((l) => m.set(l.from, l));
   return [...m.values()];
 }
-export function exportLearning(local: Lesson[], favs: string[]): string {
-  return JSON.stringify({ lessons: mergedLessons(local), questions: [...new Set([...BUILTIN_QUESTIONS, ...favs])] }, null, 2);
+
+// ── penyimpanan bersama di Vercel (api/learn.js → Vercel Blob). Gagal/belum disetel → null/false, dashboard tetap jalan. ──
+export type Shared = { lessons: Lesson[]; questions: string[] };
+export async function fetchShared(): Promise<Shared | null> {
+  try {
+    const r = await fetch("/api/learn", { cache: "no-store" });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d || !Array.isArray(d.lessons) || !Array.isArray(d.questions)) return null;
+    return d as Shared;
+  } catch { return null; }
+}
+export async function pushShared(body: { op: "lesson"; from: string; to: string } | { op: "fav"; q: string } | { op: "remove"; from: string }): Promise<boolean> {
+  try {
+    const r = await fetch("/api/learn", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return r.ok;
+  } catch { return false; }
 }
