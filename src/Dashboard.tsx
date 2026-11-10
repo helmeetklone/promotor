@@ -1,3 +1,5 @@
+// Dashboard.tsx — v154
+//   v154: (tidak ada perubahan di dashboard) mergertool.html naik ke v13 — fix Out of Memory saat Download CSV di data besar (CSV ditulis bertahap).
 // Dashboard.tsx — v153
 //   v153: Tanya Data belajar sendiri tanpa tombol Ya/Kurang: perpustakaan nama wilayah (ID/EN/singkatan/salah ketik, mis. "north sumatera", "sumatra utara"),
 //         pembetulan salah ketik kata kunci ("anomaly", "tertingi"), mencatat padanan kata dari kalimat yang diulang, dan menyimpan pola pertanyaan
@@ -4083,7 +4085,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v153</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v154</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>

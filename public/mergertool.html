@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- mergertool.html — v12
+<!-- mergertool.html — v13
+     v13: fix "Aw, Snap! Out of Memory" saat Download CSV di data besar: CSV kini ditulis bertahap (potongan 2.000 baris), langsung ke disk lewat
+          dialog "Simpan sebagai" (Chrome/Edge) atau lewat Blob bertahap bila tidak didukung — tidak lagi dijadikan satu teks raksasa. Isi file sama persis.
+          Download Excel ditolak dengan pesan jelas bila >200.000 baris (pakai CSV). Link unduhan tidak dilepas terlalu cepat.
+     v12
      v12: NIK dengan >1 baris di file GAR flat sekarang DIJUMLAH (GAR/NCA/Fresh Imei/Good/Bad/Unidentified), bukan
          ambil baris pertama. Dicek ke file NCA (1 baris/NIK): dari 548 NIK ganda, baris pertama cocok cuma 1,
          penjumlahan cocok 189. Kolom baru "Baris GAR_TAGGING" = jumlah baris asal. File NCA tetap acuan paling akurat.
@@ -175,7 +179,7 @@
     <div class="logo">&#128225;</div>
     <div>
       <h1>PROMOTOR ANOMALY MERGE</h1>
-      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v12</p>
+      <p class="subtitle">DOP &middot; File_HR &middot; Absensi &middot; Timestamp &middot; OM/Outlet Master &middot; GAR &middot; NCA &rarr; 1 tabel deteksi &middot; v13</p>
     </div>
   </div>
   <button class="ghost" id="resetBtn" style="display:none;" type="button">&#8634; Mulai ulang</button>
@@ -1414,21 +1418,30 @@ function withButtonBusy(btn, busyText, fn) {
   const original = btn.textContent;
   btn.disabled = true;
   btn.textContent = busyText;
+  const restore = () => { btn.disabled = false; btn.textContent = original; };
   // yield to the browser so the "menyiapkan..." text actually paints
-  // before the heavy synchronous work (xlsx/csv writing) blocks the thread
+  // before the heavy work (xlsx/csv writing) blocks the thread
   setTimeout(() => {
+    let res;
     try {
-      fn();
-    } finally {
-      btn.disabled = false;
-      btn.textContent = original;
+      res = fn();
+    } catch (e) {
+      restore();
+      throw e;
     }
+    if (res && typeof res.then === "function") res.then(restore, (e) => { restore(); showWarn("Gagal membuat file: " + (e && e.message ? e.message : e)); });
+    else restore();
   }, 30);
 }
 
 function downloadExcel() {
   const r = state.result;
   if (!r) return;
+  const nRows = getFilteredRows().length;
+  if (nRows > 200000) {
+    showWarn("Data terlalu besar untuk Excel (" + nRows.toLocaleString("id-ID") + " baris) — browser bisa kehabisan memori. Pakai tombol \"Download CSV\" (ditulis bertahap, aman untuk data besar).");
+    return;
+  }
   withButtonBusy(document.getElementById("downloadBtn"), "⏳ Menyiapkan file...", () => {
     const exportRows = getFilteredRows().map((row) => {
       const copy = Object.assign({}, row);
@@ -1453,22 +1466,76 @@ function csvEscape(v) {
   return s;
 }
 
-function downloadCsv() {
+// CSV ditulis BERTAHAP (potongan 2.000 baris), tidak pernah dijadikan satu teks raksasa — itu penyebab "Aw, Snap! Out of Memory"
+// di data besar. Kalau browser mendukung (Chrome/Edge), langsung ditulis ke disk lewat dialog "Simpan sebagai";
+// kalau tidak, potongan dikumpulkan sebagai Blob (disimpan browser di luar memori JavaScript).
+const CSV_CHUNK = 2000;
+async function writeCsvInChunks(rows, columns, sink, onProgress) {
+  await sink("\uFEFF" + columns.map(csvEscape).join(",") + "\n");
+  for (let i = 0; i < rows.length; i += CSV_CHUNK) {
+    const end = Math.min(i + CSV_CHUNK, rows.length);
+    let chunk = "";
+    for (let k = i; k < end; k++) {
+      const row = rows[k];
+      chunk += columns.map((c) => csvEscape(typeof row[c] === "number" ? String(row[c]) : formatCell(row[c]))).join(",") + "\n";
+    }
+    await sink(chunk);
+    onProgress(end, rows.length);
+    await new Promise((res) => setTimeout(res, 0)); // beri napas ke browser: layar update, memori bisa dibersihkan
+  }
+}
+
+async function downloadCsv() {
   const r = state.result;
   if (!r) return;
-  withButtonBusy(document.getElementById("downloadCsvBtn"), "⏳ Menyiapkan file...", () => {
-    const lines = [r.columns.map(csvEscape).join(",")];
-    getFilteredRows().forEach((row) => {
-      lines.push(r.columns.map((c) => csvEscape(typeof row[c] === "number" ? String(row[c]) : formatCell(row[c]))).join(","));
-    });
-    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "Anomali_Deteksi_Promotor.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  });
+  const btn = document.getElementById("downloadCsvBtn");
+  const original = btn.textContent;
+  // dialog simpan harus dibuka langsung dari klik (sebelum pekerjaan berat)
+  let handle = null;
+  if (window.showSaveFilePicker) {
+    try {
+      handle = await window.showSaveFilePicker({ suggestedName: "Anomali_Deteksi_Promotor.csv", types: [{ description: "File CSV", accept: { "text/csv": [".csv"] } }] });
+    } catch (e) {
+      if (e && e.name === "AbortError") return; // pengguna membatalkan
+      handle = null; // gagal membuka dialog → pakai cara Blob
+    }
+  }
+  btn.disabled = true;
+  btn.textContent = "⏳ Menyiapkan file...";
+  const rows = getFilteredRows();
+  const progress = (n, total) => { btn.textContent = "⏳ Menulis file... " + Math.round((n / total) * 100) + "%"; };
+  try {
+    await new Promise((res) => setTimeout(res, 30));
+    if (handle) {
+      const writable = await handle.createWritable();
+      try {
+        await writeCsvInChunks(rows, r.columns, (str) => writable.write(str), progress);
+      } finally {
+        await writable.close();
+      }
+    } else {
+      // tiap ±16 juta karakter langsung dijadikan Blob kecil (disimpan browser di luar memori JavaScript), teksnya dibuang
+      const parts = [];
+      let buf = [], bufLen = 0;
+      const flush = () => { if (buf.length) { parts.push(new Blob(buf)); buf = []; bufLen = 0; } };
+      await writeCsvInChunks(rows, r.columns, (str) => { buf.push(str); bufLen += str.length; if (bufLen >= 16000000) flush(); }, progress);
+      flush();
+      const blob = new Blob(parts, { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Anomali_Deteksi_Promotor.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 120000); // jangan dilepas langsung: file besar bisa batal terunduh
+    }
+  } catch (e) {
+    showWarn("Gagal membuat CSV: " + (e && e.message ? e.message : e) + ". Coba kurangi baris (hilangkan peran/baris di layar) lalu ulangi.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 function resetApp() {
