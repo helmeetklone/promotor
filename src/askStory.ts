@@ -103,6 +103,8 @@ function rankStory(sec: Section, j: number, li: number, long: boolean): string |
 // Cerita singkat dari bagian tabel pertama yang bisa diceritakan; null kalau tidak ada yang cocok.
 export function narrate(a: Answer, scope0: string, long = false): string | null {
   if (!a.sections?.length || a.unknown) return null;
+  if (a.cerita) return a.cerita;   // jawaban level nama sudah membawa ceritanya sendiri
+  if (a.sections[0].title === "Profil" || a.sections[0].head[0] === "") return null;
   // kalau jawabannya untuk region/cluster tertentu (mis. "(region SOUTHERN SUMATRA)"), pakai itu sebagai lingkup, bukan filter dashboard
   const m = a.text.match(/\((region|cluster) ([^)]+)\)/);
   const scope = m ? `${m[1]} ${m[2]}` : scope0;

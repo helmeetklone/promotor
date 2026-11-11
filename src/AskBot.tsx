@@ -160,7 +160,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
   useEffect(() => { lastRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [msgs, open]);
 
   const safeAnswer = (q: string): Answer => {
-    try { return answerQuestion(q, ds!, scope, mergedLessons(lessons)); }
+    try { return answerQuestion(q, ds!, scope, mergedLessons(lessons), lastQ.current || undefined); }
     catch (e) { return { text: "Maaf, ada error saat menghitung jawabannya. Coba ubah kalimat pertanyaannya.", unknown: true }; }
   };
   const botSay = (text: string, extra?: Partial<Msg>) => setMsgs((m) => [...m, { from: "bot", text, ...extra }]);
@@ -265,7 +265,7 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
       if (sims.length) { a.text = "Aku belum yakin maksudnya. Apakah salah satu ini?"; a.chips = [...sims, ...SUGGESTIONS.filter((x) => !sims.includes(x)).slice(0, 3)]; }
       prevUnknown.current = q;
     } else {
-      lastQ.current = q; lastA.current = a; a.cerita = narrate(a, scope) || undefined;
+      lastQ.current = a.effectiveQ || q; lastA.current = a; a.cerita = a.cerita || narrate(a, scope) || undefined;
       // belajar sendiri #1: kalimat sebelumnya tak dipahami, lalu diulang dengan 1 kata beda dan berhasil → catat padanannya
       const les = prevUnknown.current ? learnFromRephrase(prevUnknown.current, q) : null;
       prevUnknown.current = "";
@@ -275,7 +275,8 @@ export default function AskBot({ timestampResult, absensiResult, getTarget, scop
         a.interpretasi = (a.interpretasi ? a.interpretasi + " " : "") + `Aku mencatat: "${les.from}" berarti "${les.to}" (dari kalimatmu sebelumnya).`;
       }
       // belajar sendiri #2: pola pertanyaan yang berhasil dijawab disimpan (tanpa nama promotor) untuk menebak maksud pertanyaan serupa
-      if (!mentionsPerson(q, ds) && q.length <= 160 && !favs.includes(q)) {
+      const personLevel = !!a.effectiveQ || (a.sections || []).some((x) => x.title === "Profil" || x.title === "Daftar promotor" || x.head[0] === "" || x.head[0] === "Nama");
+      if (!personLevel && !mentionsPerson(q, ds) && q.length <= 160 && !favs.includes(q)) {
         setFavs((f) => addFav(f, q));
         void pushShared({ op: "fav", q });
       }

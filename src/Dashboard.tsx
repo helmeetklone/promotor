@@ -1,4 +1,5 @@
-// Dashboard.tsx — v154
+// Dashboard.tsx — v155
+//   v155: Tanya Data bisa sampai level nama & detail promotor — cari nama (toleran salah ketik/beda spasi), kartu detail (profil, peringkat, anomali per jenis & per hari), bandingkan 2 promotor, daftar nama per filter, dan pertanyaan lanjutan seperti "siapa namanya?".
 //   v154: (tidak ada perubahan di dashboard) mergertool.html naik ke v13 — fix Out of Memory saat Download CSV di data besar (CSV ditulis bertahap).
 // Dashboard.tsx — v153
 //   v153: Tanya Data belajar sendiri tanpa tombol Ya/Kurang: perpustakaan nama wilayah (ID/EN/singkatan/salah ketik, mis. "north sumatera", "sumatra utara"),
@@ -4085,7 +4086,7 @@ export default function Dashboard() {
             </DashboardErrorBoundary>
           </>
         )}
-        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v154</div>
+        <div className="text-center text-[0.625rem] text-gray-300 mt-8">Dashboard v155</div>
       </div>
       <GlossaryModal open={showGlossary} onClose={() => setShowGlossary(false)} />
     </div>

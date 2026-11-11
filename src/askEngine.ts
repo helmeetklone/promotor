@@ -52,7 +52,7 @@ const chosenKind = new WeakMap<Chart, ChartKind>();
 export const setChartKind = (c: Chart, k: ChartKind) => { chosenKind.set(c, k); };
 export const effectiveKind = (c: Chart, requested?: ChartKind | null): ChartKind => resolveKind(c, chosenKind.get(c) || requested || c.kind);
 export type Section = { title?: string; head: string[]; rows: string[][]; chart?: Chart };
-export type Answer = { text: string; interpretasi?: string; cerita?: string; alts?: Alt[]; clarify?: boolean; sections?: Section[]; chips?: string[]; wantChart?: boolean; chartKind?: ChartKind; unknown?: boolean };
+export type Answer = { text: string; interpretasi?: string; cerita?: string; alts?: Alt[]; clarify?: boolean; sections?: Section[]; chips?: string[]; wantChart?: boolean; chartKind?: ChartKind; unknown?: boolean; effectiveQ?: string };
 
 const REASON_LABEL: Record<string, string> = {
   zona: "Absensi <3x / zona tidak berurutan", identik: "GPS identik", koordinat: "Koordinat kosong",
@@ -230,7 +230,7 @@ type Parsed = {
   q: string; metrics: MetricKey[]; dims: Dim[]; order: "desc" | "asc" | null; topN: number | null; avg: boolean;
   count: boolean; ask: "ranking" | "count" | "total" | "profile" | null; reason: string | null;
   tipe: string | null; player: string | null; region: string | null; cluster: string | null;
-  cmp: { op: ">" | "<"; v: number } | null; belumCapai: boolean; masukTop: boolean; note?: string; wantChart: boolean; group: boolean; chartKind: ChartKind | null; daily: boolean; byReason: boolean;
+  cmp: { op: ">" | "<"; v: number } | null; belumCapai: boolean; noNca: boolean; sudahCapai: boolean; masukTop: boolean; note?: string; wantChart: boolean; group: boolean; chartKind: ChartKind | null; daily: boolean; byReason: boolean;
 };
 
 const WORDNUM: Record<string, number> = { satu: 1, dua: 2, tiga: 3, empat: 4, lima: 5, enam: 6, tujuh: 7, delapan: 8, sembilan: 9, sepuluh: 10 };
@@ -282,7 +282,7 @@ const NAME_SKIP = new Set(["mana", "manakah", "yang", "paling", "tinggi", "renda
 
 function parseQuestion(raw: string, ds: Dataset): Parsed {
   const q = norm(raw);
-  const p: Parsed = { q, metrics: detectMetrics(q), dims: [], order: null, topN: null, avg: false, count: false, ask: null, reason: null, tipe: null, player: null, region: null, cluster: null, cmp: null, belumCapai: false, masukTop: false, wantChart: false, group: false, chartKind: null, daily: false, byReason: false };
+  const p: Parsed = { q, metrics: detectMetrics(q), dims: [], order: null, topN: null, avg: false, count: false, ask: null, reason: null, tipe: null, player: null, region: null, cluster: null, cmp: null, belumCapai: false, noNca: false, sudahCapai: false, masukTop: false, wantChart: false, group: false, chartKind: null, daily: false, byReason: false };
 
   const chartWord = /grafik|chart|diagram|visualis|\bplot\b/.test(q);
   p.chartKind = detectKind(q, chartWord);
@@ -372,6 +372,8 @@ function parseQuestion(raw: string, ds: Dataset): Parsed {
   const num = (s: string) => parseFloat(s.replace(/\./g, "").replace(",", "."));
   if (gt) p.cmp = { op: ">", v: num(gt[1]) }; else if (lt) p.cmp = { op: "<", v: num(lt[1]) };
   p.belumCapai = /belum (capai|tercapai|mencapai|memenuhi)|tidak (capai|tercapai)|gagal capai|di bawah target/.test(q);
+  p.noNca = /belum (punya|ada|memiliki) (data )?nca|nca (nol|0|kosong|belum ada)|tanpa nca|nca (nya )?(0|nol)\b|belum ada nca/.test(q);
+  p.sudahCapai = !p.belumCapai && /(sudah|udah|telah|yang) (capai|tercapai|mencapai)|lolos target|achieve target/.test(q);
   return p;
 }
 
@@ -577,9 +579,15 @@ function clarifyName(q: string, ds: Dataset): Answer | null {
   return { text: ambiguous ? `Kata "${w}" cocok dengan beberapa region. Maksudmu yang mana?` : `Aku belum menemukan "${w}" persis di data ini. Maksudmu yang mana? Pilihanmu akan kuingat.`, alts, clarify: true };
 }
 
-export function answerQuestion(raw0: string, ds: Dataset, scope?: string, lessons?: Lesson[]): Answer {
+export function answerQuestion(raw0: string, ds: Dataset, scope?: string, lessons?: Lesson[], prevQ?: string): Answer {
   const { q: rawL, used } = applyLessons(raw0, lessons);
   const { q: raw, fixes } = ds.people.length ? autoCorrect(rawL, ds) : { q: rawL, fixes: [] as Lesson[] };
+  // pertanyaan lanjutan ("siapa namanya?", "detailnya?") → pakai konteks pertanyaan sebelumnya
+  if (ds.people.length && prevQ && isFollowUp(raw, ds)) {
+    const prev = autoCorrect(applyLessons(prevQ, lessons).q, ds).q;
+    const fa = followUpAnswer(raw, prev, ds);
+    if (fa) { fa.effectiveQ = prev; fa.interpretasi = `Aku lanjutkan dari pertanyaanmu sebelumnya: "${prevQ}".` + (fa.interpretasi ? " " + fa.interpretasi : ""); return fa; }
+  }
   if (ds.people.length && raw) {
     const pq = parseQuestion(raw, ds);
     if (!pq.region && !pq.cluster) { const c = clarifyName(norm(raw), ds); if (c) return c; }
@@ -592,6 +600,7 @@ export function answerQuestion(raw0: string, ds: Dataset, scope?: string, lesson
     a.interpretasi = (a.interpretasi ? a.interpretasi + " " : "") + `Aku ingat dari koreksimu sebelumnya: ${ingat}.`;
   }
   if (parsed?.note) a.interpretasi = a.interpretasi ? parsed.note + " " + a.interpretasi : parsed.note;
+  if (parsed && parsed.count && !a.unknown && !a.clarify && !a.chips && (parsed.belumCapai || parsed.sudahCapai || parsed.reason || parsed.cmp || /anomal/.test(parsed.q)) && !a.sections?.some((x) => x.rows.length > 12)) a.chips = ["Siapa saja namanya?"];
   if (parsed?.wantChart) a.wantChart = true;
   if (parsed?.chartKind) a.chartKind = parsed.chartKind;
   return a;
@@ -609,9 +618,11 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
     return { text: "Aku bisa jawab pertanyaan seputar GAR, NCA, target, jumlah promotor, dan anomali — per region, cluster, tipe promotor (In/Out Store), atau per promotor. Contoh:", chips: SUGGESTIONS };
   }
 
-  // 1) profil promotor: cocokkan ID atau nama lengkap
+  // 1) level nama: cari promotor (toleran salah ketik) → detail / perbandingan / pilihan bila nama ambigu
+  const pf = personFlow(q, ds, p);
+  if (pf) return pf;
   const prof = findPerson(q, ds);
-  if (prof && !(p.dims.length && p.order)) return profileAnswer(prof);
+  if (prof && !(p.dims.length && p.order)) return personDetail(prof, ds, q);
 
   const people = applyFilters(ds, p);
   if (!people.length) return { text: `Tidak ada promotor yang cocok dengan filter ${scopeText(p) || "itu"}${scopeNote}.` };
@@ -636,6 +647,9 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
   if (p.masukTop && p.topN && p.dims.some((d) => d === "region" || d === "cluster") && (primary === "anomali" || primary === "kejadian" || primary === "pctAnomali" || !primary)) {
     return topAnomaliRegions(p, people, ds, scopeNote);
   }
+
+  // 2b) daftar nama promotor yang memenuhi filter ("siapa saja yang belum capai target NCA di Medan Dairi")
+  if (wantsNameList(p) ) return listAnswer(p, ds, scopeNote);
 
   // 3) ranking per dimensi
   const dims = p.dims.length ? p.dims : [];
@@ -663,6 +677,10 @@ function answerCore(raw: string, ds: Dataset, scope?: string): Answer {
     return { text: lines.join("\n") + rsn + scopeNote, sections, interpretasi: hint };
   }
 
+  if (p.noNca) {
+    const miss = people.filter((x) => !x.hasPenc || x.nca === 0);
+    return { text: `${fmt(miss.length)} dari ${fmt(people.length)} promotor${scopeText(p) ? ` (${scopeText(p)})` : ""} belum punya NCA (0), yaitu ${pct(people.length ? (miss.length / people.length) * 100 : null)}.${scopeNote}`, chips: miss.length ? ["Siapa saja namanya?"] : undefined };
+  }
   // 4) jumlah / total tanpa dimensi
   if (primary || p.count || p.cmp || p.belumCapai) return countTotalAnswer(p, people, ds, scopeNote, primary);
 
@@ -952,4 +970,218 @@ export function similarQuestions(raw: string, pool: string[], n = 3): string[] {
   return pool.map((c) => { const b = tok(c); let i = 0; a.forEach((w) => { if (b.has(w)) i++; }); return { c, sc: i / (a.size + b.size - i || 1) }; })
     .filter((x) => x.sc >= 0.34 && !seen.has(x.c) && seen.add(x.c))
     .sort((x, y) => y.sc - x.sc).slice(0, n).map((x) => x.c);
+}
+
+// ═════════════ Level nama & detail promotor (v155) ═════════════
+// Kata-kata yang bukan bagian dari nama orang (struktur kalimat, wilayah, istilah data) — sisanya dianggap calon nama.
+const PERSON_WORDS = ["riwayat", "detail", "detailnya", "rincian", "rinci", "profil", "info", "informasi", "tentang", "kabar", "kinerja", "performa", "capaian", "hari", "tanggal", "jenis", "bandingkan", "banding", "versus", "tampilkan", "tunjukkan", "sebutkan", "daftar", "list", "namanya", "lengkap", "lengkapnya", "grafik", "chart", "pie", "kolom", "batang", "garis", "harian", "tolong", "dong", "donk", "mohon", "boleh", "bisa", "cek", "cari", "carikan", "lihat", "data", "saja", "aja", "semua", "seluruh", "kemarin", "kapan", "dimana", "mana", "siapa", "apakah", "berapa", "kenapa", "mengapa", "bagaimana", "gimana", "cluster", "region", "area", "toko", "outlet", "store", "player", "sudah", "belum", "punya", "ada", "tidak", "yang", "dengan", "untuk", "dari", "pada", "sama"];
+const structCache = new WeakMap<Dataset, Set<string>>();
+function structuralWords(ds: Dataset): Set<string> {
+  let s = structCache.get(ds);
+  if (!s) {
+    s = new Set<string>([...KEYWORDS, ...NOT_NAME, ...STOP, ...NAME_SKIP, ...PERSON_WORDS, ...ds.regions.flatMap((r) => norm(r).split(/[\s-]+/)), ...ds.clusters.flatMap((c) => norm(c).split(/[\s-]+/))]);
+    structCache.set(ds, s);
+  }
+  return s;
+}
+type NameIdx = { p: Person; full: string; toks: string[] };
+const nameIdxCache = new WeakMap<Dataset, NameIdx[]>();
+function nameIndex(ds: Dataset): NameIdx[] {
+  let ix = nameIdxCache.get(ds);
+  if (!ix) { ix = ds.people.map((p) => { const full = norm(p.name); return { p, full, toks: full.split(/[\s-]+/).filter((t) => t.length >= 2) }; }); nameIdxCache.set(ds, ix); }
+  return ix;
+}
+// token pengguna cocok dengan token nama: sama persis, awalan (≥5 huruf), atau salah ketik ringan (≥6 huruf)
+function tokKind(t: string, nt: string): 0 | 1 | 2 {
+  if (t === nt) return 2;
+  if (t.length >= 5 && nt.startsWith(t)) return 1;
+  if (t.length >= 6 && nt.length >= 6 && t[0] === nt[0] && Math.abs(t.length - nt.length) <= 2 && lev(t, nt) <= (t.length >= 9 ? 2 : 1)) return 1;
+  return 0;
+}
+export function findPeopleByName(q0: string, ds: Dataset, onlyStrong = false): { hits: Person[]; tokens: string[]; fuzzy: boolean } | null {
+  const q = norm(q0);
+  const idm = q.match(/\b(trad\d{6,}|[a-z]{2}-?\d{3,})\b/);
+  if (idm) { const hit = ds.people.find((x) => norm(x.id) === idm[1]); if (hit) return { hits: [hit], tokens: [idm[1]], fuzzy: false }; }
+  const ix = nameIndex(ds);
+  // nama lengkap persis → ambil yang terpanjang
+  let bestLen = 0; let full: Person[] = [];
+  for (const e of ix) {
+    if (e.full.length < 5 || e.full === norm(e.p.id)) continue;
+    if ((" " + q + " ").includes(" " + e.full + " ")) { if (e.full.length > bestLen) { bestLen = e.full.length; full = [e.p]; } else if (e.full.length === bestLen) full.push(e.p); }
+  }
+  if (full.length) return { hits: full, tokens: [], fuzzy: false };
+  // beda spasi/tanda hubung ("novita dewi" ↔ "NOVITADEWI")
+  const flat = q.replace(/[\s-]+/g, "");
+  let bl = 0; let fl: Person[] = [];
+  for (const e of ix) {
+    const f = e.full.replace(/[\s-]+/g, "");
+    if (f.length < 7 || f === norm(e.p.id).replace(/[\s-]+/g, "")) continue;
+    if (flat.includes(f)) { if (f.length > bl) { bl = f.length; fl = [e.p]; } else if (f.length === bl) fl.push(e.p); }
+  }
+  if (fl.length) return { hits: fl, tokens: [], fuzzy: false };
+  const st = structuralWords(ds);
+  const qt = [...new Set(q.split(" ").filter((t) => t.length >= 3 && !st.has(t) && !/^\d+$/.test(t)))];
+  if (!qt.length) return null;
+  const kinds = qt.map((t) => { let best = 0; for (const e of ix) { for (const nt of e.toks) { const k = tokKind(t, nt); if (k > best) best = k; if (best === 2) break; } if (best === 2) break; } return best; });
+  const matched = qt.filter((_, i) => kinds[i] > 0);
+  if (!matched.length) return null;
+  const strong = qt.some((t, i) => kinds[i] === 2 && t.length >= 4);
+  if (!strong && matched.length < qt.length) return null;   // hanya cocok samar + ada kata asing → jangan nebak
+  if (onlyStrong && !strong) return null;
+  const need = matched.filter((t) => { const k = kinds[qt.indexOf(t)]; return strong ? k === 2 || matched.length > 1 : true; });
+  let hits = ix.filter((e) => need.every((t) => e.toks.some((nt) => tokKind(t, nt) > 0))).map((e) => e.p);
+  if (!hits.length && need.length > 1) {
+    // tidak ada yang cocok semua kata → ambil yang cocok paling banyak kata
+    let top = 0; const sc = ix.map((e) => { const n = need.filter((t) => e.toks.some((nt) => tokKind(t, nt) > 0)).length; if (n > top) top = n; return { e, n }; });
+    if (top >= 1) hits = sc.filter((x) => x.n === top).map((x) => x.e.p);
+  }
+  if (!hits.length) return null;
+  return { hits, tokens: need, fuzzy: !strong };
+}
+
+const rankStr = (pool: Person[], x: Person, f: (y: Person) => number) => { const r = pool.filter((y) => y.hasPenc); return `${1 + r.filter((y) => f(y) > f(x)).length} dari ${fmt(r.length)}`; };
+const nameChip = (x: Person, ds: Dataset, pre = "Detail ") => `${pre}${ds.people.filter((y) => y.name === x.name).length > 1 ? x.id : x.name}`;
+
+export function personDetail(x: Person, ds: Dataset, q = ""): Answer {
+  const nq = norm(q);
+  const wantDaily = /per hari|harian|tanggal|riwayat|hari ke hari|kapan/.test(nq);
+  const base = profileAnswer(x);
+  const rows = base.sections![0].rows;
+  rows.unshift(["ID", x.id]);
+  if (x.hasPenc && x.target) rows.push(["NCA vs target", `${fmt(x.nca)} / ${fmt(x.target)} (${pct((x.nca / x.target) * 100)})${x.nca < x.target ? ` — kurang ${fmt(x.target - x.nca)}` : ""}`]);
+  rows.push(["Aktivitas", `${fmt(x.rows)} baris data${x.dayList.length ? ` · ${tglPendek([...x.dayList].sort()[0])}–${tglPendek([...x.dayList].sort().slice(-1)[0])}` : ""}${x.rows ? ` · ${pct((x.flagRows / x.rows) * 100)} baris beranomali` : ""}`]);
+  const sections: Section[] = [{ title: "Profil", head: ["Info", "Nilai"], rows }];
+  if (x.hasPenc) {
+    const inCl = ds.people.filter((y) => y.cluster === x.cluster && y.region === x.region), inRg = ds.people.filter((y) => y.region === x.region);
+    sections.push({ title: "Peringkat (dibanding promotor lain)", head: ["Lingkup", "NCA", "GAR"], rows: [
+      [`Cluster ${x.cluster}`, rankStr(inCl, x, (y) => y.nca), rankStr(inCl, x, (y) => y.gar)],
+      [`Region ${x.region}`, rankStr(inRg, x, (y) => y.nca), rankStr(inRg, x, (y) => y.gar)],
+      ["Nasional", rankStr(ds.people, x, (y) => y.nca), rankStr(ds.people, x, (y) => y.gar)],
+    ] });
+  }
+  const jenis = Object.entries(x.reasonRows).sort((a, b) => b[1] - a[1]);
+  if (jenis.length) sections.push({ title: "Anomali per jenis", head: ["Jenis", "Kejadian", "% dari data"], rows: jenis.map(([k, v]) => [REASON_LABEL[k] || k, fmt(v), pct(x.rows ? (v / x.rows) * 100 : null)]),
+    chart: { kind: "donut", labels: jenis.map(([k]) => REASON_LABEL[k] || k), series: [{ name: "Kejadian", values: jenis.map(([, v]) => v) }], fmt: "num" } });
+  const days = Object.entries(x.dayFlag).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  if (days.length) {
+    const shown = days.slice(0, wantDaily ? 31 : 10);
+    const jt = (f: Record<string, number>) => Object.entries(f).filter(([k]) => k !== "_all").sort((a, b) => b[1] - a[1]).map(([k, v]) => `${REASON_LABEL[k] || k} (${v}x)`).join(", ");
+    const chron = [...shown].reverse();
+    sections.push({ title: wantDaily ? "Riwayat anomali per hari" : `Anomali terbaru (${shown.length} dari ${days.length} hari)`, head: ["Tanggal", "Kejadian", "Jenis"], rows: shown.map(([d, f]) => [tgl(d), fmt(f._all), jt(f)]),
+      chart: { kind: "column", labels: chron.map(([d]) => tglPendek(d)), series: [{ name: "Kejadian anomali", values: chron.map(([, f]) => f._all) }], fmt: "num" } });
+  }
+  const chips: string[] = [];
+  if (days.length && !wantDaily) chips.push(`Riwayat anomali ${nameChip(x, ds, "").trim()} per hari`);
+  chips.push(`Grafik anomali per jenis ${nameChip(x, ds, "").trim()}`);
+  const k: string[] = [`${x.name} berstatus ${tipeLabel(x.tipe)} di cluster ${x.cluster}, region ${x.region}.`];
+  if (x.hasPenc && x.target) {
+    const inCl = ds.people.filter((y) => y.cluster === x.cluster && y.region === x.region);
+    k.push(`Perolehan NCA tercatat ${fmt(x.nca)} dari target ${fmt(x.target)} (${pct((x.nca / x.target) * 100)}), sehingga ${x.nca >= x.target ? "target telah tercapai" : `target belum tercapai dan masih kurang ${fmt(x.target - x.nca)}`}; peringkat NCA di cluster tersebut adalah ${rankStr(inCl, x, (y) => y.nca)}.`);
+  } else if (!x.hasPenc) k.push("Data GAR/NCA promotor ini belum tersedia pada berkas yang diunggah.");
+  if (x.flagRows) k.push(`Terdapat ${fmt(x.flagRows)} kejadian anomali pada ${fmt(days.length)} hari, paling banyak berjenis "${REASON_LABEL[jenis[0][0]] || jenis[0][0]}" (${fmt(jenis[0][1])} kali).`);
+  else k.push("Tidak ditemukan anomali pada data promotor ini.");
+  return { text: base.text.replace(/\.$/, "") + ` (${x.id}) — ${x.cluster} · ${x.region}.`, sections, chips: days.length ? chips : undefined, cerita: k.join(" ") };
+}
+
+function comparePeople(a: Person, b: Person): Answer {
+  const row = (lbl: string, f: (x: Person) => string) => [lbl, f(a), f(b)];
+  const ach = (x: Person) => (x.hasPenc && x.target ? pct((x.nca / x.target) * 100) : "-");
+  return { text: `Perbandingan ${a.name} dan ${b.name}.`, sections: [{ head: ["", a.name, b.name], rows: [
+    row("Wilayah", (x) => `${x.cluster} · ${x.region}`), row("Tipe", (x) => tipeLabel(x.tipe)),
+    row("Masa kerja", (x) => (x.tenure == null ? "-" : `${Math.floor(x.tenure)} bln`)),
+    row("GAR", (x) => (x.hasPenc ? fmt(x.gar) : "-")), row("NCA", (x) => (x.hasPenc ? fmt(x.nca) : "-")), row("Target NCA", (x) => (x.target ? fmt(x.target) : "-")), row("NCA vs target", ach),
+    row("Hari aktif", (x) => fmt(x.days)), row("Kejadian anomali", (x) => fmt(x.flagRows)),
+  ], chart: { kind: "column", labels: ["GAR", "NCA", "Anomali"], series: [a, b].map((x) => ({ name: x.name, values: [x.gar, x.nca, x.flagRows] })), fmt: "num" } }] };
+}
+
+// Alur utama level nama: 1 orang → detail, 2 orang + kata banding → perbandingan, beberapa → pilihan.
+function personFlow(q: string, ds: Dataset, p: Parsed): Answer | null {
+  // perbandingan dua nama
+  if (/\b(vs|versus|banding|bandingkan|dibandingkan|dengan|sama|dan)\b/.test(q)) {
+    const segs = q.split(/\b(?:vs|versus|dibandingkan|bandingkan|banding|dengan|sama|dan|atau)\b/).map((s) => s.trim()).filter((s) => s.length >= 3);
+    const found: Person[] = [];
+    for (const sg of segs) { const f = findPeopleByName(sg, ds, true); if (f && f.hits.length === 1 && !found.includes(f.hits[0])) found.push(f.hits[0]); }
+    if (found.length >= 2) return comparePeople(found[0], found[1]);
+  }
+  const f = findPeopleByName(q, ds);
+  if (!f) return null;
+  let hits = f.hits;
+  if (hits.length > 1 && (p.region || p.cluster || p.tipe || p.player)) { const nar = hits.filter((x) => (!p.region || x.region === p.region) && (!p.cluster || x.cluster === p.cluster) && (!p.tipe || x.tipe === p.tipe) && (!p.player || x.player === p.player)); if (nar.length) hits = nar; }
+  if (hits.length === 1) {
+    const a = personDetail(hits[0], ds, q);
+    if (f.fuzzy) a.interpretasi = `Aku artikan pencarianmu sebagai promotor ${hits[0].name}. Kalau bukan dia, tulis nama lengkapnya atau ID-nya.`;
+    return a;
+  }
+  const sorted = [...hits].sort((x, y) => (y.hasPenc ? y.nca : -1) - (x.hasPenc ? x.nca : -1));
+  const lim = sorted.slice(0, 15);
+  const what = f.tokens.length ? f.tokens.join(" ") : "itu";
+  return { text: `Ada ${fmt(hits.length)} promotor yang cocok dengan "${what}"${hits.length > lim.length ? ` (menampilkan ${lim.length} dengan NCA tertinggi)` : ""}. Klik salah satu untuk melihat detailnya, atau tambahkan nama belakang / cluster supaya lebih spesifik.`,
+    sections: [{ head: ["Nama", "ID", "Wilayah", "NCA"], rows: lim.map((x) => [x.name, x.id, `${x.cluster} · ${x.region}`, x.hasPenc ? fmt(x.nca) : "-"]) }],
+    chips: lim.slice(0, 5).map((x) => nameChip(x, ds)) };
+}
+
+// ── daftar nama berdasarkan filter ──
+function wantsNameList(p: Parsed): boolean {
+  const q = p.q;
+  if (p.order || p.topN || p.group || p.wantChart || p.daily || p.byReason) return false;
+  const verb = /\b(siapa(kah)?( saja| aja)?|namanya|nama promotor|nama-nama|daftar|list|sebut(kan|in)?|tampilkan|tunjukkan|tunjukin|lihat(kan)?|kasih (tau|tahu|lihat)|promotornya)\b/.test(q);
+  const filt = !!(p.region || p.cluster || p.tipe || p.player || p.belumCapai || p.noNca || p.sudahCapai || p.reason || p.cmp || /anomal/.test(q));
+  if (verb && filt) return true;
+  if (!p.count && /\bpromotor\b/.test(q) && (p.belumCapai || p.noNca || p.sudahCapai) ) return true;
+  return false;
+}
+function listAnswer(p: Parsed, ds: Dataset, scopeNote: string): Answer {
+  let pool = applyFilters(ds, p);
+  const conds: string[] = [];
+  const q = p.q;
+  let sortF: (x: Person) => number = (x) => (x.hasPenc ? x.nca : -1);
+  let dir = -1;
+  if (p.noNca) { pool = pool.filter((x) => !x.hasPenc || x.nca === 0); conds.push("belum punya NCA (0)"); sortF = (x) => x.rows; }
+  if (p.belumCapai) { pool = pool.filter((x) => x.hasPenc && x.target != null && x.nca < (x.target as number)); conds.push("belum capai target NCA"); sortF = (x) => (x.target as number) - x.nca; }
+  else if (p.sudahCapai) { pool = pool.filter((x) => x.hasPenc && x.target != null && x.nca >= (x.target as number)); conds.push("sudah capai target NCA"); }
+  const anom = !!p.reason || /anomal|janggal|bermasalah/.test(q);
+  if (p.cmp && !(anom && !/\b(gar|nca)\b/.test(q))) {
+    const mk = /\bnca\b/.test(q) ? "nca" : "gar"; const f = (x: Person) => (mk === "nca" ? x.nca : x.gar);
+    pool = pool.filter((x) => x.hasPenc && (p.cmp!.op === ">" ? f(x) > p.cmp!.v : f(x) < p.cmp!.v));
+    conds.push(`${mk.toUpperCase()} ${p.cmp.op === ">" ? "di atas" : "di bawah"} ${fmt(p.cmp.v)}`); sortF = f;
+  } else if (anom && !p.noNca && !p.belumCapai) {
+    const kj = (x: Person) => (p.reason ? x.reasonRows[p.reason] || 0 : x.flagRows);
+    pool = pool.filter((x) => (p.cmp ? (p.cmp.op === ">" ? kj(x) > p.cmp.v : kj(x) < p.cmp.v) : kj(x) > 0));
+    conds.push(p.reason ? `anomali "${REASON_LABEL[p.reason]}"` : "beranomali"); sortF = kj;
+  } else if (anom) { /* anomali + kondisi lain: tampilkan kolom anomali saja */ }
+  const where = scopeText(p);
+  const head = `${fmt(pool.length)} promotor${conds.length ? " " + conds.join(" dan ") : ""}${where ? ` (${where})` : ""}`;
+  if (!pool.length) return { text: `Tidak ada promotor yang ${conds.join(" dan ") || "cocok"}${where ? ` di ${where}` : ""}.${scopeNote}` };
+  pool = [...pool].sort((a, b) => dir * (sortF(a) - sortF(b)) || a.name.localeCompare(b.name));
+  const limit = 30;
+  const shown = pool.slice(0, limit);
+  const rows = shown.map((x, i) => [String(i + 1), x.name, `${x.cluster}${p.region || p.cluster ? "" : " · " + x.region}`, tipeLabel(x.tipe), x.hasPenc ? fmt(x.gar) : "-", x.hasPenc ? `${fmt(x.nca)}${x.target ? ` / ${fmt(x.target)}` : ""}` : "-", x.flagRows ? `${fmt(x.flagRows)}x` : "-"]);
+  const more = pool.length > limit ? ` Menampilkan ${limit} teratas dari ${fmt(pool.length)} — persempit dengan nama region/cluster supaya daftarnya lebih pendek.` : "";
+  const names = shown.slice(0, 3).map((x) => x.name);
+  const cerita = `Berdasarkan data yang tampil, terdapat ${head}.` + (names.length ? ` Pada urutan teratas daftar ini terdapat ${names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " dan " + names[names.length - 1]}.` : "") + (pool.length > limit ? ` Daftar dibatasi ${limit} nama; selebihnya dapat dilihat dengan mempersempit wilayah.` : "") + " Tabel di atas memuat rincian wilayah, tipe, GAR, NCA terhadap target, dan jumlah kejadian anomali tiap promotor.";
+  return { cerita, text: `${head}.${more}${scopeNote}`, sections: [{ title: "Daftar promotor", head: ["#", "Nama", "Cluster", "Tipe", "GAR", "NCA / Target", "Anomali"], rows }],
+    interpretasi: "Klik nama di bawah untuk melihat detail satu promotor (profil, peringkat, anomali per jenis & per hari).", chips: shown.slice(0, 4).map((x) => nameChip(x, ds)) };
+}
+
+// ── pertanyaan lanjutan ──
+function isFollowUp(raw: string, ds: Dataset): boolean {
+  const q = norm(raw);
+  if (!q || q.split(" ").length > 9) return false;
+  if (!/\b(namanya|nama nya|siapa|sebut(kan|in)?|daftar(nya)?|list(nya)?|rinci(an)?(nya)?|detail(nya)?|lengkap(nya)?|yang mana|mana (saja|aja)|tampilkan|tunjukkan|mereka|tadi|tersebut|orangnya|promotornya|anomalinya|per hari|harian|tanggal berapa|riwayat(nya)?|jenisnya)\b/.test(q)) return false;
+  const pq = parseQuestion(q, ds);
+  if (pq.region || pq.cluster || pq.tipe || pq.player || pq.belumCapai || pq.noNca || pq.reason || pq.cmp) return false;
+  if (findPeopleByName(q, ds)) return false;
+  const strong = /\w+nya\b|\btadi\b|\btersebut\b|\bmereka\b|\bitu\b|\bsiapa (saja|aja)\b|^(sebut(kan|in)?|daftar|list|detail|rincian|tampilkan|tunjukkan)$/.test(q);
+  const ownTopic = pq.metrics.length > 0 || !!pq.order || !!pq.topN || pq.group || pq.wantChart;
+  return strong || !ownTopic;
+}
+function followUpAnswer(raw: string, prev: string, ds: Dataset): Answer | null {
+  const q = norm(raw);
+  const pf = findPeopleByName(prev, ds);
+  if (pf && pf.hits.length === 1) return personDetail(pf.hits[0], ds, q);
+  const pp = parseQuestion(norm(prev) + " " + q, ds);
+  pp.group = false; pp.order = null; pp.topN = null; pp.wantChart = false; pp.daily = false; pp.byReason = false;
+  const noFilter = !(pp.region || pp.cluster || pp.tipe || pp.player || pp.belumCapai || pp.noNca || pp.sudahCapai || pp.reason || pp.cmp || /anomal/.test(pp.q));
+  if (noFilter && !pp.metrics.length) return null;
+  return listAnswer(pp, ds, "");
 }
